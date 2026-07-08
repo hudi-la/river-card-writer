@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useBookStore, EMPTY_DOC, load } from './bookStore'
+import { useBookStore, EMPTY_DOC, load, THREAD_PALETTE, normalizeBook } from './bookStore'
 
 beforeEach(() => {
   localStorage.clear()
@@ -55,5 +55,30 @@ describe('bookStore', () => {
     expect(useBookStore.getState().book.chapters.find((c) => c.id === id)!.title).toBe('离岸')
     const raw = JSON.parse(localStorage.getItem('card-writer:book')!)
     expect(raw.chapters.find((c: any) => c.id === id).title).toBe('离岸')
+  })
+  it('初始 book 有空 threads', () => {
+    expect(useBookStore.getState().book.threads).toEqual([])
+  })
+  it('addThread 建线、取调色板色、持久化、返回它', () => {
+    const t = useBookStore.getState().addThread('语言')
+    expect(t.name).toBe('语言')
+    expect(THREAD_PALETTE).toContain(t.color)
+    expect(useBookStore.getState().book.threads).toHaveLength(1)
+    const raw = JSON.parse(localStorage.getItem('card-writer:book')!)
+    expect(raw.threads[0].name).toBe('语言')
+  })
+  it('addThread 连建两条取不同色', () => {
+    const a = useBookStore.getState().addThread('a')
+    const b = useBookStore.getState().addThread('b')
+    expect(a.color).not.toBe(b.color)
+  })
+  it('normalizeBook 给缺 threads 的旧数据补空数组', () => {
+    const b = normalizeBook({ id: 'x', title: 't', chapters: [{ id: 'c', title: 'c', doc: { type: 'doc', content: [{ type: 'card', content: [{ type: 'paragraph' }] }] } }] })
+    expect(b.threads).toEqual([])
+  })
+  it('getThread 按 id 查找，null 返回 undefined', () => {
+    const t = useBookStore.getState().addThread('语言')
+    expect(useBookStore.getState().getThread(t.id)).toEqual(t)
+    expect(useBookStore.getState().getThread(null)).toBeUndefined()
   })
 })
