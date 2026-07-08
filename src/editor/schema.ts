@@ -2,7 +2,7 @@ import { Node, Extension, mergeAttributes } from '@tiptap/core'
 import Document from '@tiptap/extension-document'
 import Paragraph from '@tiptap/extension-paragraph'
 import Text from '@tiptap/extension-text'
-import { EditorState, Plugin, Transaction } from '@tiptap/pm/state'
+import { EditorState, Plugin, Transaction, TextSelection } from '@tiptap/pm/state'
 import { nanoid } from 'nanoid'
 
 export const CardDocument = Document.extend({ content: 'card+' })
@@ -14,8 +14,15 @@ declare module '@tiptap/core' {
       mergeCardBackward: () => ReturnType
       moveCardUp: () => ReturnType
       moveCardDown: () => ReturnType
+      insertCardAfter: () => ReturnType
+      appendCard: () => ReturnType
     }
   }
+}
+
+function emptyCardNode(schema: EditorState['schema']) {
+  const paragraph = schema.nodes.paragraph.createAndFill()!
+  return schema.nodes.card.create({ cardId: null, threadId: null, role: 'body' }, paragraph)
 }
 
 // 把光标所在 card 与其上一个(-1)/下一个(+1) 兄弟 card 交换位置
@@ -153,6 +160,39 @@ export const Card = Node.create({
       moveCardDown:
         () =>
         ({ state, dispatch }) => moveCard(state, dispatch, +1),
+      insertCardAfter:
+        () =>
+        ({ state, dispatch }) => {
+          const { $from } = state.selection
+          let cardDepth = -1
+          for (let d = $from.depth; d > 0; d--) {
+            if ($from.node(d).type.name === 'card') {
+              cardDepth = d
+              break
+            }
+          }
+          if (cardDepth === -1) return false
+          if (dispatch) {
+            const after = $from.after(cardDepth)
+            const card = emptyCardNode(state.schema)
+            const tr = state.tr.insert(after, card)
+            tr.setSelection(TextSelection.create(tr.doc, after + 2))
+            dispatch(tr.scrollIntoView())
+          }
+          return true
+        },
+      appendCard:
+        () =>
+        ({ state, dispatch }) => {
+          if (dispatch) {
+            const end = state.doc.content.size
+            const card = emptyCardNode(state.schema)
+            const tr = state.tr.insert(end, card)
+            tr.setSelection(TextSelection.create(tr.doc, end + 2))
+            dispatch(tr.scrollIntoView())
+          }
+          return true
+        },
     }
   },
   addKeyboardShortcuts() {
