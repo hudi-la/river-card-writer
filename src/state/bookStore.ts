@@ -21,15 +21,22 @@ function freshBook(): Book {
   const ch: Chapter = { id: nanoid(), title: '第一章', doc: structuredClone(EMPTY_DOC) }
   return { id: nanoid(), title: '未命名', chapters: [ch] }
 }
-function load(): Book {
+export function load(): Book {
   try {
     const raw = localStorage.getItem(KEY)
-    if (raw) return JSON.parse(raw)
+    if (raw) {
+      const b = JSON.parse(raw)
+      if (b && Array.isArray(b.chapters) && b.chapters.length > 0 && b.chapters[0]?.id) return b
+    }
   } catch {}
   return freshBook()
 }
 function persist(book: Book) {
-  localStorage.setItem(KEY, JSON.stringify(book))
+  try {
+    localStorage.setItem(KEY, JSON.stringify(book))
+  } catch (e) {
+    console.warn('persist failed', e)
+  }
 }
 
 export const useBookStore = create<BookState>((set, get) => {

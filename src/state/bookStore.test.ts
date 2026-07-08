@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useBookStore, EMPTY_DOC } from './bookStore'
+import { useBookStore, EMPTY_DOC, load } from './bookStore'
 
 beforeEach(() => {
   localStorage.clear()
@@ -28,5 +28,24 @@ describe('bookStore', () => {
     expect(useBookStore.getState().getActiveChapter().doc).toEqual(doc)
     const raw = JSON.parse(localStorage.getItem('card-writer:book')!)
     expect(raw.chapters.find((c: any) => c.id === id).doc).toEqual(doc)
+  })
+  it('load() 遇到形状不对但可解析的 JSON 时回退为一本全新的书，而不是抛出', () => {
+    localStorage.setItem('card-writer:book', JSON.stringify({ foo: 1 }))
+    let book1: ReturnType<typeof load> | undefined
+    expect(() => {
+      book1 = load()
+    }).not.toThrow()
+    expect(book1!.chapters.length).toBe(1)
+    expect(book1!.chapters[0].id).toBeTruthy()
+    expect(book1!.chapters[0].doc).toEqual(EMPTY_DOC)
+
+    localStorage.setItem('card-writer:book', JSON.stringify({ chapters: [] }))
+    let book2: ReturnType<typeof load> | undefined
+    expect(() => {
+      book2 = load()
+    }).not.toThrow()
+    expect(book2!.chapters.length).toBe(1)
+    expect(book2!.chapters[0].id).toBeTruthy()
+    expect(book2!.chapters[0].doc).toEqual(EMPTY_DOC)
   })
 })
