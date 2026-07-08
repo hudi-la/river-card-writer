@@ -2,7 +2,7 @@ import { Node, Extension, mergeAttributes } from '@tiptap/core'
 import Document from '@tiptap/extension-document'
 import Paragraph from '@tiptap/extension-paragraph'
 import Text from '@tiptap/extension-text'
-import { Plugin } from '@tiptap/pm/state'
+import { EditorState, Plugin, Transaction } from '@tiptap/pm/state'
 import { nanoid } from 'nanoid'
 
 export const CardDocument = Document.extend({ content: 'card+' })
@@ -12,8 +12,49 @@ declare module '@tiptap/core' {
     card: {
       splitCard: () => ReturnType
       mergeCardBackward: () => ReturnType
+      moveCardUp: () => ReturnType
+      moveCardDown: () => ReturnType
     }
   }
+}
+
+// 把光标所在 card 与其上一个(-1)/下一个(+1) 兄弟 card 交换位置
+function moveCard(state: EditorState, dispatch: ((tr: Transaction) => void) | undefined, dir: -1 | 1): boolean {
+  const { $from } = state.selection
+  let cardDepth = -1
+  for (let d = $from.depth; d > 0; d--) {
+    if ($from.node(d).type.name === 'card') {
+      cardDepth = d
+      break
+    }
+  }
+  if (cardDepth === -1) return false
+  const index = $from.index(0) // card 在 doc 里的序号
+  const parent = state.doc
+  const target = index + dir
+  if (target < 0 || target >= parent.childCount) return false
+  if (dispatch) {
+    const cardNode = parent.child(index)
+    const cardPos = $from.before(cardDepth)
+    if (dir === 1) {
+      // 与下一个 card 交换：把当前 card 挪到下一个 card 后面
+      const nextNode = parent.child(index + 1)
+      const tr = state.tr
+      tr.delete(cardPos, cardPos + cardNode.nodeSize)
+      const insertPos = cardPos + nextNode.nodeSize
+      tr.insert(insertPos, cardNode)
+      dispatch(tr.scrollIntoView())
+    } else {
+      // 与上一个 card 交换：把当前 card 挪到上一个 card 前面
+      const prevNode = parent.child(index - 1)
+      const prevPos = cardPos - prevNode.nodeSize
+      const tr = state.tr
+      tr.delete(cardPos, cardPos + cardNode.nodeSize)
+      tr.insert(prevPos, cardNode)
+      dispatch(tr.scrollIntoView())
+    }
+  }
+  return true
 }
 
 export const Card = Node.create({
@@ -106,12 +147,20 @@ export const Card = Node.create({
           }
           return true
         },
+      moveCardUp:
+        () =>
+        ({ state, dispatch }) => moveCard(state, dispatch, -1),
+      moveCardDown:
+        () =>
+        ({ state, dispatch }) => moveCard(state, dispatch, +1),
     }
   },
   addKeyboardShortcuts() {
     return {
       'Mod-Enter': () => this.editor.commands.splitCard(),
       Backspace: () => this.editor.commands.mergeCardBackward(),
+      'Alt-ArrowUp': () => this.editor.commands.moveCardUp(),
+      'Alt-ArrowDown': () => this.editor.commands.moveCardDown(),
     }
   },
 })
