@@ -1,0 +1,16 @@
+:root { --paper:#fcfaf6; --ink:#252019; --muted:#a89e92; --faint:#e0d8cc; --hair:#d8cfc1; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia,'Songti SC','Noto Serif',serif; }
+.app { display:grid; grid-template-columns:172px 1fr; min-height:100vh; }
+.rail { padding:20px 12px; border-right:1px solid var(--faint); font-size:13px; }
+.rlabel { font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin:0 0 10px; }
+.chap { padding:6px 8px; border-radius:5px; color:var(--muted); cursor:pointer; }
+.chap.on { color:var(--ink); font-weight:600; background:rgba(120,158,196,.12); }
+.add { padding:6px 8px; color:var(--muted); cursor:pointer; opacity:.8; }
+.page { padding:36px 0; display:flex; justify-content:center; }
+.river { width:min(680px,90%); outline:none; }
+.river .card { position:relative; padding:12px 16px 12px 40px; }
+.river .card + .card::before { content:""; position:absolute; left:40px; right:16px; top:0; border-top:1px solid var(--hair); }
+.river .card::after { content:"⠿"; position:absolute; left:14px; top:14px; color:var(--muted); opacity:0; cursor:grab; font-size:12px; }
+.river .card:hover::after { opacity:.5; }
+.river p { margin:0; line-height:1.95; font-size:15px; text-indent:2em; }
