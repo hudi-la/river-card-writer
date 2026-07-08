@@ -13,4 +13,15 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 .river .card + .card::before { content:""; position:absolute; left:40px; right:16px; top:0; border-top:1px solid var(--hair); }
 .river .card::after { content:"⠿"; position:absolute; left:14px; top:14px; color:var(--muted); opacity:0; cursor:grab; font-size:12px; }
 .river .card:hover::after { opacity:.5; }
-.river p { margin:0; line-height:1.95; font-size:15px; text-indent:2em; }
+.river .card .card-ctrls {
+  position: absolute; top: 8px; right: 8px; display: flex; gap: 2px;
+  opacity: 0; transition: opacity .12s;
+}
+.river .card:hover .card-ctrls { opacity: 1; }
+.river .card-ctrls button {
+  border: 1px solid var(--faint); background: var(--paper); color: var(--muted);
+  border-radius: 4px; width: 22px; height: 22px; font-size: 11px; cursor: pointer; line-height: 1;
+}
+.river .card-ctrls button:hover:not(:disabled) { color: var(--ink); border-color: var(--hair); }
+.river .card-ctrls button:disabled { opacity: .3; cursor: default; }
+.river .card-body p { margin: 0; line-height: 1.95; font-size: 15px; text-indent: 2em; }

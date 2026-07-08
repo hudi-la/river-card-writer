@@ -2,8 +2,10 @@ import { Node, Extension, mergeAttributes } from '@tiptap/core'
 import Document from '@tiptap/extension-document'
 import Paragraph from '@tiptap/extension-paragraph'
 import Text from '@tiptap/extension-text'
+import { ReactNodeViewRenderer } from '@tiptap/react'
 import { EditorState, Plugin, Transaction, TextSelection } from '@tiptap/pm/state'
 import { nanoid } from 'nanoid'
+import { CardView } from './CardView'
 
 export const CardDocument = Document.extend({ content: 'card+' })
 
@@ -93,6 +95,9 @@ export const Card = Node.create({
   },
   renderHTML({ HTMLAttributes }) {
     return ['section', mergeAttributes(HTMLAttributes, { class: 'card' }), 0]
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(CardView)
   },
   addCommands() {
     return {
