@@ -1,10 +1,17 @@
+import { useState } from 'react'
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react'
 import { useBookStore } from '../state/bookStore'
 
 export function CardView({ editor, getPos, node }: NodeViewProps) {
   const threadId: string | null = node.attrs.threadId
   const thread = useBookStore((s) => s.getThread(threadId))
+  const threads = useBookStore((s) => s.book.threads)
+  const addThread = useBookStore((s) => s.addThread)
   const style = thread ? ({ ['--thread' as any]: thread.color } as React.CSSProperties) : undefined
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [name, setName] = useState('')
+
   const run = (cmd: 'up' | 'down' | 'add' | 'merge') => (e: React.MouseEvent) => {
     e.preventDefault()
     const pos = getPos()
@@ -15,6 +22,35 @@ export function CardView({ editor, getPos, node }: NodeViewProps) {
     else if (cmd === 'add') chain.insertCardAfter().run()
     else chain.mergeCardBackward().run()
   }
+
+  const assign = (id: string | null) => {
+    const pos = getPos()
+    if (typeof pos !== 'number') return
+    editor.chain().focus().setTextSelection(pos + 2).setCardThread(id).run()
+    setMenuOpen(false)
+    setCreating(false)
+    setName('')
+  }
+
+  const toggleMenu = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setMenuOpen((o) => !o)
+    setCreating(false)
+  }
+
+  const startCreate = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setCreating(true)
+  }
+
+  const confirmCreate = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return
+    const trimmed = name.trim()
+    if (!trimmed) return
+    const t = addThread(trimmed)
+    assign(t.id)
+  }
+
   const isFirst = typeof getPos() === 'number' && getPos() === 0
   return (
     <NodeViewWrapper as="section" className="card" data-thread-id={threadId || undefined} style={style}>
@@ -31,6 +67,37 @@ export function CardView({ editor, getPos, node }: NodeViewProps) {
         <button data-card-ctrl="merge" title="合并进上一张" disabled={isFirst} onMouseDown={run('merge')}>
           ✕
         </button>
+        <button
+          data-card-ctrl="thread"
+          title="选择线"
+          onMouseDown={toggleMenu}
+          style={{ color: thread ? thread.color : undefined }}
+        >
+          ●
+        </button>
+        {menuOpen && (
+          <div className="thread-menu" contentEditable={false}>
+            {threads.map((t) => (
+              <button key={t.id} onMouseDown={(e) => { e.preventDefault(); assign(t.id) }}>
+                <span className="thread-dot" style={{ ['--dot' as any]: t.color }} />
+                {t.name}
+              </button>
+            ))}
+            <button onMouseDown={(e) => { e.preventDefault(); assign(null) }}>去色</button>
+            {!creating ? (
+              <button onMouseDown={startCreate}>＋ 新建线</button>
+            ) : (
+              <input
+                autoFocus
+                value={name}
+                placeholder="线名"
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={confirmCreate}
+                onMouseDown={(e) => e.stopPropagation()}
+              />
+            )}
+          </div>
+        )}
       </div>
       <NodeViewContent className="card-body" />
     </NodeViewWrapper>
