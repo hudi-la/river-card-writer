@@ -19,6 +19,7 @@ declare module '@tiptap/core' {
       moveCardDown: () => ReturnType
       insertCardAfter: () => ReturnType
       appendCard: () => ReturnType
+      setCardThread: (threadId: string | null) => ReturnType
     }
   }
 }
@@ -197,6 +198,16 @@ export const Card = Node.create({
             tr.setSelection(TextSelection.create(tr.doc, end + 2))
             dispatch(tr.scrollIntoView())
           }
+          return true
+        },
+      setCardThread:
+        (threadId: string | null) =>
+        ({ state, dispatch }) => {
+          const { $from } = state.selection
+          let cardDepth = -1
+          for (let d = $from.depth; d > 0; d--) if ($from.node(d).type.name === 'card') { cardDepth = d; break }
+          if (cardDepth === -1) return false
+          if (dispatch) dispatch(state.tr.setNodeAttribute($from.before(cardDepth), 'threadId', threadId))
           return true
         },
     }
