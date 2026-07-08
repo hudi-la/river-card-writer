@@ -11,6 +11,7 @@ declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     card: {
       splitCard: () => ReturnType
+      mergeCardBackward: () => ReturnType
     }
   }
 }
@@ -79,11 +80,38 @@ export const Card = Node.create({
           }
           return true
         },
+      mergeCardBackward:
+        () =>
+        ({ state, dispatch }) => {
+          const { $from, empty } = state.selection
+          if (!empty) return false
+          // 必须在 card 的第一个 paragraph 的最前端
+          let cardDepth = -1
+          for (let d = $from.depth; d > 0; d--) {
+            if ($from.node(d).type.name === 'card') {
+              cardDepth = d
+              break
+            }
+          }
+          if (cardDepth === -1) return false
+          // $from.depth 是光标所在段落的深度；start(depth) 是该段落内容的起点（第一个字符前）
+          // index(cardDepth) 是该段落在 card 内的序号，必须是第一个段落
+          const atCardStart = $from.pos === $from.start($from.depth) && $from.index(cardDepth) === 0
+          if (!atCardStart) return false
+          const cardPos = $from.before(cardDepth)
+          if (cardPos <= 0) return false // 已是第一个 card
+          if (dispatch) {
+            // join 位置：当前 card 与前一个 card 之间的边界点
+            dispatch(state.tr.join(cardPos).scrollIntoView())
+          }
+          return true
+        },
     }
   },
   addKeyboardShortcuts() {
     return {
       'Mod-Enter': () => this.editor.commands.splitCard(),
+      Backspace: () => this.editor.commands.mergeCardBackward(),
     }
   },
 })
