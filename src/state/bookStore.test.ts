@@ -48,4 +48,12 @@ describe('bookStore', () => {
     expect(book2!.chapters[0].id).toBeTruthy()
     expect(book2!.chapters[0].doc).toEqual(EMPTY_DOC)
   })
+  it('renameChapter 改名并持久化', () => {
+    const s = useBookStore.getState()
+    const id = s.activeChapterId
+    s.renameChapter(id, '离岸')
+    expect(useBookStore.getState().book.chapters.find((c) => c.id === id)!.title).toBe('离岸')
+    const raw = JSON.parse(localStorage.getItem('card-writer:book')!)
+    expect(raw.chapters.find((c: any) => c.id === id).title).toBe('离岸')
+  })
 })

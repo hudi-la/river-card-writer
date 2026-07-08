@@ -13,6 +13,7 @@ type BookState = {
   addChapter: (title: string) => void
   setActiveChapter: (id: string) => void
   updateChapterDoc: (id: string, doc: object) => void
+  renameChapter: (id: string, title: string) => void
   getActiveChapter: () => Chapter
   __resetForTest: () => void
 }
@@ -51,6 +52,13 @@ export const useBookStore = create<BookState>((set, get) => {
       set({ book })
     },
     setActiveChapter: (id) => set({ activeChapterId: id }),
+    renameChapter: (id, title) => {
+      const trimmed = title.trim()
+      if (!trimmed) return
+      const book = { ...get().book, chapters: get().book.chapters.map((c) => (c.id === id ? { ...c, title: trimmed } : c)) }
+      persist(book)
+      set({ book })
+    },
     updateChapterDoc: (id, doc) => {
       const book = { ...get().book, chapters: get().book.chapters.map((c) => (c.id === id ? { ...c, doc } : c)) }
       persist(book)

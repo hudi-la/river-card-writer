@@ -7,6 +7,7 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 .chap { padding:6px 8px; border-radius:5px; color:var(--muted); cursor:pointer; }
 .chap.on { color:var(--ink); font-weight:600; background:rgba(120,158,196,.12); }
 .add { padding:6px 8px; color:var(--muted); cursor:pointer; opacity:.8; }
+.chap-edit { width:100%; border:1px solid var(--hair); border-radius:4px; background:var(--paper); color:var(--ink); font:inherit; padding:4px 6px; }
 .page { padding:36px 0; display:flex; justify-content:center; }
 .river-wrap { width: min(680px, 90%); }
 .river-wrap .river { width: 100%; }
