@@ -8,7 +8,9 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 .chap.on { color:var(--ink); font-weight:600; background:rgba(120,158,196,.12); }
 .add { padding:6px 8px; color:var(--muted); cursor:pointer; opacity:.8; }
 .page { padding:36px 0; display:flex; justify-content:center; }
-.river { width:min(680px,90%); outline:none; }
+.river-wrap { width: min(680px, 90%); }
+.river-wrap .river { width: 100%; }
+.river { outline:none; }
 .river .card { position:relative; padding:12px 16px 12px 40px; }
 .river .card + .card::before { content:""; position:absolute; left:40px; right:16px; top:0; border-top:1px solid var(--hair); }
 .river .card::after { content:"⠿"; position:absolute; left:14px; top:14px; color:var(--muted); opacity:0; cursor:grab; font-size:12px; }
@@ -25,3 +27,6 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 .river .card-ctrls button:hover:not(:disabled) { color: var(--ink); border-color: var(--hair); }
 .river .card-ctrls button:disabled { opacity: .3; cursor: default; }
 .river .card-body p { margin: 0; line-height: 1.95; font-size: 15px; text-indent: 2em; }
+.add-card { margin: 14px 0 0 40px; border: 1px dashed var(--faint); background: none; color: var(--muted); border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
+.add-card:hover { color: var(--ink); border-color: var(--hair); }
+.river p.is-empty::before { content: attr(data-placeholder); color: var(--muted); opacity: .5; float: left; height: 0; pointer-events: none; }

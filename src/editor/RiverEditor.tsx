@@ -58,5 +58,18 @@ export function RiverEditor({ chapterId }: { chapterId: string }) {
   }, [editor])
 
   if (!editor) return null
-  return <EditorContent editor={editor} />
+  return (
+    <div className="river-wrap">
+      <EditorContent editor={editor} />
+      <button
+        className="add-card"
+        onMouseDown={(e) => {
+          e.preventDefault()
+          editor.chain().focus().appendCard().run()
+        }}
+      >
+        ＋ 加一张卡
+      </button>
+    </div>
+  )
 }

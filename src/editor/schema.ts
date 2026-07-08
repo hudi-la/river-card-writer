@@ -2,6 +2,7 @@ import { Node, Extension, mergeAttributes } from '@tiptap/core'
 import Document from '@tiptap/extension-document'
 import Paragraph from '@tiptap/extension-paragraph'
 import Text from '@tiptap/extension-text'
+import Placeholder from '@tiptap/extension-placeholder'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import { EditorState, Plugin, Transaction, TextSelection } from '@tiptap/pm/state'
 import { nanoid } from 'nanoid'
@@ -231,4 +232,19 @@ export const assignCardIds = Extension.create({
   },
 })
 
-export const baseExtensions = [CardDocument, Card, Paragraph, Text, assignCardIds]
+export const baseExtensions = [
+  CardDocument,
+  Card,
+  Paragraph,
+  Text,
+  assignCardIds,
+  // card 的 content 是 paragraph（非顶层 doc 直接子节点），Placeholder 默认只在 doc 第一层
+  // 找 textblock，所以要 includeChildren 才能扫到嵌在 card 里的空 paragraph；
+  // showOnlyCurrent: false 让占位不依赖光标是否停在这张卡上。
+  Placeholder.configure({
+    placeholder: '开始写…',
+    emptyNodeClass: 'is-empty',
+    includeChildren: true,
+    showOnlyCurrent: false,
+  }),
+]
