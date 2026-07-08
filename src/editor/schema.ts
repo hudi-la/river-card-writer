@@ -7,6 +7,14 @@ import { nanoid } from 'nanoid'
 
 export const CardDocument = Document.extend({ content: 'card+' })
 
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    card: {
+      splitCard: () => ReturnType
+    }
+  }
+}
+
 export const Card = Node.create({
   name: 'card',
   group: 'block',
@@ -36,6 +44,47 @@ export const Card = Node.create({
   },
   renderHTML({ HTMLAttributes }) {
     return ['section', mergeAttributes(HTMLAttributes, { class: 'card' }), 0]
+  },
+  addCommands() {
+    return {
+      splitCard:
+        () =>
+        ({ state, dispatch }) => {
+          const { $from } = state.selection
+          // 找到 card 所在的深度（card 是 paragraph 的父级）
+          let cardDepth = -1
+          for (let d = $from.depth; d > 0; d--) {
+            if ($from.node(d).type.name === 'card') {
+              cardDepth = d
+              break
+            }
+          }
+          if (cardDepth === -1) return false
+          if (dispatch) {
+            const tr = state.tr
+            if (!state.selection.empty) tr.deleteSelection()
+            // 从光标一路 split 到 card 这一层：depth(card) 到 depth(选区) 差几层就 split 几层
+            const splitDepth = tr.selection.$from.depth - cardDepth + 1
+            tr.split(tr.selection.from, splitDepth)
+            // 清掉新 card 继承来的 cardId，交给 assignCardIds 补新 id
+            const posAfter = tr.selection.from
+            const $pos = tr.doc.resolve(posAfter)
+            for (let d = $pos.depth; d > 0; d--) {
+              if ($pos.node(d).type.name === 'card') {
+                tr.setNodeAttribute($pos.before(d), 'cardId', null)
+                break
+              }
+            }
+            dispatch(tr.scrollIntoView())
+          }
+          return true
+        },
+    }
+  },
+  addKeyboardShortcuts() {
+    return {
+      'Mod-Enter': () => this.editor.commands.splitCard(),
+    }
   },
 })
 
