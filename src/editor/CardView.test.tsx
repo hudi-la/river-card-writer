@@ -1,17 +1,18 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import { baseExtensions } from './schema'
+import { useBookStore } from '../state/bookStore'
 
-function Harness({ onReady }: { onReady?: (editor: Editor) => void }) {
+function Harness({ onReady, threadId }: { onReady?: (editor: Editor) => void; threadId?: string | null }) {
   const editor = useEditor({
     extensions: baseExtensions,
     immediatelyRender: false,
     content: {
       type: 'doc',
       content: [
-        { type: 'card', attrs: { cardId: 'c0' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '第一' }] }] },
-        { type: 'card', attrs: { cardId: 'c1' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '第二' }] }] },
+        { type: 'card', attrs: { cardId: 'c0', threadId: threadId ?? null }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '第一' }] }] },
+        { type: 'card', attrs: { cardId: 'c1', threadId: threadId ?? null }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '第二' }] }] },
       ],
     },
   })
@@ -49,5 +50,19 @@ describe('CardView', () => {
     expect(cards[0].attrs?.cardId).toBe('c0')
     const texts = cards[0].content!.map((p: any) => p.content?.[0]?.text)
     expect(texts).toEqual(['第一', '第二'])
+  })
+
+  it('相同 threadId 的两张卡都带 data-thread-id（相等）且内联 style 含 --thread', async () => {
+    useBookStore.getState().__resetForTest()
+    const thread = useBookStore.getState().addThread('主线', '#7fa3c4')
+    const { container } = render(<Harness threadId={thread.id} />)
+    await new Promise((r) => setTimeout(r, 0))
+
+    const cards = container.querySelectorAll('section.card[data-thread-id]')
+    expect(cards.length).toBe(2)
+    expect((cards[0] as HTMLElement).dataset.threadId).toBe(thread.id)
+    expect((cards[1] as HTMLElement).dataset.threadId).toBe(thread.id)
+    expect((cards[0] as HTMLElement).style.getPropertyValue('--thread')).toBe(thread.color)
+    expect((cards[1] as HTMLElement).style.getPropertyValue('--thread')).toBe(thread.color)
   })
 })
