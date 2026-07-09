@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
+import type { Node as PMNode } from '@tiptap/pm/model'
 import { baseExtensions } from './schema'
 import { useBookStore } from '../state/bookStore'
 
@@ -49,23 +50,36 @@ function indicatorRectAt(dom: HTMLElement, dragCardId: string, clientY: number):
   return { top: (prev.bottom + next.top) / 2, left: next.left, width: next.width }
 }
 
-export function RiverEditor({ chapterId }: { chapterId: string }) {
-  const chapter = useBookStore((s) => s.book.chapters.find((c) => c.id === chapterId))!
-  const updateChapterDoc = useBookStore((s) => s.updateChapterDoc)
+// 在（当前）doc 的顶层子节点里找 cardId 匹配的那张卡，返回它的起始 pos 与 JSON——
+// 拖到盒子（park）和普通拖拽重排都要先定位这张卡。
+export function findCardInDoc(doc: PMNode, cardId: string): { pos: number; node: PMNode } | null {
+  let found: { pos: number; node: PMNode } | null = null
+  doc.forEach((node, offset) => {
+    if (!found && node.type.name === 'card' && node.attrs.cardId === cardId) {
+      found = { pos: offset, node }
+    }
+  })
+  return found
+}
+
+export function RiverEditor() {
+  const doc = useBookStore((s) => s.book.doc)
+  const updateDoc = useBookStore((s) => s.updateDoc)
   const carried = useBookStore((s) => s.carried)
   const getBox = useBookStore((s) => s.getBox)
   const takeCardFromBox = useBookStore((s) => s.takeCardFromBox)
   const cancelCarry = useBookStore((s) => s.cancelCarry)
   const dropCarried = useBookStore((s) => s.dropCarried)
+  const parkCard = useBookStore((s) => s.parkCard)
   const dragRef = useRef<DragState | null>(null)
   const carriedRef = useRef(carried)
   carriedRef.current = carried
 
   const editor = useEditor({
     extensions: baseExtensions,
-    content: chapter.doc,
+    content: doc,
     immediatelyRender: false,
-    onUpdate: ({ editor }) => updateChapterDoc(chapterId, editor.getJSON()),
+    onUpdate: ({ editor }) => updateDoc(editor.getJSON()),
     editorProps: { attributes: { class: 'river' } },
   })
 
@@ -89,7 +103,6 @@ export function RiverEditor({ chapterId }: { chapterId: string }) {
       if (e.button !== 0) return
       if (carriedRef.current) return // 带着盒子里的卡时，落定点击优先，不进入拖拽
       const target = e.target as HTMLElement
-      if (target.closest('.card-ctrls')) return
       const card = target.closest<HTMLElement>('.card')
       if (!card) return
       const rect = card.getBoundingClientRect()
@@ -155,8 +168,25 @@ export function RiverEditor({ chapterId }: { chapterId: string }) {
         return
       }
       if (drag.moved) {
-        const targetIndex = dropIndexAt(dom, drag.cardId, e.clientY)
-        editor.commands.moveCardTo(drag.cardId, targetIndex)
+        // 落在左栏某个 [data-box-id] 元素上 → 收进那个盒子（park + 从正文移除），
+        // 而不是重排。LeftNav（Task 4）会给盒子条目打上 data-box-id；这里防御性地
+        // 直接查 document，不假设 LeftNav 具体长什么样。
+        const dropEl = document.elementFromPoint(e.clientX, e.clientY)
+        const boxEl = dropEl?.closest<HTMLElement>('[data-box-id]')
+        const boxId = boxEl?.dataset.boxId
+        if (boxId) {
+          const found = findCardInDoc(editor.state.doc, drag.cardId)
+          if (found) {
+            const json = found.node.toJSON()
+            const removed = editor.chain().focus().setTextSelection(found.pos + 2).removeCard().run()
+            // removeCard 拒绝删掉文档里最后一张卡——那种情况下也不 park，避免出现
+            // "卡从正文消失了但也没进盒子"的悬空态。
+            if (removed) parkCard(boxId, json)
+          }
+        } else {
+          const targetIndex = dropIndexAt(dom, drag.cardId, e.clientY)
+          editor.commands.moveCardTo(drag.cardId, targetIndex)
+        }
       }
       endDrag()
     }
@@ -179,7 +209,6 @@ export function RiverEditor({ chapterId }: { chapterId: string }) {
 
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement
-      if (target.closest('.card-ctrls')) return // controls/menus are not drop targets
       const current = carriedRef.current
       if (!current) return
       const card = target.closest<HTMLElement>('.card')

@@ -7,11 +7,11 @@ beforeEach(() => {
 })
 
 function cardJSON(cardId: string, text: string) {
-  return { type: 'card', attrs: { cardId, threadId: null }, content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] }
+  return { type: 'card', attrs: { cardId, color: null }, content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] }
 }
 
 describe('carry / cancelCarry / dropCarried', () => {
-  it('carry(boxId, cardId) 后 carried 非空、盒子不变（卡还在盒里）、viewKind 切回 chapter', () => {
+  it('carry(boxId, cardId) 后 carried 非空、盒子不变（卡还在盒里）、viewKind 切回 doc（单文档）', () => {
     const box = useBookStore.getState().addBox('素材')
     const card = cardJSON('c1', '装载测试')
     useBookStore.getState().parkCard(box.id, card)
@@ -23,7 +23,7 @@ describe('carry / cancelCarry / dropCarried', () => {
     expect(s.carried).toEqual({ boxId: box.id, cardId: 'c1' })
     // 非破坏性：carry 本身不从盒子里拿走卡，直到真正落定才移除
     expect(s.getBox(box.id)!.cards).toEqual([card])
-    expect(s.viewKind).toBe('chapter')
+    expect(s.viewKind).toBe('doc')
   })
 
   it('cancelCarry() 只清空 carried，卡从未离开盒子，原样还在', () => {

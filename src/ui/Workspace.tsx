@@ -13,7 +13,6 @@ const FONT_STACK: Record<'serif' | 'sans', string> = {
 
 export function Workspace() {
   const viewKind = useBookStore((s) => s.viewKind)
-  const activeChapterId = useBookStore((s) => s.activeChapterId)
   const activeBoxId = useBookStore((s) => s.activeBoxId)
   const prefs = usePrefsStore((s) => s.prefs)
 
@@ -35,7 +34,7 @@ export function Workspace() {
         {viewKind === 'box' ? (
           <BoxView key={activeBoxId} boxId={activeBoxId} />
         ) : (
-          <RiverEditor key={activeChapterId} chapterId={activeChapterId} />
+          <RiverEditor />
         )}
       </main>
     </div>

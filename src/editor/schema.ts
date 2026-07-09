@@ -344,8 +344,8 @@ export const Card = Node.create({
     return {
       'Mod-Enter': () => this.editor.commands.splitCard(),
       Backspace: () => this.editor.commands.mergeCardBackward(),
-      'Alt-ArrowUp': () => this.editor.commands.moveCardUp(),
-      'Alt-ArrowDown': () => this.editor.commands.moveCardDown(),
+      'Mod-ArrowUp': () => this.editor.commands.moveCardUp(),
+      'Mod-ArrowDown': () => this.editor.commands.moveCardDown(),
     }
   },
 })

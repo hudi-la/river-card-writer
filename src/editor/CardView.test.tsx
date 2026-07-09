@@ -1,34 +1,17 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { render, fireEvent } from '@testing-library/react'
+import { describe, it, expect } from 'vitest'
+import { render } from '@testing-library/react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
-import { baseExtensions } from './schema'
-import { useBookStore, THREAD_PALETTE } from '../state/bookStore'
+import { baseExtensions, autoCardColor, CARD_PALETTE } from './schema'
 
-function Harness({ onReady, threadId }: { onReady?: (editor: Editor) => void; threadId?: string | null }) {
+function Harness({ onReady, color }: { onReady?: (editor: Editor) => void; color?: string | null }) {
   const editor = useEditor({
     extensions: baseExtensions,
     immediatelyRender: false,
     content: {
       type: 'doc',
       content: [
-        { type: 'card', attrs: { cardId: 'c0', threadId: threadId ?? null }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '第一' }] }] },
-        { type: 'card', attrs: { cardId: 'c1', threadId: threadId ?? null }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '第二' }] }] },
-      ],
-    },
-  })
-  if (editor) onReady?.(editor)
-  if (!editor) return null
-  return <EditorContent editor={editor} />
-}
-
-function OneCardHarness({ onReady }: { onReady?: (editor: Editor) => void }) {
-  const editor = useEditor({
-    extensions: baseExtensions,
-    immediatelyRender: false,
-    content: {
-      type: 'doc',
-      content: [
-        { type: 'card', attrs: { cardId: 'only', threadId: null }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '唯一一张' }] }] },
+        { type: 'card', attrs: { cardId: 'c0', color: color ?? null }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '第一' }] }] },
+        { type: 'card', attrs: { cardId: 'c1', color: null }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '第二' }] }] },
       ],
     },
   })
@@ -38,76 +21,55 @@ function OneCardHarness({ onReady }: { onReady?: (editor: Editor) => void }) {
 }
 
 describe('CardView', () => {
-  it('每张卡渲染成带控制按钮的 section.card，正文可见', async () => {
+  it('每张卡渲染成 section.card，正文可见，且不再有任何控制簇按钮/菜单', async () => {
     const { container } = render(<Harness />)
     await new Promise((r) => setTimeout(r, 0))
+
     const cards = container.querySelectorAll('section.card')
     expect(cards.length).toBe(2)
     expect(container.textContent).toContain('第一')
     expect(container.textContent).toContain('第二')
-    // 控制按钮存在（用 data-card-ctrl 标记）
-    expect(container.querySelectorAll('[data-card-ctrl="up"]').length).toBe(2)
-    expect(container.querySelectorAll('[data-card-ctrl="add"]').length).toBe(2)
+
+    // 整簇（▲▼＋✕●⇢Aa 及其弹出菜单）必须彻底消失
+    expect(container.querySelectorAll('[data-card-ctrl]').length).toBe(0)
+    expect(container.querySelector('.card-ctrls')).toBeNull()
+    expect(container.querySelector('.thread-menu')).toBeNull()
+    expect(container.querySelector('.box-menu')).toBeNull()
+    expect(container.querySelector('.role-menu')).toBeNull()
   })
 
-  it('点击第二张卡的 ✕（合并进上一张）会把两张卡的正文合并成一张，保留上一张的 cardId', async () => {
-    let editorRef: Editor | null = null
-    const { container } = render(<Harness onReady={(e) => (editorRef = e)} />)
-    await new Promise((r) => setTimeout(r, 0))
-
-    const mergeButtons = container.querySelectorAll('[data-card-ctrl="merge"]')
-    expect(mergeButtons.length).toBe(2)
-    // 按钮用 onMouseDown 绑定（避免抢焦点/失焦时机问题），所以要 dispatch mousedown
-    fireEvent.mouseDown(mergeButtons[1])
-    await new Promise((r) => setTimeout(r, 0))
-
-    const cards = editorRef!.getJSON().content!
-    expect(cards.length).toBe(1)
-    expect(cards[0].attrs?.cardId).toBe('c0')
-    const texts = cards[0].content!.map((p: any) => p.content?.[0]?.text)
-    expect(texts).toEqual(['第一', '第二'])
-  })
-
-  it('没挂线的卡带 data-auto-color，且内联 --thread 是调色板里的一个稳定颜色', async () => {
-    useBookStore.getState().__resetForTest()
-    const { container } = render(<Harness threadId={null} />)
+  it('没手动设色的卡带来自 autoCardColor(cardId) 的稳定底色', async () => {
+    const { container } = render(<Harness />)
     await new Promise((r) => setTimeout(r, 0))
 
     const cards = container.querySelectorAll('section.card')
-    expect(cards.length).toBe(2)
     cards.forEach((c) => {
       const el = c as HTMLElement
-      expect(el.hasAttribute('data-thread-id')).toBe(false)
-      expect(el.hasAttribute('data-auto-color')).toBe(true)
-      const color = el.style.getPropertyValue('--thread')
-      expect(THREAD_PALETTE).toContain(color)
+      expect(el.hasAttribute('data-color')).toBe(false)
+      const bg = el.style.getPropertyValue('--card-bg')
+      expect(bg).not.toBe('')
+      expect(CARD_PALETTE).toContain(bg)
     })
-    // 同一次渲染里两张不同 cardId 的卡，颜色来自哈希，未必相同——但两张卡各自都必须
-    // 稳定地落在调色板里（上面已验证），这里只再确认两者都拿到了非空颜色。
-    expect((cards[0] as HTMLElement).style.getPropertyValue('--thread')).not.toBe('')
-    expect((cards[1] as HTMLElement).style.getPropertyValue('--thread')).not.toBe('')
+    expect((cards[0] as HTMLElement).style.getPropertyValue('--card-bg')).toBe(autoCardColor('c0'))
+    expect((cards[1] as HTMLElement).style.getPropertyValue('--card-bg')).toBe(autoCardColor('c1'))
   })
 
-  it('章里只有一张卡时，点⇢收进盒子不应产生重复：盒子仍为空，卡仍留在正文里', async () => {
-    useBookStore.getState().__resetForTest()
-    const box = useBookStore.getState().addBox('素材盒')
+  it('手动设了 color 的卡直接用该颜色打底，并带 data-color', async () => {
+    const { container } = render(<Harness color="#8bad86" />)
+    await new Promise((r) => setTimeout(r, 0))
 
+    const first = container.querySelector('section.card[data-card-id="c0"]') as HTMLElement
+    expect(first.getAttribute('data-color')).toBe('#8bad86')
+    expect(first.style.getPropertyValue('--card-bg')).toBe('#8bad86')
+  })
+
+  it('⠿ 拖拽把手仍然可用：卡片有 data-card-id，供 RiverEditor 的把手命中区判定拖拽', async () => {
     let editorRef: Editor | null = null
-    const { container } = render(<OneCardHarness onReady={(e) => (editorRef = e)} />)
+    const { container } = render(<Harness onReady={(e) => (editorRef = e)} />)
     await new Promise((r) => setTimeout(r, 0))
-
-    const toBoxBtn = container.querySelector('[data-card-ctrl="tobox"]')!
-    fireEvent.mouseDown(toBoxBtn)
-    await new Promise((r) => setTimeout(r, 0))
-
-    const boxBtn = Array.from(container.querySelectorAll('.box-menu button')).find((b) => b.textContent === box.name)
-    expect(boxBtn).toBeTruthy()
-    fireEvent.mouseDown(boxBtn!)
-    await new Promise((r) => setTimeout(r, 0))
-
-    // removeCard refuses to remove the last card, so parkCard must not run either.
-    expect(useBookStore.getState().getBox(box.id)!.cards).toEqual([])
-    expect(editorRef!.getJSON().content!.length).toBe(1)
-    expect(editorRef!.getJSON().content![0].attrs.cardId).toBe('only')
+    const cards = container.querySelectorAll('section.card')
+    expect(cards[0].getAttribute('data-card-id')).toBe('c0')
+    expect(cards[1].getAttribute('data-card-id')).toBe('c1')
+    expect(editorRef).toBeTruthy()
   })
 })

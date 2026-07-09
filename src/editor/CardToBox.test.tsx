@@ -1,13 +1,18 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { render, fireEvent } from '@testing-library/react'
-import { useEditor, EditorContent, type Editor } from '@tiptap/react'
+import { Editor } from '@tiptap/core'
+import { TextSelection } from '@tiptap/pm/state'
 import { baseExtensions } from './schema'
 import { useBookStore } from '../state/bookStore'
 
-function Harness({ onReady }: { onReady?: (editor: Editor) => void }) {
-  const editor = useEditor({
+// 收进盒子（"park"）现在是通过 RiverEditor 里 ⠿ 的真拖拽——把手拖到左栏某个
+// [data-box-id] 元素上——而不是点按钮选菜单。真实拖拽（pointerdown/move/up +
+// getBoundingClientRect）在 jsdom 里没什么好模拟的，所以这里直接验证 RiverEditor
+// 在命中盒子时实际调用的那两步原语组合：removeCard() 命令 + store.parkCard()，
+// 行为上等价于「dropEl 命中 [data-box-id] → park + removeCard」这条分支。
+
+function twoCards() {
+  return new Editor({
     extensions: baseExtensions,
-    immediatelyRender: false,
     content: {
       type: 'doc',
       content: [
@@ -16,60 +21,88 @@ function Harness({ onReady }: { onReady?: (editor: Editor) => void }) {
       ],
     },
   })
-  if (editor) onReady?.(editor)
-  if (!editor) return null
-  return <EditorContent editor={editor} />
 }
 
-describe('CardToBox', () => {
+function caretInCard(editor: Editor, cardId: string) {
+  let pos = -1
+  editor.state.doc.descendants((node, p) => {
+    if (node.type.name === 'card' && node.attrs.cardId === cardId) pos = p + 2
+  })
+  editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, pos)))
+}
+
+function jsonOfCard(editor: Editor, cardId: string): any {
+  let json: any = null
+  editor.state.doc.forEach((node) => {
+    if (node.attrs.cardId === cardId) json = node.toJSON()
+  })
+  return json
+}
+
+describe('拖到盒子：removeCard + store.parkCard 组合', () => {
   beforeEach(() => {
     useBookStore.getState().__resetForTest()
   })
 
-  it('点第一张卡的 ⇢ 按钮，选中已有盒子，卡片移入盒子并从编辑器删除', async () => {
+  it('把第一张卡从编辑器移除，再 park 进指定盒子；正文只剩另一张', () => {
     const box = useBookStore.getState().addBox('素材盒')
+    const editor = twoCards()
+    caretInCard(editor, 'c0')
+    const json = jsonOfCard(editor, 'c0')
 
-    let editorRef: Editor | null = null
-    const { container } = render(<Harness onReady={(e) => (editorRef = e)} />)
-    await new Promise((r) => setTimeout(r, 0))
-
-    const toBoxBtns = container.querySelectorAll('[data-card-ctrl="tobox"]')
-    expect(toBoxBtns.length).toBe(2)
-    fireEvent.mouseDown(toBoxBtns[0])
-    await new Promise((r) => setTimeout(r, 0))
-
-    const boxBtn = Array.from(container.querySelectorAll('.box-menu button')).find((b) => b.textContent === box.name)
-    expect(boxBtn).toBeTruthy()
-    fireEvent.mouseDown(boxBtn!)
-    await new Promise((r) => setTimeout(r, 0))
+    const removed = editor.commands.removeCard()
+    expect(removed).toBe(true)
+    if (removed) useBookStore.getState().parkCard(box.id, json)
 
     const updatedBox = useBookStore.getState().getBox(box.id)!
     expect(updatedBox.cards.length).toBe(1)
     expect(updatedBox.cards[0].attrs.cardId).toBe('c0')
     expect(updatedBox.cards[0].content[0].content[0].text).toBe('第一张')
 
-    expect(editorRef!.getJSON().content!.length).toBe(1)
-    expect(editorRef!.getJSON().content![0].attrs.cardId).toBe('c1')
+    expect(editor.getJSON().content!.length).toBe(1)
+    expect(editor.getJSON().content![0].attrs.cardId).toBe('c1')
+    editor.destroy()
   })
 
-  it('点 ⇢ 按钮，选"＋新盒子"，新建盒子并把卡片放入', async () => {
-    let editorRef: Editor | null = null
-    const { container } = render(<Harness onReady={(e) => (editorRef = e)} />)
-    await new Promise((r) => setTimeout(r, 0))
+  it('新建一个盒子，再 park 进去', () => {
+    const editor = twoCards()
+    caretInCard(editor, 'c0')
+    const json = jsonOfCard(editor, 'c0')
 
-    const toBoxBtns = container.querySelectorAll('[data-card-ctrl="tobox"]')
-    fireEvent.mouseDown(toBoxBtns[0])
-    await new Promise((r) => setTimeout(r, 0))
-
-    const newBoxBtn = Array.from(container.querySelectorAll('.box-menu button')).find((b) => b.textContent === '＋新盒子')
-    expect(newBoxBtn).toBeTruthy()
-    fireEvent.mouseDown(newBoxBtn!)
-    await new Promise((r) => setTimeout(r, 0))
+    const box = useBookStore.getState().addBox('新盒子')
+    const removed = editor.commands.removeCard()
+    expect(removed).toBe(true)
+    if (removed) useBookStore.getState().parkCard(box.id, json)
 
     const boxes = useBookStore.getState().book.boxes
     expect(boxes.length).toBe(1)
     expect(boxes[0].name).toBe('新盒子')
     expect(boxes[0].cards.length).toBe(1)
-    expect(editorRef!.getJSON().content!.length).toBe(1)
+    expect(editor.getJSON().content!.length).toBe(1)
+    editor.destroy()
+  })
+
+  it('文档只剩最后一张卡时，removeCard 拒绝执行——不应该出现"卡消失了但也没进盒子"的悬空态', () => {
+    const box = useBookStore.getState().addBox('素材盒')
+    const editor = new Editor({
+      extensions: baseExtensions,
+      content: {
+        type: 'doc',
+        content: [
+          { type: 'card', attrs: { cardId: 'only' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '唯一一张' }] }] },
+        ],
+      },
+    })
+    caretInCard(editor, 'only')
+    const json = jsonOfCard(editor, 'only')
+
+    const removed = editor.commands.removeCard()
+    expect(removed).toBe(false)
+    if (removed) useBookStore.getState().parkCard(box.id, json)
+
+    expect(useBookStore.getState().getBox(box.id)!.cards).toEqual([])
+    expect(editor.getJSON().content!.length).toBe(1)
+    expect(editor.getJSON().content![0].attrs.cardId).toBe('only')
+    editor.destroy()
   })
 })

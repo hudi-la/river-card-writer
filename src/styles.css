@@ -44,9 +44,11 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
   border: 1px solid var(--hair); color: var(--ink);
 }
 .river { outline:none; }
-.river .card { position:relative; padding:12px 16px 12px 40px; }
-.river .card[data-thread-id] { background: color-mix(in srgb, var(--thread) 15%, transparent); }
-.river .card[data-auto-color] { background: color-mix(in srgb, var(--thread) 11%, transparent); }
+.river .card {
+  position:relative; padding:12px 16px 12px 40px;
+  background: color-mix(in srgb, var(--card-bg, #7fa3c4) 13%, transparent);
+}
+.river .card[data-color] { background: color-mix(in srgb, var(--card-bg) 16%, transparent); }
 .river .card + .card::before { content:""; position:absolute; left:40px; right:16px; top:0; border-top:1px solid var(--hair); }
 .river .card::after { content:"⠿"; position:absolute; left:14px; top:14px; color:var(--muted); opacity:0; cursor:grab; font-size:12px; }
 .river .card:hover::after { opacity:.5; }
@@ -63,47 +65,11 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
   height: 2px; border-radius: 1px; background: var(--thread, #7fa3c4);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--thread, #7fa3c4) 20%, transparent);
 }
-/* Cluster lives in the gutter just past the right edge of the text column —
-   never over the card's own text — revealed on card hover. The gap to the
-   text is a transparent LEFT PADDING (part of this element), not an empty
-   margin, so moving the mouse from the card onto the controls never lands on
-   dead space and un-hovers the card mid-crossing. */
-.river .card .card-ctrls {
-  position: absolute; top: 8px; left: 100%; padding-left: 12px;
-  display: flex; flex-direction: column; gap: 3px;
-  opacity: 0; pointer-events: none; transition: opacity .12s;
-}
-.river .card:hover .card-ctrls,
-.river .card .card-ctrls:hover { opacity: 1; pointer-events: auto; }
-.river .card-ctrls button {
-  border: 1px solid var(--faint); background: var(--paper); color: var(--muted);
-  border-radius: 4px; width: 22px; height: 22px; font-size: 11px; cursor: pointer; line-height: 1;
-}
-.river .card-ctrls button:hover:not(:disabled) { color: var(--ink); border-color: var(--hair); }
-.river .card-ctrls button:disabled { opacity: .3; cursor: default; }
-.ctrl-pop { position: relative; }
-.thread-menu, .box-menu, .role-menu {
-  position: absolute; top: 0; right: 100%; margin-right: 8px; z-index: 5;
-  display: flex; flex-direction: column; gap: 2px; min-width: 120px;
-  background: var(--paper); border: 1px solid var(--hair); border-radius: 6px;
-  padding: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.08);
-}
-.thread-menu button, .box-menu button, .role-menu button {
-  display: flex; align-items: center; gap: 6px; border: none; background: none;
-  color: var(--ink); font-size: 12px; padding: 4px 6px; border-radius: 4px; cursor: pointer; text-align: left;
-}
-.thread-menu button:hover, .box-menu button:hover, .role-menu button:hover { background: rgba(120,158,196,.12); }
-.role-menu button.on { color: var(--ink); font-weight: 700; background: rgba(120,158,196,.12); }
-.thread-menu input {
-  border: 1px solid var(--hair); border-radius: 4px; background: var(--paper); color: var(--ink);
-  font: inherit; font-size: 12px; padding: 4px 6px;
-}
-.thread-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); flex: none; }
 .river .card-body { font-family: var(--reading-font); font-size: var(--reading-size); }
 .river .card-body p { margin: 0; line-height: 1.95; text-indent: 2em; }
-.river .card[data-role="heading"] .card-body p { font-size: 1.25em; font-weight: 700; text-indent: 0; margin: .4em 0; line-height: 1.5; }
-.river .card[data-role="quote"] .card-body p { padding-left: 1.5em; border-left: 2px solid var(--faint); color: #6a6258; font-style: italic; text-indent: 0; }
-.river .card[data-role="note"] .card-body p { font-size: .85em; color: var(--muted); text-indent: 0; }
+.river .card-body p[data-style="chapter"] { font-size: 1.4em; font-weight: 700; text-indent: 0; margin: .6em 0 .4em; line-height: 1.4; }
+.river .card-body p[data-style="h1"] { font-size: 1.25em; font-weight: 700; text-indent: 0; margin: .4em 0; line-height: 1.5; }
+.river .card-body p[data-style="h2"] { font-size: 1.1em; font-weight: 600; text-indent: 0; margin: .4em 0; line-height: 1.5; }
 .add-card { margin: 14px 0 0 40px; border: 1px dashed var(--faint); background: none; color: var(--muted); border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
 .add-card:hover { color: var(--ink); border-color: var(--hair); }
 .river p.is-empty::before { content: attr(data-placeholder); color: var(--muted); opacity: .5; float: left; height: 0; pointer-events: none; }
