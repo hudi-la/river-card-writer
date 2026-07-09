@@ -12,6 +12,12 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 .page { padding:36px 0; display:flex; justify-content:center; }
 .river-wrap { width: min(680px, 90%); }
 .river-wrap .river { width: 100%; }
+.carry-banner {
+  position: sticky; top: 0; z-index: 5; margin-bottom: 14px;
+  padding: 8px 14px; border-radius: 6px; font-size: 13px; text-align: center;
+  background: color-mix(in srgb, var(--thread, #7fa3c4) 16%, var(--paper));
+  border: 1px solid var(--hair); color: var(--ink);
+}
 .river { outline:none; }
 .river .card { position:relative; padding:12px 16px 12px 40px; }
 .river .card[data-thread-id] { background: color-mix(in srgb, var(--thread) 15%, transparent); }

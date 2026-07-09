@@ -8,7 +8,12 @@ const HANDLE_ZONE_PX = 28 // .card 左内边距 40px 里，把手落在最左侧
 export function RiverEditor({ chapterId }: { chapterId: string }) {
   const chapter = useBookStore((s) => s.book.chapters.find((c) => c.id === chapterId))!
   const updateChapterDoc = useBookStore((s) => s.updateChapterDoc)
+  const carried = useBookStore((s) => s.carried)
+  const cancelCarry = useBookStore((s) => s.cancelCarry)
+  const dropCarried = useBookStore((s) => s.dropCarried)
   const dragStart = useRef<{ y: number; card: HTMLElement } | null>(null)
+  const carriedRef = useRef(carried)
+  carriedRef.current = carried
 
   const editor = useEditor({
     extensions: baseExtensions,
@@ -57,9 +62,51 @@ export function RiverEditor({ chapterId }: { chapterId: string }) {
     }
   }, [editor])
 
+  // 装载光标：carried 非空时，点正文某张卡把它落定在那张卡之后；Esc 取消。
+  useEffect(() => {
+    if (!editor) return
+    const dom = editor.view.dom as HTMLElement
+
+    const onClick = (e: MouseEvent) => {
+      const current = carriedRef.current
+      if (!current) return
+      const card = (e.target as HTMLElement).closest<HTMLElement>('.card')
+      if (!card) return
+      try {
+        const pos = editor.view.posAtDOM(card, 0)
+        const $pos = editor.state.doc.resolve(pos)
+        let cardDepth = -1
+        for (let d = $pos.depth; d >= 0; d--) {
+          if ($pos.node(d).type.name === 'card') { cardDepth = d; break }
+        }
+        const cardPos = cardDepth === -1 ? pos : $pos.before(cardDepth)
+        editor.chain().focus().insertCardJSONAfter(current.card, cardPos).run()
+        dropCarried()
+      } catch {
+        // 卡未挂载到编辑器 DOM 时忽略
+      }
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && carriedRef.current) cancelCarry()
+    }
+
+    dom.addEventListener('click', onClick)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      dom.removeEventListener('click', onClick)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [editor, cancelCarry, dropCarried])
+
   if (!editor) return null
   return (
     <div className="river-wrap">
+      {carried && (
+        <div className="carry-banner">
+          带着一张卡——点正文某处落定 · Esc 取消
+        </div>
+      )}
       <EditorContent editor={editor} />
       <button
         className="add-card"

@@ -16,6 +16,7 @@ type BookState = {
   activeChapterId: string
   viewKind: 'chapter' | 'box'
   activeBoxId: string | null
+  carried: { boxId: string; card: any } | null
   addChapter: (title: string) => void
   setActiveChapter: (id: string) => void
   updateChapterDoc: (id: string, doc: object) => void
@@ -29,6 +30,9 @@ type BookState = {
   parkCard: (boxId: string, cardJSON: any) => void
   takeCardFromBox: (boxId: string, cardId: string) => any | undefined
   getBox: (id: string | null) => Box | undefined
+  carry: (boxId: string, cardId: string) => void
+  cancelCarry: () => void
+  dropCarried: () => void
   __resetForTest: () => void
 }
 
@@ -70,6 +74,7 @@ export const useBookStore = create<BookState>((set, get) => {
     activeChapterId: initial.chapters[0].id,
     viewKind: 'chapter',
     activeBoxId: null,
+    carried: null,
     addChapter: (title) => {
       const ch: Chapter = { id: nanoid(), title, doc: structuredClone(EMPTY_DOC) }
       const book = { ...get().book, chapters: [...get().book.chapters, ch] }
@@ -127,10 +132,23 @@ export const useBookStore = create<BookState>((set, get) => {
       return card
     },
     getBox: (id) => (id ? get().book.boxes.find((b) => b.id === id) : undefined),
+    carry: (boxId, cardId) => {
+      const card = get().takeCardFromBox(boxId, cardId)
+      if (!card) return
+      set({ carried: { boxId, card } })
+      get().openChapter(get().activeChapterId)
+    },
+    cancelCarry: () => {
+      const carried = get().carried
+      if (!carried) return
+      get().parkCard(carried.boxId, carried.card)
+      set({ carried: null })
+    },
+    dropCarried: () => set({ carried: null }),
     __resetForTest: () => {
       const book = freshBook()
       persist(book)
-      set({ book, activeChapterId: book.chapters[0].id, viewKind: 'chapter', activeBoxId: null })
+      set({ book, activeChapterId: book.chapters[0].id, viewKind: 'chapter', activeBoxId: null, carried: null })
     },
   }
 })

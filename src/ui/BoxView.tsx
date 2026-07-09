@@ -12,6 +12,7 @@ function cardText(cardJSON: any): string {
 
 export function BoxView({ boxId }: { boxId: string | null }) {
   const box = useBookStore((s) => s.getBox(boxId))
+  const carry = useBookStore((s) => s.carry)
   const cards = box?.cards ?? []
 
   return (
@@ -32,7 +33,7 @@ export function BoxView({ boxId }: { boxId: string | null }) {
                 <button
                   data-box-action="insert"
                   data-card-id={cardId}
-                  onClick={() => console.log('insert placeholder', cardId)}
+                  onClick={() => boxId && carry(boxId, cardId)}
                 >
                   ⤵ 插入正文
                 </button>

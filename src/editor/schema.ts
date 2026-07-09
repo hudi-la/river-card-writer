@@ -21,6 +21,7 @@ declare module '@tiptap/core' {
       appendCard: () => ReturnType
       setCardThread: (threadId: string | null) => ReturnType
       removeCard: () => ReturnType
+      insertCardJSONAfter: (cardJSON: any, pos: number) => ReturnType
     }
   }
 }
@@ -223,6 +224,20 @@ export const Card = Node.create({
             const pos = $from.before(cardDepth)
             const node = $from.node(cardDepth)
             dispatch(state.tr.delete(pos, pos + node.nodeSize))
+          }
+          return true
+        },
+      insertCardJSONAfter:
+        (cardJSON: any, pos: number) =>
+        ({ state, dispatch }) => {
+          const cardNode = state.doc.nodeAt(pos)
+          if (!cardNode || cardNode.type.name !== 'card') return false
+          if (dispatch) {
+            const node = state.schema.nodeFromJSON({ ...cardJSON, attrs: { ...cardJSON.attrs, cardId: null } })
+            const after = pos + cardNode.nodeSize
+            const tr = state.tr.insert(after, node)
+            tr.setSelection(TextSelection.create(tr.doc, after + 2))
+            dispatch(tr.scrollIntoView())
           }
           return true
         },
