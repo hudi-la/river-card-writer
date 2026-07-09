@@ -7,15 +7,14 @@ function makeEditor(doc?: object) {
 }
 
 describe('card schema', () => {
-  it('文档由 card 组成，card 默认 role=body、threadId=null', () => {
+  it('文档由 card 组成，card 默认 color=null', () => {
     const editor = makeEditor({
       type: 'doc',
       content: [{ type: 'card', content: [{ type: 'paragraph', content: [{ type: 'text', text: '你好' }] }] }],
     })
     const json = editor.getJSON()
     expect(json.content?.[0].type).toBe('card')
-    expect(json.content?.[0].attrs?.role).toBe('body')
-    expect(json.content?.[0].attrs?.threadId).toBe(null)
+    expect(json.content?.[0].attrs?.color).toBe(null)
     editor.destroy()
   })
 

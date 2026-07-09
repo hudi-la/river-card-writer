@@ -4,15 +4,15 @@ import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import { baseExtensions } from './schema'
 import { useBookStore } from '../state/bookStore'
 
-function Harness({ onReady, threadId }: { onReady?: (editor: Editor) => void; threadId: string | null }) {
+function Harness({ onReady }: { onReady?: (editor: Editor) => void }) {
   const editor = useEditor({
     extensions: baseExtensions,
     immediatelyRender: false,
     content: {
       type: 'doc',
       content: [
-        { type: 'card', attrs: { cardId: 'c0', threadId }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '第一张' }] }] },
-        { type: 'card', attrs: { cardId: 'c1', threadId: null }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '第二张' }] }] },
+        { type: 'card', attrs: { cardId: 'c0' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '第一张' }] }] },
+        { type: 'card', attrs: { cardId: 'c1' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '第二张' }] }] },
       ],
     },
   })
@@ -27,11 +27,10 @@ describe('CardToBox', () => {
   })
 
   it('点第一张卡的 ⇢ 按钮，选中已有盒子，卡片移入盒子并从编辑器删除', async () => {
-    const thread = useBookStore.getState().addThread('人物')
     const box = useBookStore.getState().addBox('素材盒')
 
     let editorRef: Editor | null = null
-    const { container } = render(<Harness onReady={(e) => (editorRef = e)} threadId={thread.id} />)
+    const { container } = render(<Harness onReady={(e) => (editorRef = e)} />)
     await new Promise((r) => setTimeout(r, 0))
 
     const toBoxBtns = container.querySelectorAll('[data-card-ctrl="tobox"]')
@@ -46,7 +45,7 @@ describe('CardToBox', () => {
 
     const updatedBox = useBookStore.getState().getBox(box.id)!
     expect(updatedBox.cards.length).toBe(1)
-    expect(updatedBox.cards[0].attrs.threadId).toBe(thread.id)
+    expect(updatedBox.cards[0].attrs.cardId).toBe('c0')
     expect(updatedBox.cards[0].content[0].content[0].text).toBe('第一张')
 
     expect(editorRef!.getJSON().content!.length).toBe(1)
@@ -55,7 +54,7 @@ describe('CardToBox', () => {
 
   it('点 ⇢ 按钮，选"＋新盒子"，新建盒子并把卡片放入', async () => {
     let editorRef: Editor | null = null
-    const { container } = render(<Harness onReady={(e) => (editorRef = e)} threadId={null} />)
+    const { container } = render(<Harness onReady={(e) => (editorRef = e)} />)
     await new Promise((r) => setTimeout(r, 0))
 
     const toBoxBtns = container.querySelectorAll('[data-card-ctrl="tobox"]')

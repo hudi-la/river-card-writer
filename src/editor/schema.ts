@@ -8,11 +8,72 @@ import { EditorState, Plugin, Transaction, TextSelection } from '@tiptap/pm/stat
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { nanoid } from 'nanoid'
 import { CardView } from './CardView'
+import { Emphasis, Refer } from './marks'
 
 export const CardDocument = Document.extend({ content: 'card+' })
 
+// 段落样式：'body'（正文，默认）/'chapter'（章名）/'h1'/'h2'（层级标题）。
+// 渲染成 data-style，样式表按这个属性走视觉区分。
+export type ParagraphStyle = 'body' | 'chapter' | 'h1' | 'h2'
+
+export const ParagraphWithStyle = Paragraph.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      style: {
+        default: 'body',
+        parseHTML: (el: HTMLElement) => el.getAttribute('data-style') || 'body',
+        renderHTML: (attrs: { style: ParagraphStyle }) => ({ 'data-style': attrs.style }),
+      },
+    }
+  },
+  addCommands() {
+    return {
+      ...this.parent?.(),
+      setParagraphStyle:
+        (style: ParagraphStyle) =>
+        ({ state, dispatch }) => {
+          const { selection } = state
+          const positions: number[] = []
+          state.doc.nodesBetween(selection.from, selection.to, (node, pos) => {
+            if (node.type.name === 'paragraph') positions.push(pos)
+          })
+          if (positions.length === 0) {
+            const { $from } = selection
+            for (let d = $from.depth; d > 0; d--) {
+              if ($from.node(d).type.name === 'paragraph') {
+                positions.push($from.before(d))
+                break
+              }
+            }
+          }
+          if (positions.length === 0) return false
+          if (dispatch) {
+            const tr = state.tr
+            positions.forEach((pos) => tr.setNodeAttribute(pos, 'style', style))
+            dispatch(tr)
+          }
+          return true
+        },
+    }
+  },
+})
+
+// 每张卡的底色调色板（低饱和度色块，风格与原来的 THREAD_PALETTE 一致）。
+export const CARD_PALETTE = ['#7fa3c4', '#d98b7a', '#8bad86', '#d8b46a', '#a98cc4', '#6bb0ad']
+
+// 没手动设色的卡也要有稳定、可分辨的默认底色：逐字符哈希 cardId 落进调色板。
+export function autoCardColor(cardId: string): string {
+  let h = 0
+  for (let i = 0; i < cardId.length; i++) h = (h * 31 + cardId.charCodeAt(i)) | 0
+  return CARD_PALETTE[Math.abs(h) % CARD_PALETTE.length]
+}
+
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
+    paragraphStyle: {
+      setParagraphStyle: (style: ParagraphStyle) => ReturnType
+    }
     card: {
       splitCard: () => ReturnType
       mergeCardBackward: () => ReturnType
@@ -21,8 +82,7 @@ declare module '@tiptap/core' {
       moveCardTo: (cardId: string, targetIndex: number) => ReturnType
       insertCardAfter: () => ReturnType
       appendCard: () => ReturnType
-      setCardThread: (threadId: string | null) => ReturnType
-      setCardRole: (role: 'body' | 'heading' | 'quote' | 'note') => ReturnType
+      setCardColor: (color: string | null) => ReturnType
       removeCard: () => ReturnType
       insertCardJSONAfter: (cardJSON: any, pos: number) => ReturnType
     }
@@ -31,7 +91,7 @@ declare module '@tiptap/core' {
 
 function emptyCardNode(schema: EditorState['schema']) {
   const paragraph = schema.nodes.paragraph.createAndFill()!
-  return schema.nodes.card.create({ cardId: null, threadId: null, role: 'body' }, paragraph)
+  return schema.nodes.card.create({ cardId: null, color: null }, paragraph)
 }
 
 // 把光标所在 card 与其上一个(-1)/下一个(+1) 兄弟 card 交换位置
@@ -121,15 +181,10 @@ export const Card = Node.create({
         parseHTML: (el) => (el as HTMLElement).getAttribute('data-card-id'),
         renderHTML: (attrs) => (attrs.cardId ? { 'data-card-id': attrs.cardId } : {}),
       },
-      threadId: {
+      color: {
         default: null,
-        parseHTML: (el) => (el as HTMLElement).getAttribute('data-thread-id'),
-        renderHTML: (attrs) => (attrs.threadId ? { 'data-thread-id': attrs.threadId } : {}),
-      },
-      role: {
-        default: 'body',
-        parseHTML: (el) => (el as HTMLElement).getAttribute('data-role') || 'body',
-        renderHTML: (attrs) => ({ 'data-role': attrs.role }),
+        parseHTML: (el) => (el as HTMLElement).getAttribute('data-color'),
+        renderHTML: (attrs) => (attrs.color ? { 'data-color': attrs.color } : {}),
       },
     }
   },
@@ -244,24 +299,14 @@ export const Card = Node.create({
           }
           return true
         },
-      setCardThread:
-        (threadId: string | null) =>
+      setCardColor:
+        (color: string | null) =>
         ({ state, dispatch }) => {
           const { $from } = state.selection
           let cardDepth = -1
           for (let d = $from.depth; d > 0; d--) if ($from.node(d).type.name === 'card') { cardDepth = d; break }
           if (cardDepth === -1) return false
-          if (dispatch) dispatch(state.tr.setNodeAttribute($from.before(cardDepth), 'threadId', threadId))
-          return true
-        },
-      setCardRole:
-        (role: 'body' | 'heading' | 'quote' | 'note') =>
-        ({ state, dispatch }) => {
-          const { $from } = state.selection
-          let cardDepth = -1
-          for (let d = $from.depth; d > 0; d--) if ($from.node(d).type.name === 'card') { cardDepth = d; break }
-          if (cardDepth === -1) return false
-          if (dispatch) dispatch(state.tr.setNodeAttribute($from.before(cardDepth), 'role', role))
+          if (dispatch) dispatch(state.tr.setNodeAttribute($from.before(cardDepth), 'color', color))
           return true
         },
       removeCard:
@@ -329,8 +374,10 @@ export const assignCardIds = Extension.create({
 export const baseExtensions = [
   CardDocument,
   Card,
-  Paragraph,
+  ParagraphWithStyle,
   Text,
+  Emphasis,
+  Refer,
   assignCardIds,
   // card 的 content 是 paragraph（非顶层 doc 直接子节点），Placeholder 默认只在 doc 第一层
   // 找 textblock，所以要 includeChildren 才能扫到嵌在 card 里的空 paragraph；

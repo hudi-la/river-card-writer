@@ -60,10 +60,10 @@ export function CardView({ editor, getPos, node }: NodeViewProps) {
     else chain.mergeCardBackward().run()
   }
 
-  const assign = (id: string | null) => {
-    const pos = getPos()
-    if (typeof pos !== 'number') return
-    editor.chain().focus().setTextSelection(pos + 2).setCardThread(id).run()
+  // TODO(Task 3): thread menu is being replaced by card color / paragraph
+  // style; setCardThread no longer exists on the schema, so this is a stub
+  // that just closes the menu until the CardView cluster is rewritten.
+  const assign = (_id: string | null) => {
     setMenuOpen(false)
     setCreating(false)
     setName('')
@@ -102,10 +102,9 @@ export function CardView({ editor, getPos, node }: NodeViewProps) {
     setRoleMenuOpen((o) => !o)
   }
 
-  const assignRole = (r: 'body' | 'heading' | 'quote' | 'note') => {
-    const pos = getPos()
-    if (typeof pos !== 'number') return
-    editor.chain().focus().setTextSelection(pos + 2).setCardRole(r).run()
+  // TODO(Task 3): role menu is being replaced by paragraph style; setCardRole
+  // no longer exists on the schema, so this is a stub until CardView is rewritten.
+  const assignRole = (_r: 'body' | 'heading' | 'quote' | 'note') => {
     setRoleMenuOpen(false)
   }
 

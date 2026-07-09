@@ -68,23 +68,6 @@ describe('CardView', () => {
     expect(texts).toEqual(['第一', '第二'])
   })
 
-  it('相同 threadId 的两张卡都带 data-thread-id（相等）且内联 style 含 --thread', async () => {
-    useBookStore.getState().__resetForTest()
-    const thread = useBookStore.getState().addThread('主线', '#7fa3c4')
-    const { container } = render(<Harness threadId={thread.id} />)
-    await new Promise((r) => setTimeout(r, 0))
-
-    const cards = container.querySelectorAll('section.card[data-thread-id]')
-    expect(cards.length).toBe(2)
-    expect((cards[0] as HTMLElement).dataset.threadId).toBe(thread.id)
-    expect((cards[1] as HTMLElement).dataset.threadId).toBe(thread.id)
-    expect((cards[0] as HTMLElement).style.getPropertyValue('--thread')).toBe(thread.color)
-    expect((cards[1] as HTMLElement).style.getPropertyValue('--thread')).toBe(thread.color)
-    // 挂了线的卡不应该再被当成"未挂线"打自动色标记
-    expect((cards[0] as HTMLElement).hasAttribute('data-auto-color')).toBe(false)
-    expect((cards[1] as HTMLElement).hasAttribute('data-auto-color')).toBe(false)
-  })
-
   it('没挂线的卡带 data-auto-color，且内联 --thread 是调色板里的一个稳定颜色', async () => {
     useBookStore.getState().__resetForTest()
     const { container } = render(<Harness threadId={null} />)
@@ -126,26 +109,5 @@ describe('CardView', () => {
     expect(useBookStore.getState().getBox(box.id)!.cards).toEqual([])
     expect(editorRef!.getJSON().content!.length).toBe(1)
     expect(editorRef!.getJSON().content![0].attrs.cardId).toBe('only')
-  })
-
-  it('role:"heading" 的卡渲染出 section.card[data-role="heading"]', async () => {
-    function RoleHarness() {
-      const editor = useEditor({
-        extensions: baseExtensions,
-        immediatelyRender: false,
-        content: {
-          type: 'doc',
-          content: [
-            { type: 'card', attrs: { cardId: 'r0', role: 'heading' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '标题' }] }] },
-          ],
-        },
-      })
-      if (!editor) return null
-      return <EditorContent editor={editor} />
-    }
-    const { container } = render(<RoleHarness />)
-    await new Promise((r) => setTimeout(r, 0))
-    const card = container.querySelector('section.card[data-role="heading"]')
-    expect(card).toBeTruthy()
   })
 })
