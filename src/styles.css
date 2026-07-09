@@ -1,4 +1,9 @@
-:root { --paper:#fcfaf6; --ink:#252019; --muted:#a89e92; --faint:#e0d8cc; --hair:#d8cfc1; }
+:root {
+  --paper:#fcfaf6; --ink:#252019; --muted:#a89e92; --faint:#e0d8cc; --hair:#d8cfc1;
+  --reading-font: Georgia,'Songti SC','Noto Serif',serif;
+  --reading-size: 15px;
+  --reading-measure: 680px;
+}
 * { box-sizing: border-box; }
 body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia,'Songti SC','Noto Serif',serif; }
 .app { display:grid; grid-template-columns:172px 1fr; min-height:100vh; }
@@ -9,9 +14,29 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 .chap.on { color:var(--ink); font-weight:600; background:rgba(120,158,196,.12); }
 .add { padding:6px 8px; color:var(--muted); cursor:pointer; opacity:.8; }
 .chap-edit { width:100%; border:1px solid var(--hair); border-radius:4px; background:var(--paper); color:var(--ink); font:inherit; padding:4px 6px; }
-.page { padding:36px 0; display:flex; justify-content:center; }
-.river-wrap { width: min(680px, 90%); }
+.page { padding:36px 0; display:flex; justify-content:center; position:relative; }
+.river-wrap { width: min(var(--reading-measure), 90%); }
 .river-wrap .river { width: 100%; }
+.reading-settings { position: absolute; top: 12px; right: 24px; z-index: 6; }
+.settings-gear {
+  border: 1px solid var(--faint); background: var(--paper); color: var(--muted);
+  border-radius: 6px; width: 28px; height: 28px; font-size: 14px; cursor: pointer; line-height: 1;
+}
+.settings-gear:hover { color: var(--ink); border-color: var(--hair); }
+.settings-panel {
+  position: absolute; top: 34px; right: 0; z-index: 6;
+  display: flex; flex-direction: column; gap: 10px; min-width: 200px;
+  background: var(--paper); border: 1px solid var(--hair); border-radius: 8px;
+  padding: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.08);
+}
+.settings-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.settings-row button {
+  flex: 1; border: 1px solid var(--faint); background: none; color: var(--ink);
+  font-size: 12px; padding: 5px 8px; border-radius: 5px; cursor: pointer;
+}
+.settings-row button.on { background: rgba(120,158,196,.16); border-color: var(--hair); font-weight: 600; }
+.settings-row button:hover { border-color: var(--hair); }
+.settings-row input[type="range"] { flex: 1; }
 .carry-banner {
   position: sticky; top: 0; z-index: 5; margin-bottom: 14px;
   padding: 8px 14px; border-radius: 6px; font-size: 13px; text-align: center;
@@ -52,7 +77,8 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
   font: inherit; font-size: 12px; padding: 4px 6px;
 }
 .thread-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); flex: none; }
-.river .card-body p { margin: 0; line-height: 1.95; font-size: 15px; text-indent: 2em; }
+.river .card-body { font-family: var(--reading-font); font-size: var(--reading-size); }
+.river .card-body p { margin: 0; line-height: 1.95; text-indent: 2em; }
 .river .card[data-role="heading"] .card-body p { font-size: 1.25em; font-weight: 700; text-indent: 0; margin: .4em 0; line-height: 1.5; }
 .river .card[data-role="quote"] .card-body p { padding-left: 1.5em; border-left: 2px solid var(--faint); color: #6a6258; font-style: italic; text-indent: 0; }
 .river .card[data-role="note"] .card-body p { font-size: .85em; color: var(--muted); text-indent: 0; }
