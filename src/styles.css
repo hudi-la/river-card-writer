@@ -35,17 +35,18 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 }
 .river .card-ctrls button:hover:not(:disabled) { color: var(--ink); border-color: var(--hair); }
 .river .card-ctrls button:disabled { opacity: .3; cursor: default; }
-.thread-menu, .box-menu {
+.thread-menu, .box-menu, .role-menu {
   position: absolute; top: 26px; right: 0; z-index: 5;
   display: flex; flex-direction: column; gap: 2px; min-width: 120px;
   background: var(--paper); border: 1px solid var(--hair); border-radius: 6px;
   padding: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.08);
 }
-.thread-menu button, .box-menu button {
+.thread-menu button, .box-menu button, .role-menu button {
   display: flex; align-items: center; gap: 6px; border: none; background: none;
   color: var(--ink); font-size: 12px; padding: 4px 6px; border-radius: 4px; cursor: pointer; text-align: left;
 }
-.thread-menu button:hover, .box-menu button:hover { background: rgba(120,158,196,.12); }
+.thread-menu button:hover, .box-menu button:hover, .role-menu button:hover { background: rgba(120,158,196,.12); }
+.role-menu button.on { color: var(--ink); font-weight: 700; background: rgba(120,158,196,.12); }
 .thread-menu input {
   border: 1px solid var(--hair); border-radius: 4px; background: var(--paper); color: var(--ink);
   font: inherit; font-size: 12px; padding: 4px 6px;

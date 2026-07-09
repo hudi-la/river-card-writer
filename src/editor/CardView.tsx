@@ -2,6 +2,13 @@ import { useState } from 'react'
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react'
 import { useBookStore } from '../state/bookStore'
 
+const ROLE_ITEMS: { label: string; role: 'body' | 'heading' | 'quote' | 'note' }[] = [
+  { label: '正文', role: 'body' },
+  { label: '小标题', role: 'heading' },
+  { label: '引文', role: 'quote' },
+  { label: '旁注', role: 'note' },
+]
+
 export function CardView({ editor, getPos, node }: NodeViewProps) {
   const threadId: string | null = node.attrs.threadId
   const role: string = node.attrs.role || 'body'
@@ -16,6 +23,7 @@ export function CardView({ editor, getPos, node }: NodeViewProps) {
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
   const [boxMenuOpen, setBoxMenuOpen] = useState(false)
+  const [roleMenuOpen, setRoleMenuOpen] = useState(false)
 
   const run = (cmd: 'up' | 'down' | 'add' | 'merge') => (e: React.MouseEvent) => {
     e.preventDefault()
@@ -65,6 +73,18 @@ export function CardView({ editor, getPos, node }: NodeViewProps) {
     parkInto(box.id)
   }
 
+  const toggleRoleMenu = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setRoleMenuOpen((o) => !o)
+  }
+
+  const assignRole = (r: 'body' | 'heading' | 'quote' | 'note') => {
+    const pos = getPos()
+    if (typeof pos !== 'number') return
+    editor.chain().focus().setTextSelection(pos + 2).setCardRole(r).run()
+    setRoleMenuOpen(false)
+  }
+
   const startCreate = (e: React.MouseEvent) => {
     e.preventDefault()
     setCreating(true)
@@ -105,6 +125,22 @@ export function CardView({ editor, getPos, node }: NodeViewProps) {
         <button data-card-ctrl="tobox" title="收进盒子" onMouseDown={toggleBoxMenu}>
           ⇢
         </button>
+        <button data-card-ctrl="role" title="选择样式" onMouseDown={toggleRoleMenu}>
+          Aa
+        </button>
+        {roleMenuOpen && (
+          <div className="role-menu" contentEditable={false}>
+            {ROLE_ITEMS.map((item) => (
+              <button
+                key={item.role}
+                className={role === item.role ? 'on' : undefined}
+                onMouseDown={(e) => { e.preventDefault(); assignRole(item.role) }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
         {boxMenuOpen && (
           <div className="box-menu" contentEditable={false}>
             {boxes.map((b) => (
