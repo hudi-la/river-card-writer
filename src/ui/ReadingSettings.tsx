@@ -52,7 +52,7 @@ export function ReadingSettings() {
               type="range"
               aria-label="行宽"
               min={560}
-              max={820}
+              max={1400}
               value={prefs.measure}
               onChange={(e) => setMeasure(Number(e.target.value))}
             />

@@ -17,7 +17,7 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 .outline-hint { padding:6px 8px; color:var(--muted); opacity:.6; font-size:12px; }
 .chap-edit { width:100%; border:1px solid var(--hair); border-radius:4px; background:var(--paper); color:var(--ink); font:inherit; padding:4px 6px; }
 .page { padding:36px 0; display:flex; justify-content:center; position:relative; }
-.river-wrap { width: min(var(--reading-measure), 90%); }
+.river-wrap { width: min(var(--reading-measure), 96%); }
 .river-wrap .river { width: 100%; }
 .reading-settings { position: absolute; top: 12px; right: 24px; z-index: 6; }
 .settings-gear {
