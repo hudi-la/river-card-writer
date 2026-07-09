@@ -20,6 +20,7 @@ declare module '@tiptap/core' {
       insertCardAfter: () => ReturnType
       appendCard: () => ReturnType
       setCardThread: (threadId: string | null) => ReturnType
+      removeCard: () => ReturnType
     }
   }
 }
@@ -208,6 +209,21 @@ export const Card = Node.create({
           for (let d = $from.depth; d > 0; d--) if ($from.node(d).type.name === 'card') { cardDepth = d; break }
           if (cardDepth === -1) return false
           if (dispatch) dispatch(state.tr.setNodeAttribute($from.before(cardDepth), 'threadId', threadId))
+          return true
+        },
+      removeCard:
+        () =>
+        ({ state, dispatch }) => {
+          const { $from } = state.selection
+          let cardDepth = -1
+          for (let d = $from.depth; d > 0; d--) if ($from.node(d).type.name === 'card') { cardDepth = d; break }
+          if (cardDepth === -1) return false
+          if (state.doc.childCount <= 1) return false
+          if (dispatch) {
+            const pos = $from.before(cardDepth)
+            const node = $from.node(cardDepth)
+            dispatch(state.tr.delete(pos, pos + node.nodeSize))
+          }
           return true
         },
     }

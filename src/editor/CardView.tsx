@@ -7,10 +7,14 @@ export function CardView({ editor, getPos, node }: NodeViewProps) {
   const thread = useBookStore((s) => s.getThread(threadId))
   const threads = useBookStore((s) => s.book.threads)
   const addThread = useBookStore((s) => s.addThread)
+  const boxes = useBookStore((s) => s.book.boxes)
+  const addBox = useBookStore((s) => s.addBox)
+  const parkCard = useBookStore((s) => s.parkCard)
   const style = thread ? ({ ['--thread' as any]: thread.color } as React.CSSProperties) : undefined
   const [menuOpen, setMenuOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
+  const [boxMenuOpen, setBoxMenuOpen] = useState(false)
 
   const run = (cmd: 'up' | 'down' | 'add' | 'merge') => (e: React.MouseEvent) => {
     e.preventDefault()
@@ -36,6 +40,28 @@ export function CardView({ editor, getPos, node }: NodeViewProps) {
     e.preventDefault()
     setMenuOpen((o) => !o)
     setCreating(false)
+  }
+
+  const toggleBoxMenu = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setBoxMenuOpen((o) => !o)
+  }
+
+  const parkInto = (boxId: string) => {
+    const pos = getPos()
+    if (typeof pos !== 'number') return
+    const json = editor.state.doc.nodeAt(pos)?.toJSON()
+    if (!json) return
+    parkCard(boxId, json)
+    const freshPos = getPos()
+    if (typeof freshPos !== 'number') return
+    editor.chain().focus().setTextSelection(freshPos + 2).removeCard().run()
+    setBoxMenuOpen(false)
+  }
+
+  const parkIntoNewBox = () => {
+    const box = addBox('新盒子')
+    parkInto(box.id)
   }
 
   const startCreate = (e: React.MouseEvent) => {
@@ -75,6 +101,19 @@ export function CardView({ editor, getPos, node }: NodeViewProps) {
         >
           ●
         </button>
+        <button data-card-ctrl="tobox" title="收进盒子" onMouseDown={toggleBoxMenu}>
+          ⇢
+        </button>
+        {boxMenuOpen && (
+          <div className="box-menu" contentEditable={false}>
+            {boxes.map((b) => (
+              <button key={b.id} onMouseDown={(e) => { e.preventDefault(); parkInto(b.id) }}>
+                {b.name}
+              </button>
+            ))}
+            <button onMouseDown={(e) => { e.preventDefault(); parkIntoNewBox() }}>＋新盒子</button>
+          </div>
+        )}
         {menuOpen && (
           <div className="thread-menu" contentEditable={false}>
             {threads.map((t) => (
