@@ -2,19 +2,28 @@ import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 
 export const EMPTY_DOC = { type: 'doc', content: [{ type: 'card', content: [{ type: 'paragraph' }] }] }
-const KEY = 'card-writer:book'
+const OLD_BOOK_KEY = 'card-writer:book'
+const LIBRARY_KEY = 'card-writer:library'
 
 export type Box = { id: string; name: string; cards: any[] }
 export type Book = { id: string; title: string; doc: any; boxes: Box[] }
+export type Library = { books: Book[]; activeBookId: string | null }
 
 type BookState = {
-  book: Book
+  library: Library
+  shell: 'shelf' | 'book'
   viewKind: 'doc' | 'box'
   activeBoxId: string | null
   carried: { boxId: string; cardId: string } | null
+  activeBook: () => Book | undefined
+  addBook: (title?: string) => Book
+  openBook: (id: string) => void
+  goToShelf: () => void
+  renameBook: (id: string, title: string) => void
+  deleteBook: (id: string) => void
   updateDoc: (doc: object) => void
   openDoc: () => void
-  addBox: (name: string) => Box
+  addBox: (name: string) => Box | undefined
   openBox: (id: string) => void
   parkCard: (boxId: string, cardJSON: any) => void
   takeCardFromBox: (boxId: string, cardId: string) => any | undefined
@@ -25,8 +34,8 @@ type BookState = {
   __resetForTest: () => void
 }
 
-function freshBook(): Book {
-  return { id: nanoid(), title: '未命名', doc: structuredClone(EMPTY_DOC), boxes: [] }
+function freshBook(title?: string): Book {
+  return { id: nanoid(), title: title ?? '未命名', doc: structuredClone(EMPTY_DOC), boxes: [] }
 }
 
 // 把一章的段落文本拼成一张"章标题卡"：card > paragraph(style:'chapter', text: chapter.title)。
@@ -58,62 +67,123 @@ export function normalizeBook(raw: any): Book {
   return { id: raw.id, title: raw.title, doc, boxes }
 }
 
-export function load(): Book {
-  try {
-    const raw = localStorage.getItem(KEY)
-    if (raw) {
-      const b = JSON.parse(raw)
-      if (b && b.doc) return normalizeBook(b)
-      if (b && Array.isArray(b.chapters) && b.chapters.length > 0 && b.chapters[0]?.id) return normalizeBook(b)
-    }
-  } catch {}
-  return freshBook()
+export function normalizeLibrary(raw: any): Library {
+  const books: Book[] = Array.isArray(raw?.books) ? raw.books.map(normalizeBook) : []
+  const activeBookId = typeof raw?.activeBookId === 'string' ? raw.activeBookId : null
+  return { books, activeBookId }
 }
 
-function persist(book: Book) {
+function loadOldSingleBookAsLibrary(): Library | undefined {
   try {
-    localStorage.setItem(KEY, JSON.stringify(book))
+    const raw = localStorage.getItem(OLD_BOOK_KEY)
+    if (!raw) return undefined
+    const b = JSON.parse(raw)
+    const looksLikeBook = b && (b.doc || (Array.isArray(b.chapters) && b.chapters.length > 0 && b.chapters[0]?.id))
+    if (!looksLikeBook) return undefined
+    return { books: [normalizeBook(b)], activeBookId: null }
+  } catch {
+    return undefined
+  }
+}
+
+export function load(): Library {
+  try {
+    const raw = localStorage.getItem(LIBRARY_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed && Array.isArray(parsed.books)) return normalizeLibrary(parsed)
+    }
+  } catch {}
+
+  const migrated = loadOldSingleBookAsLibrary()
+  if (migrated) return migrated
+
+  return { books: [freshBook()], activeBookId: null }
+}
+
+function persist(library: Library) {
+  try {
+    localStorage.setItem(LIBRARY_KEY, JSON.stringify(library))
   } catch (e) {
     console.warn('persist failed', e)
   }
 }
 
 export const useBookStore = create<BookState>((set, get) => {
-  const initial = load()
+  const initialLibrary = load()
+
+  function withActiveBook<T>(mutate: (book: Book) => { book: Book; result: T }): T | undefined {
+    const book = get().activeBook()
+    if (!book) return undefined
+    const { book: updated, result } = mutate(book)
+    const library = { ...get().library, books: get().library.books.map((b) => (b.id === book.id ? updated : b)) }
+    persist(library)
+    set({ library })
+    return result
+  }
+
   return {
-    book: initial,
+    library: initialLibrary,
+    shell: 'shelf',
     viewKind: 'doc',
     activeBoxId: null,
     carried: null,
+
+    activeBook: () => get().library.books.find((b) => b.id === get().library.activeBookId),
+
+    addBook: (title) => {
+      const book = freshBook(title)
+      const library = { ...get().library, books: [...get().library.books, book] }
+      persist(library)
+      set({ library })
+      return book
+    },
+    openBook: (id) => set({ library: { ...get().library, activeBookId: id }, shell: 'book', viewKind: 'doc', activeBoxId: null, carried: null }),
+    goToShelf: () => set({ shell: 'shelf' }),
+    renameBook: (id, title) => {
+      const library = { ...get().library, books: get().library.books.map((b) => (b.id === id ? { ...b, title } : b)) }
+      persist(library)
+      set({ library })
+    },
+    deleteBook: (id) => {
+      const cur = get().library
+      const books = cur.books.filter((b) => b.id !== id)
+      const wasActive = cur.activeBookId === id
+      const library = { books, activeBookId: wasActive ? null : cur.activeBookId }
+      persist(library)
+      set(wasActive ? { library, shell: 'shelf', viewKind: 'doc', activeBoxId: null, carried: null } : { library })
+    },
+
     updateDoc: (doc) => {
-      const book = { ...get().book, doc }
-      persist(book)
-      set({ book })
+      withActiveBook((book) => ({ book: { ...book, doc }, result: undefined }))
     },
     openDoc: () => set({ viewKind: 'doc' }),
     addBox: (name) => {
       const box: Box = { id: nanoid(), name, cards: [] }
-      const book = { ...get().book, boxes: [...get().book.boxes, box] }
-      persist(book)
-      set({ book })
-      return box
+      return withActiveBook((book) => ({ book: { ...book, boxes: [...book.boxes, box] }, result: box }))
     },
     openBox: (id) => set({ viewKind: 'box', activeBoxId: id }),
     parkCard: (boxId, cardJSON) => {
-      const book = { ...get().book, boxes: get().book.boxes.map((b) => (b.id === boxId ? { ...b, cards: [...b.cards, cardJSON] } : b)) }
-      persist(book)
-      set({ book })
+      withActiveBook((book) => ({
+        book: { ...book, boxes: book.boxes.map((b) => (b.id === boxId ? { ...b, cards: [...b.cards, cardJSON] } : b)) },
+        result: undefined,
+      }))
     },
     takeCardFromBox: (boxId, cardId) => {
-      const box = get().book.boxes.find((b) => b.id === boxId)
+      const book = get().activeBook()
+      if (!book) return undefined
+      const box = book.boxes.find((b) => b.id === boxId)
       const card = box?.cards.find((c) => c?.attrs?.cardId === cardId)
       if (!box || !card) return undefined
-      const book = { ...get().book, boxes: get().book.boxes.map((b) => (b.id === boxId ? { ...b, cards: b.cards.filter((c) => c !== card) } : b)) }
-      persist(book)
-      set({ book })
-      return card
+      return withActiveBook((b) => ({
+        book: { ...b, boxes: b.boxes.map((x) => (x.id === boxId ? { ...x, cards: x.cards.filter((c) => c !== card) } : x)) },
+        result: card,
+      }))
     },
-    getBox: (id) => (id ? get().book.boxes.find((b) => b.id === id) : undefined),
+    getBox: (id) => {
+      if (!id) return undefined
+      return get().activeBook()?.boxes.find((b) => b.id === id)
+    },
     carry: (boxId, cardId) => {
       // Non-destructive: the card stays in the box until the moment of drop.
       // Just replacing the reference here is safe — nothing was ever removed.
@@ -127,8 +197,9 @@ export const useBookStore = create<BookState>((set, get) => {
     dropCarried: () => set({ carried: null }),
     __resetForTest: () => {
       const book = freshBook()
-      persist(book)
-      set({ book, viewKind: 'doc', activeBoxId: null, carried: null })
+      const library: Library = { books: [book], activeBookId: null }
+      persist(library)
+      set({ library, shell: 'shelf', viewKind: 'doc', activeBoxId: null, carried: null })
     },
   }
 })

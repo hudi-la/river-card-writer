@@ -1,135 +1,203 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { Editor } from '@tiptap/core'
 import { baseExtensions } from '../editor/schema'
-import { useBookStore, EMPTY_DOC, load, normalizeBook } from './bookStore'
+import { useBookStore, EMPTY_DOC, load, normalizeBook, normalizeLibrary } from './bookStore'
 
 beforeEach(() => {
   localStorage.clear()
   useBookStore.getState().__resetForTest()
 })
 
-describe('bookStore', () => {
-  it('初始有一本书、一个大 doc（等价 EMPTY_DOC）、viewKind 为 doc', () => {
+describe('bookStore — shelf/shell', () => {
+  it('初始 shell 为 shelf，library 含一本空书，activeBookId 为 null', () => {
     const s = useBookStore.getState()
-    expect(s.book.doc).toEqual(EMPTY_DOC)
+    expect(s.shell).toBe('shelf')
+    expect(s.library.books).toHaveLength(1)
+    expect(s.library.activeBookId).toBeNull()
+    expect(s.activeBook()).toBeUndefined()
+  })
+
+  it('addBook 新增一本书（EMPTY_DOC、空 boxes）、返回它、持久化', () => {
+    const before = useBookStore.getState().library.books.length
+    const book = useBookStore.getState().addBook('新书')
+    expect(book.title).toBe('新书')
+    expect(book.doc).toEqual(EMPTY_DOC)
+    expect(book.boxes).toEqual([])
+    expect(useBookStore.getState().library.books).toHaveLength(before + 1)
+    const raw = JSON.parse(localStorage.getItem('card-writer:library')!)
+    expect(raw.books.some((b: any) => b.id === book.id && b.title === '新书')).toBe(true)
+  })
+
+  it('openBook 后 activeBook().id 匹配、shell 变为 book、viewKind 为 doc', () => {
+    const book = useBookStore.getState().addBook('新书')
+    useBookStore.getState().openBook(book.id)
+    const s = useBookStore.getState()
+    expect(s.activeBook()?.id).toBe(book.id)
+    expect(s.shell).toBe('book')
     expect(s.viewKind).toBe('doc')
   })
 
-  it('updateDoc 写入并持久化到 localStorage', () => {
+  it('goToShelf 回到 shelf，不清空 activeBookId', () => {
+    const book = useBookStore.getState().addBook('新书')
+    useBookStore.getState().openBook(book.id)
+    useBookStore.getState().goToShelf()
+    expect(useBookStore.getState().shell).toBe('shelf')
+  })
+
+  it('renameBook 改标题并持久化', () => {
+    const book = useBookStore.getState().addBook('旧名')
+    useBookStore.getState().renameBook(book.id, '新名')
+    expect(useBookStore.getState().library.books.find((b) => b.id === book.id)?.title).toBe('新名')
+    const raw = JSON.parse(localStorage.getItem('card-writer:library')!)
+    expect(raw.books.find((b: any) => b.id === book.id).title).toBe('新名')
+  })
+
+  it('deleteBook 删除非当前书：只减少 books，不影响 shell/activeBookId', () => {
+    const bookA = useBookStore.getState().addBook('A')
+    const bookB = useBookStore.getState().addBook('B')
+    useBookStore.getState().openBook(bookA.id)
+    useBookStore.getState().deleteBook(bookB.id)
+    const s = useBookStore.getState()
+    expect(s.library.books.find((b) => b.id === bookB.id)).toBeUndefined()
+    expect(s.library.activeBookId).toBe(bookA.id)
+    expect(s.shell).toBe('book')
+  })
+
+  it('deleteBook 删除当前书：回到 shelf，books-1，持久化', () => {
+    const bookA = useBookStore.getState().addBook('A')
+    const before = useBookStore.getState().library.books.length
+    useBookStore.getState().openBook(bookA.id)
+    useBookStore.getState().deleteBook(bookA.id)
+    const s = useBookStore.getState()
+    expect(s.shell).toBe('shelf')
+    expect(s.library.books).toHaveLength(before - 1)
+    expect(s.library.books.find((b) => b.id === bookA.id)).toBeUndefined()
+    const raw = JSON.parse(localStorage.getItem('card-writer:library')!)
+    expect(raw.books.find((b: any) => b.id === bookA.id)).toBeUndefined()
+  })
+})
+
+describe('bookStore — 当前书代理', () => {
+  it('updateDoc 只改当前书的 doc，另一本书不受影响', () => {
+    const bookA = useBookStore.getState().addBook('A')
+    const bookB = useBookStore.getState().addBook('B')
+    useBookStore.getState().openBook(bookA.id)
     const doc = { type: 'doc', content: [{ type: 'card', attrs: { cardId: 'x' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] }] }
     useBookStore.getState().updateDoc(doc)
-    expect(useBookStore.getState().book.doc).toEqual(doc)
-    const raw = JSON.parse(localStorage.getItem('card-writer:book')!)
-    expect(raw.doc).toEqual(doc)
-  })
 
-  it('load() 遇到形状不对但可解析的 JSON 时回退为一本全新的书，而不是抛出', () => {
-    localStorage.setItem('card-writer:book', JSON.stringify({ foo: 1 }))
-    let book1: ReturnType<typeof load> | undefined
-    expect(() => {
-      book1 = load()
-    }).not.toThrow()
-    expect(book1!.doc).toEqual(EMPTY_DOC)
-    expect(book1!.boxes).toEqual([])
-
-    localStorage.setItem('card-writer:book', JSON.stringify({ doc: null }))
-    let book2: ReturnType<typeof load> | undefined
-    expect(() => {
-      book2 = load()
-    }).not.toThrow()
-    expect(book2!.doc).toEqual(EMPTY_DOC)
-  })
-
-  it('初始 boxes 为空、viewKind 为 doc、activeBoxId 为 null', () => {
     const s = useBookStore.getState()
-    expect(s.book.boxes).toEqual([])
-    expect(s.viewKind).toBe('doc')
-    expect(s.activeBoxId).toBeNull()
+    expect(s.activeBook()!.doc).toEqual(doc)
+    expect(s.library.books.find((b) => b.id === bookB.id)!.doc).toEqual(EMPTY_DOC)
+
+    const raw = JSON.parse(localStorage.getItem('card-writer:library')!)
+    expect(raw.books.find((b: any) => b.id === bookA.id).doc).toEqual(doc)
+    expect(raw.books.find((b: any) => b.id === bookB.id).doc).toEqual(EMPTY_DOC)
   })
 
-  it('addBox 建盒、持久化、返回它', () => {
-    const box = useBookStore.getState().addBox('素材')
-    expect(box.name).toBe('素材')
-    expect(box.cards).toEqual([])
-    expect(useBookStore.getState().book.boxes).toHaveLength(1)
-    const raw = JSON.parse(localStorage.getItem('card-writer:book')!)
-    expect(raw.boxes[0].name).toBe('素材')
+  it('updateDoc 在没有 activeBook 时是安全的 no-op', () => {
+    expect(() => useBookStore.getState().updateDoc({ type: 'doc', content: [] })).not.toThrow()
   })
 
-  it('openBox 设置 viewKind 为 box 并设 activeBoxId', () => {
+  it('addBox/parkCard 只改当前书的 boxes，切换书互不影响', () => {
+    const bookA = useBookStore.getState().addBook('A')
+    const bookB = useBookStore.getState().addBook('B')
+
+    useBookStore.getState().openBook(bookA.id)
     const box = useBookStore.getState().addBox('素材')
-    useBookStore.getState().openBox(box.id)
-    const s = useBookStore.getState()
-    expect(s.viewKind).toBe('box')
-    expect(s.activeBoxId).toBe(box.id)
+    expect(box).toBeDefined()
+    const cardJSON = { type: 'card', attrs: { cardId: 'c1' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] }
+    useBookStore.getState().parkCard(box!.id, cardJSON)
+
+    let s = useBookStore.getState()
+    expect(s.activeBook()!.boxes).toHaveLength(1)
+    expect(s.activeBook()!.boxes[0].cards).toEqual([cardJSON])
+    expect(s.library.books.find((b) => b.id === bookB.id)!.boxes).toEqual([])
+
+    useBookStore.getState().openBook(bookB.id)
+    s = useBookStore.getState()
+    expect(s.activeBook()!.boxes).toEqual([])
+    expect(s.getBox(box!.id)).toBeUndefined()
+
+    useBookStore.getState().openBook(bookA.id)
+    s = useBookStore.getState()
+    expect(s.getBox(box!.id)!.cards).toEqual([cardJSON])
   })
 
-  it('openDoc 把 viewKind 设回 doc', () => {
-    const box = useBookStore.getState().addBox('素材')
-    useBookStore.getState().openBox(box.id)
-    useBookStore.getState().openDoc()
-    expect(useBookStore.getState().viewKind).toBe('doc')
+  it('addBox 在没有 activeBook 时安全 no-op，返回 undefined', () => {
+    expect(useBookStore.getState().addBox('素材')).toBeUndefined()
   })
 
-  it('parkCard 把 cardJSON 追加进盒并持久化', () => {
-    const box = useBookStore.getState().addBox('素材')
+  it('takeCardFromBox / carry / cancelCarry / dropCarried 作用于当前书', () => {
+    const book = useBookStore.getState().addBook('A')
+    useBookStore.getState().openBook(book.id)
+    const box = useBookStore.getState().addBox('素材')!
     const cardJSON = { type: 'card', attrs: { cardId: 'c1' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] }
     useBookStore.getState().parkCard(box.id, cardJSON)
-    const b = useBookStore.getState().getBox(box.id)
-    expect(b!.cards).toEqual([cardJSON])
-    const raw = JSON.parse(localStorage.getItem('card-writer:book')!)
-    expect(raw.boxes.find((x: any) => x.id === box.id).cards).toEqual([cardJSON])
-  })
 
-  it('takeCardFromBox 移除并返回该卡，盒里少一张，且持久化', () => {
-    const box = useBookStore.getState().addBox('素材')
-    const cardJSON = { type: 'card', attrs: { cardId: 'c1' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] }
-    useBookStore.getState().parkCard(box.id, cardJSON)
-    const taken = useBookStore.getState().takeCardFromBox(box.id, 'c1')
-    expect(taken).toEqual(cardJSON)
-    const b = useBookStore.getState().getBox(box.id)
-    expect(b!.cards).toEqual([])
-    const raw = JSON.parse(localStorage.getItem('card-writer:book')!)
-    expect(raw.boxes.find((x: any) => x.id === box.id).cards).toEqual([])
-  })
-
-  it('takeCardFromBox 找不到卡返回 undefined', () => {
-    const box = useBookStore.getState().addBox('素材')
-    const taken = useBookStore.getState().takeCardFromBox(box.id, 'nope')
-    expect(taken).toBeUndefined()
-  })
-
-  it('getBox 按 id 查找，null 返回 undefined', () => {
-    const box = useBookStore.getState().addBox('素材')
-    expect(useBookStore.getState().getBox(box.id)).toEqual(box)
-    expect(useBookStore.getState().getBox(null)).toBeUndefined()
-  })
-
-  it('carry(boxId, cardId) 后 carried 非空、viewKind 切回 doc', () => {
-    const box = useBookStore.getState().addBox('素材')
-    const cardJSON = { type: 'card', attrs: { cardId: 'c1' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] }
-    useBookStore.getState().parkCard(box.id, cardJSON)
     useBookStore.getState().openBox(box.id)
     useBookStore.getState().carry(box.id, 'c1')
-    const s = useBookStore.getState()
+    let s = useBookStore.getState()
     expect(s.carried).toEqual({ boxId: box.id, cardId: 'c1' })
     expect(s.viewKind).toBe('doc')
-    // Non-destructive: card stays in box until drop.
-    expect(useBookStore.getState().getBox(box.id)!.cards).toEqual([cardJSON])
-  })
 
-  it('cancelCarry 清空 carried', () => {
-    const box = useBookStore.getState().addBox('素材')
-    useBookStore.getState().carry(box.id, 'c1')
     useBookStore.getState().cancelCarry()
     expect(useBookStore.getState().carried).toBeNull()
-  })
 
-  it('dropCarried 清空 carried', () => {
-    const box = useBookStore.getState().addBox('素材')
+    const taken = useBookStore.getState().takeCardFromBox(box.id, 'c1')
+    expect(taken).toEqual(cardJSON)
+    expect(useBookStore.getState().getBox(box.id)!.cards).toEqual([])
+
     useBookStore.getState().carry(box.id, 'c1')
     useBookStore.getState().dropCarried()
     expect(useBookStore.getState().carried).toBeNull()
+  })
+})
+
+describe('bookStore — 迁移 & normalizeLibrary', () => {
+  it('load() 优先读 card-writer:library', () => {
+    localStorage.clear()
+    const lib = { books: [{ id: 'b1', title: 't', doc: EMPTY_DOC, boxes: [] }], activeBookId: 'b1' }
+    localStorage.setItem('card-writer:library', JSON.stringify(lib))
+    const loaded = load()
+    expect(loaded.books).toHaveLength(1)
+    expect(loaded.books[0].id).toBe('b1')
+    expect(loaded.activeBookId).toBe('b1')
+  })
+
+  it('无 library 但有旧单本 card-writer:book → 包成 library，内容深等，activeBookId 为 null', () => {
+    localStorage.clear()
+    const oldBook = { id: 'old1', title: '旧书', doc: { type: 'doc', content: [{ type: 'card', content: [{ type: 'paragraph' }] }] }, boxes: [{ id: 'bx1', name: '盒', cards: [] }] }
+    localStorage.setItem('card-writer:book', JSON.stringify(oldBook))
+    const loaded = load()
+    expect(loaded.books).toHaveLength(1)
+    expect(loaded.books[0]).toEqual(oldBook)
+    expect(loaded.activeBookId).toBeNull()
+  })
+
+  it('都无 → 空 library：一本新的空书，activeBookId 为 null', () => {
+    localStorage.clear()
+    const loaded = load()
+    expect(loaded.books).toHaveLength(1)
+    expect(loaded.books[0].doc).toEqual(EMPTY_DOC)
+    expect(loaded.books[0].boxes).toEqual([])
+    expect(loaded.activeBookId).toBeNull()
+  })
+
+  it('load() 遇到形状不对但可解析的 library JSON 时回退，不抛出', () => {
+    localStorage.clear()
+    localStorage.setItem('card-writer:library', JSON.stringify({ foo: 1 }))
+    let lib: ReturnType<typeof load> | undefined
+    expect(() => {
+      lib = load()
+    }).not.toThrow()
+    expect(lib!.books).toHaveLength(1)
+    expect(lib!.books[0].doc).toEqual(EMPTY_DOC)
+  })
+
+  it('normalizeLibrary 补全缺失的 books/activeBookId', () => {
+    const lib = normalizeLibrary({})
+    expect(lib.books).toEqual([])
+    expect(lib.activeBookId).toBeNull()
   })
 
   it('normalizeBook 新格式（有 doc）：原样返回，补 boxes', () => {
@@ -190,13 +258,10 @@ describe('bookStore', () => {
       ],
     }
     const b = normalizeBook(raw)
-    // No title cards emitted for blank titles — only the two chapters' own cards.
     expect(b.doc.content).toHaveLength(2)
     expect(b.doc.content[0]).toEqual(cardA)
     expect(b.doc.content[1]).toEqual(cardB)
 
-    // Key regression assertion: the migrated doc must load into a real
-    // TipTap Editor without throwing "Empty text nodes are not allowed".
     expect(() => {
       const editor = new Editor({ extensions: baseExtensions, content: b.doc })
       editor.destroy()
@@ -208,8 +273,8 @@ describe('bookStore', () => {
       id: 'x',
       title: 't',
       chapters: [
-        { id: 'c1', title: '第一章' }, // doc missing entirely
-        { id: 'c2', title: '第二章', doc: { type: 'doc', content: [] } }, // doc.content empty
+        { id: 'c1', title: '第一章' },
+        { id: 'c2', title: '第二章', doc: { type: 'doc', content: [] } },
       ],
     }
     const b = normalizeBook(raw)
