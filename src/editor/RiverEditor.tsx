@@ -9,6 +9,8 @@ export function RiverEditor({ chapterId }: { chapterId: string }) {
   const chapter = useBookStore((s) => s.book.chapters.find((c) => c.id === chapterId))!
   const updateChapterDoc = useBookStore((s) => s.updateChapterDoc)
   const carried = useBookStore((s) => s.carried)
+  const getBox = useBookStore((s) => s.getBox)
+  const takeCardFromBox = useBookStore((s) => s.takeCardFromBox)
   const cancelCarry = useBookStore((s) => s.cancelCarry)
   const dropCarried = useBookStore((s) => s.dropCarried)
   const dragStart = useRef<{ y: number; card: HTMLElement } | null>(null)
@@ -68,9 +70,11 @@ export function RiverEditor({ chapterId }: { chapterId: string }) {
     const dom = editor.view.dom as HTMLElement
 
     const onClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (target.closest('.card-ctrls')) return // controls/menus are not drop targets
       const current = carriedRef.current
       if (!current) return
-      const card = (e.target as HTMLElement).closest<HTMLElement>('.card')
+      const card = target.closest<HTMLElement>('.card')
       if (!card) return
       try {
         const pos = editor.view.posAtDOM(card, 0)
@@ -80,7 +84,13 @@ export function RiverEditor({ chapterId }: { chapterId: string }) {
           if ($pos.node(d).type.name === 'card') { cardDepth = d; break }
         }
         const cardPos = cardDepth === -1 ? pos : $pos.before(cardDepth)
-        editor.chain().focus().insertCardJSONAfter(current.card, cardPos).run()
+        // Look up the carried card in the box at drop time — it was never
+        // removed until now, so a reload mid-carry never loses it.
+        const c = getBox(current.boxId)?.cards.find((x) => x.attrs.cardId === current.cardId)
+        if (c) {
+          editor.chain().focus().insertCardJSONAfter(c, cardPos).run()
+          takeCardFromBox(current.boxId, current.cardId)
+        }
         dropCarried()
       } catch {
         // 卡未挂载到编辑器 DOM 时忽略
@@ -97,7 +107,7 @@ export function RiverEditor({ chapterId }: { chapterId: string }) {
       dom.removeEventListener('click', onClick)
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [editor, cancelCarry, dropCarried])
+  }, [editor, getBox, takeCardFromBox, cancelCarry, dropCarried])
 
   if (!editor) return null
   return (

@@ -52,10 +52,10 @@ export function CardView({ editor, getPos, node }: NodeViewProps) {
     if (typeof pos !== 'number') return
     const json = editor.state.doc.nodeAt(pos)?.toJSON()
     if (!json) return
-    parkCard(boxId, json)
-    const freshPos = getPos()
-    if (typeof freshPos !== 'number') return
-    editor.chain().focus().setTextSelection(freshPos + 2).removeCard().run()
+    // Only park into the box if the river removal actually succeeds — removeCard
+    // refuses to remove the last card in a chapter, so don't create a duplicate.
+    const removed = editor.chain().focus().setTextSelection(pos + 2).removeCard().run()
+    if (removed) parkCard(boxId, json)
     setBoxMenuOpen(false)
   }
 

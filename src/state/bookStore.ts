@@ -16,7 +16,7 @@ type BookState = {
   activeChapterId: string
   viewKind: 'chapter' | 'box'
   activeBoxId: string | null
-  carried: { boxId: string; card: any } | null
+  carried: { boxId: string; cardId: string } | null
   addChapter: (title: string) => void
   setActiveChapter: (id: string) => void
   updateChapterDoc: (id: string, doc: object) => void
@@ -133,15 +133,13 @@ export const useBookStore = create<BookState>((set, get) => {
     },
     getBox: (id) => (id ? get().book.boxes.find((b) => b.id === id) : undefined),
     carry: (boxId, cardId) => {
-      const card = get().takeCardFromBox(boxId, cardId)
-      if (!card) return
-      set({ carried: { boxId, card } })
+      // Non-destructive: the card stays in the box until the moment of drop.
+      // Just replacing the reference here is safe — nothing was ever removed.
+      set({ carried: { boxId, cardId } })
       get().openChapter(get().activeChapterId)
     },
     cancelCarry: () => {
-      const carried = get().carried
-      if (!carried) return
-      get().parkCard(carried.boxId, carried.card)
+      // Card was never removed from the box, so there's nothing to put back.
       set({ carried: null })
     },
     dropCarried: () => set({ carried: null }),

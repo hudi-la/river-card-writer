@@ -21,6 +21,22 @@ function Harness({ onReady, threadId }: { onReady?: (editor: Editor) => void; th
   return <EditorContent editor={editor} />
 }
 
+function OneCardHarness({ onReady }: { onReady?: (editor: Editor) => void }) {
+  const editor = useEditor({
+    extensions: baseExtensions,
+    immediatelyRender: false,
+    content: {
+      type: 'doc',
+      content: [
+        { type: 'card', attrs: { cardId: 'only', threadId: null }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '唯一一张' }] }] },
+      ],
+    },
+  })
+  if (editor) onReady?.(editor)
+  if (!editor) return null
+  return <EditorContent editor={editor} />
+}
+
 describe('CardView', () => {
   it('每张卡渲染成带控制按钮的 section.card，正文可见', async () => {
     const { container } = render(<Harness />)
@@ -64,5 +80,28 @@ describe('CardView', () => {
     expect((cards[1] as HTMLElement).dataset.threadId).toBe(thread.id)
     expect((cards[0] as HTMLElement).style.getPropertyValue('--thread')).toBe(thread.color)
     expect((cards[1] as HTMLElement).style.getPropertyValue('--thread')).toBe(thread.color)
+  })
+
+  it('章里只有一张卡时，点⇢收进盒子不应产生重复：盒子仍为空，卡仍留在正文里', async () => {
+    useBookStore.getState().__resetForTest()
+    const box = useBookStore.getState().addBox('素材盒')
+
+    let editorRef: Editor | null = null
+    const { container } = render(<OneCardHarness onReady={(e) => (editorRef = e)} />)
+    await new Promise((r) => setTimeout(r, 0))
+
+    const toBoxBtn = container.querySelector('[data-card-ctrl="tobox"]')!
+    fireEvent.mouseDown(toBoxBtn)
+    await new Promise((r) => setTimeout(r, 0))
+
+    const boxBtn = Array.from(container.querySelectorAll('.box-menu button')).find((b) => b.textContent === box.name)
+    expect(boxBtn).toBeTruthy()
+    fireEvent.mouseDown(boxBtn!)
+    await new Promise((r) => setTimeout(r, 0))
+
+    // removeCard refuses to remove the last card, so parkCard must not run either.
+    expect(useBookStore.getState().getBox(box.id)!.cards).toEqual([])
+    expect(editorRef!.getJSON().content!.length).toBe(1)
+    expect(editorRef!.getJSON().content![0].attrs.cardId).toBe('only')
   })
 })
