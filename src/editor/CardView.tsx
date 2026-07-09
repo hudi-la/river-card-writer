@@ -1,7 +1,18 @@
 import { useState } from 'react'
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react'
-import { useBookStore } from '../state/bookStore'
+import { useBookStore, THREAD_PALETTE } from '../state/bookStore'
 import { useDismiss } from '../ui/useDismiss'
+
+// 没挂线的卡也要有一眼能分辨出来的浅色背景，稳定地由 cardId 哈希出来（同一张卡换位置
+// 颜色不变，不同卡大概率不同），复用 THREAD_PALETTE 让整体调性统一。
+function hashCardId(id: string): number {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
+  return Math.abs(h)
+}
+function autoColorFor(cardId: string | null): string {
+  return THREAD_PALETTE[hashCardId(cardId ?? '') % THREAD_PALETTE.length]
+}
 
 const ROLE_ITEMS: { label: string; role: 'body' | 'heading' | 'quote' | 'note' }[] = [
   { label: '正文', role: 'body' },
@@ -11,6 +22,7 @@ const ROLE_ITEMS: { label: string; role: 'body' | 'heading' | 'quote' | 'note' }
 ]
 
 export function CardView({ editor, getPos, node }: NodeViewProps) {
+  const cardId: string | null = node.attrs.cardId
   const threadId: string | null = node.attrs.threadId
   const role: string = node.attrs.role || 'body'
   const thread = useBookStore((s) => s.getThread(threadId))
@@ -19,7 +31,10 @@ export function CardView({ editor, getPos, node }: NodeViewProps) {
   const boxes = useBookStore((s) => s.book.boxes)
   const addBox = useBookStore((s) => s.addBox)
   const parkCard = useBookStore((s) => s.parkCard)
-  const style = thread ? ({ ['--thread' as any]: thread.color } as React.CSSProperties) : undefined
+  // 挂了线：用线色，同线的卡连成一条带（不变）。没挂线：自动配一个稳定的浅色，
+  // 让每张卡默认就能一眼分辨——两者复用同一个 --thread 变量，CSS 只按
+  // data-thread-id / data-auto-color 二选一取不同的透明度。
+  const style = ({ ['--thread' as any]: thread ? thread.color : autoColorFor(cardId) } as React.CSSProperties)
   const [menuOpen, setMenuOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
@@ -109,7 +124,15 @@ export function CardView({ editor, getPos, node }: NodeViewProps) {
 
   const isFirst = typeof getPos() === 'number' && getPos() === 0
   return (
-    <NodeViewWrapper as="section" className="card" data-thread-id={threadId || undefined} data-role={role} style={style}>
+    <NodeViewWrapper
+      as="section"
+      className="card"
+      data-card-id={cardId || undefined}
+      data-thread-id={threadId || undefined}
+      data-auto-color={threadId ? undefined : true}
+      data-role={role}
+      style={style}
+    >
       <div className="card-ctrls" contentEditable={false}>
         <button data-card-ctrl="up" title="上移" disabled={isFirst} onMouseDown={run('up')}>
           ▲

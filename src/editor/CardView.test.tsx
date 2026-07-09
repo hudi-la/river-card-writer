@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import { baseExtensions } from './schema'
-import { useBookStore } from '../state/bookStore'
+import { useBookStore, THREAD_PALETTE } from '../state/bookStore'
 
 function Harness({ onReady, threadId }: { onReady?: (editor: Editor) => void; threadId?: string | null }) {
   const editor = useEditor({
@@ -80,6 +80,29 @@ describe('CardView', () => {
     expect((cards[1] as HTMLElement).dataset.threadId).toBe(thread.id)
     expect((cards[0] as HTMLElement).style.getPropertyValue('--thread')).toBe(thread.color)
     expect((cards[1] as HTMLElement).style.getPropertyValue('--thread')).toBe(thread.color)
+    // 挂了线的卡不应该再被当成"未挂线"打自动色标记
+    expect((cards[0] as HTMLElement).hasAttribute('data-auto-color')).toBe(false)
+    expect((cards[1] as HTMLElement).hasAttribute('data-auto-color')).toBe(false)
+  })
+
+  it('没挂线的卡带 data-auto-color，且内联 --thread 是调色板里的一个稳定颜色', async () => {
+    useBookStore.getState().__resetForTest()
+    const { container } = render(<Harness threadId={null} />)
+    await new Promise((r) => setTimeout(r, 0))
+
+    const cards = container.querySelectorAll('section.card')
+    expect(cards.length).toBe(2)
+    cards.forEach((c) => {
+      const el = c as HTMLElement
+      expect(el.hasAttribute('data-thread-id')).toBe(false)
+      expect(el.hasAttribute('data-auto-color')).toBe(true)
+      const color = el.style.getPropertyValue('--thread')
+      expect(THREAD_PALETTE).toContain(color)
+    })
+    // 同一次渲染里两张不同 cardId 的卡，颜色来自哈希，未必相同——但两张卡各自都必须
+    // 稳定地落在调色板里（上面已验证），这里只再确认两者都拿到了非空颜色。
+    expect((cards[0] as HTMLElement).style.getPropertyValue('--thread')).not.toBe('')
+    expect((cards[1] as HTMLElement).style.getPropertyValue('--thread')).not.toBe('')
   })
 
   it('章里只有一张卡时，点⇢收进盒子不应产生重复：盒子仍为空，卡仍留在正文里', async () => {
