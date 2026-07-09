@@ -145,3 +145,24 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 .tcard-text { margin:0; font-size:13px; line-height:1.7; color:var(--ink); display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; white-space:pre-wrap; }
 .tcard [data-box-action="insert"] { position:absolute; right:8px; bottom:8px; border:1px solid var(--faint); background:none; color:var(--muted); border-radius:5px; padding:4px 8px; font-size:11px; cursor:pointer; }
 .tcard [data-box-action="insert"]:hover { color:var(--ink); border-color:var(--hair); }
+
+.auth-loading { display:flex; align-items:center; justify-content:center; height:100vh; color:var(--muted); font-size:13px; }
+
+.signin-gate { display:flex; align-items:center; justify-content:center; height:100vh; padding:24px; }
+.signin-card { width:min(340px, 100%); border:1px solid var(--hair); border-radius:10px; background:var(--paper); padding:28px 24px; text-align:center; }
+.signin-title { margin:0 0 18px; font-size:14px; color:var(--ink); }
+.signin-email {
+  width:100%; box-sizing:border-box; border:1px solid var(--faint); border-radius:6px; background:var(--paper);
+  color:var(--ink); font:inherit; font-size:13px; padding:8px 10px; margin-bottom:12px;
+}
+.signin-email:focus { outline:none; border-color:var(--hair); }
+.signin-submit {
+  width:100%; border:1px solid var(--hair); border-radius:6px; background:rgba(120,158,196,.16);
+  color:var(--ink); font:inherit; font-size:13px; font-weight:600; padding:8px 10px; cursor:pointer;
+}
+.signin-submit:hover { border-color:var(--muted); }
+.signin-submit:disabled { opacity:.6; cursor:default; }
+.signin-msg { color:var(--ink); font-size:13px; line-height:1.7; margin:0 0 4px; }
+.signin-error { color:#b5533c; font-size:12px; margin:8px 0 0; }
+.signin-local { display:block; width:100%; margin-top:16px; border:none; background:none; color:var(--muted); font-size:12px; cursor:pointer; text-decoration:underline; }
+.signin-local:hover { color:var(--ink); }

@@ -17,6 +17,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.2",
     "@tiptap/core": "^3.27.3",
     "@tiptap/extension-document": "^3.27.3",
     "@tiptap/extension-paragraph": "^3.27.3",
