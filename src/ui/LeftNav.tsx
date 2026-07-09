@@ -1,11 +1,16 @@
 import { useRef, useState } from 'react'
 import { useBookStore } from '../state/bookStore'
 
-export function ChapterRail() {
+export function LeftNav() {
   const chapters = useBookStore((s) => s.book.chapters)
-  const activeId = useBookStore((s) => s.activeChapterId)
-  const setActive = useBookStore((s) => s.setActiveChapter)
+  const boxes = useBookStore((s) => s.book.boxes)
+  const viewKind = useBookStore((s) => s.viewKind)
+  const activeChapterId = useBookStore((s) => s.activeChapterId)
+  const activeBoxId = useBookStore((s) => s.activeBoxId)
+  const openChapter = useBookStore((s) => s.openChapter)
+  const openBox = useBookStore((s) => s.openBox)
   const addChapter = useBookStore((s) => s.addChapter)
+  const addBox = useBookStore((s) => s.addBox)
   const renameChapter = useBookStore((s) => s.renameChapter)
 
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -37,7 +42,7 @@ export function ChapterRail() {
 
   return (
     <nav className="rail">
-      <p className="rlabel">章</p>
+      <p className="rlabel nav-group">章</p>
       {chapters.map((c) =>
         editingId === c.id ? (
           <input
@@ -55,8 +60,8 @@ export function ChapterRail() {
         ) : (
           <div
             key={c.id}
-            className={'chap' + (c.id === activeId ? ' on' : '')}
-            onClick={() => setActive(c.id)}
+            className={'chap' + (c.id === activeChapterId && viewKind === 'chapter' ? ' on' : '')}
+            onClick={() => openChapter(c.id)}
             onDoubleClick={() => startEdit(c.id, c.title)}
           >
             {c.title}
@@ -64,6 +69,26 @@ export function ChapterRail() {
         )
       )}
       <div className="add" onClick={() => addChapter('新一章')}>＋ 新一章</div>
+
+      <p className="rlabel nav-group">盒子</p>
+      {boxes.map((b) => (
+        <div
+          key={b.id}
+          className={'chap' + (b.id === activeBoxId && viewKind === 'box' ? ' on' : '')}
+          onClick={() => openBox(b.id)}
+        >
+          {b.name}
+        </div>
+      ))}
+      <div
+        className="add"
+        onClick={() => {
+          const b = addBox('新盒子')
+          openBox(b.id)
+        }}
+      >
+        ＋ 新盒子
+      </div>
     </nav>
   )
 }

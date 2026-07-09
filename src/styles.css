@@ -4,6 +4,7 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 .app { display:grid; grid-template-columns:172px 1fr; min-height:100vh; }
 .rail { padding:20px 12px; border-right:1px solid var(--faint); font-size:13px; }
 .rlabel { font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin:0 0 10px; }
+.rail .nav-group:not(:first-child) { margin-top:20px; }
 .chap { padding:6px 8px; border-radius:5px; color:var(--muted); cursor:pointer; }
 .chap.on { color:var(--ink); font-weight:600; background:rgba(120,158,196,.12); }
 .add { padding:6px 8px; color:var(--muted); cursor:pointer; opacity:.8; }

@@ -1,14 +1,26 @@
 import { useBookStore } from '../state/bookStore'
-import { ChapterRail } from './ChapterRail'
+import { LeftNav } from './LeftNav'
 import { RiverEditor } from '../editor/RiverEditor'
 
+// 占位实现：Task 3 会替换成真正的 BoxView。
+function BoxViewPlaceholder({ boxId }: { boxId: string | null }) {
+  const box = useBookStore((s) => s.getBox(boxId))
+  return <div>盒子：{box?.name ?? ''}</div>
+}
+
 export function Workspace() {
-  const activeId = useBookStore((s) => s.activeChapterId)
+  const viewKind = useBookStore((s) => s.viewKind)
+  const activeChapterId = useBookStore((s) => s.activeChapterId)
+  const activeBoxId = useBookStore((s) => s.activeBoxId)
   return (
     <div className="app">
-      <ChapterRail />
+      <LeftNav />
       <main className="page">
-        <RiverEditor key={activeId} chapterId={activeId} />
+        {viewKind === 'box' ? (
+          <BoxViewPlaceholder key={activeBoxId} boxId={activeBoxId} />
+        ) : (
+          <RiverEditor key={activeChapterId} chapterId={activeChapterId} />
+        )}
       </main>
     </div>
   )
