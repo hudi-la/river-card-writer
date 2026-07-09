@@ -21,6 +21,9 @@ type BookState = {
   goToShelf: () => void
   renameBook: (id: string, title: string) => void
   deleteBook: (id: string) => void
+  // 供 sync 模块使用：整体替换 library 并落盘（首登下载/上传回填 uuid 时用），
+  // 绕开各 action 自己的局部更新逻辑，最小侵入地把云同步挂进 store。
+  setLibrary: (library: Library) => void
   updateDoc: (doc: object) => void
   openDoc: () => void
   addBox: (name: string) => Box | undefined
@@ -154,6 +157,10 @@ export const useBookStore = create<BookState>((set, get) => {
       set(wasActive ? { library, shell: 'shelf', viewKind: 'doc', activeBoxId: null, carried: null } : { library })
     },
 
+    setLibrary: (library) => {
+      persist(library)
+      set({ library })
+    },
     updateDoc: (doc) => {
       withActiveBook((book) => ({ book: { ...book, doc }, result: undefined }))
     },
