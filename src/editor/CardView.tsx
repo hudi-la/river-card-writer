@@ -4,6 +4,7 @@ import { useBookStore } from '../state/bookStore'
 
 export function CardView({ editor, getPos, node }: NodeViewProps) {
   const threadId: string | null = node.attrs.threadId
+  const role: string = node.attrs.role || 'body'
   const thread = useBookStore((s) => s.getThread(threadId))
   const threads = useBookStore((s) => s.book.threads)
   const addThread = useBookStore((s) => s.addThread)
@@ -79,7 +80,7 @@ export function CardView({ editor, getPos, node }: NodeViewProps) {
 
   const isFirst = typeof getPos() === 'number' && getPos() === 0
   return (
-    <NodeViewWrapper as="section" className="card" data-thread-id={threadId || undefined} style={style}>
+    <NodeViewWrapper as="section" className="card" data-thread-id={threadId || undefined} data-role={role} style={style}>
       <div className="card-ctrls" contentEditable={false}>
         <button data-card-ctrl="up" title="上移" disabled={isFirst} onMouseDown={run('up')}>
           ▲

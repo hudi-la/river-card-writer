@@ -104,4 +104,25 @@ describe('CardView', () => {
     expect(editorRef!.getJSON().content!.length).toBe(1)
     expect(editorRef!.getJSON().content![0].attrs.cardId).toBe('only')
   })
+
+  it('role:"heading" 的卡渲染出 section.card[data-role="heading"]', async () => {
+    function RoleHarness() {
+      const editor = useEditor({
+        extensions: baseExtensions,
+        immediatelyRender: false,
+        content: {
+          type: 'doc',
+          content: [
+            { type: 'card', attrs: { cardId: 'r0', role: 'heading' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '标题' }] }] },
+          ],
+        },
+      })
+      if (!editor) return null
+      return <EditorContent editor={editor} />
+    }
+    const { container } = render(<RoleHarness />)
+    await new Promise((r) => setTimeout(r, 0))
+    const card = container.querySelector('section.card[data-role="heading"]')
+    expect(card).toBeTruthy()
+  })
 })
