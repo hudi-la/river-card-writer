@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import { Editor } from '@tiptap/core'
+import { baseExtensions } from '../editor/schema'
 import { useBookStore, EMPTY_DOC, load, normalizeBook } from './bookStore'
 
 beforeEach(() => {
@@ -174,6 +176,51 @@ describe('bookStore', () => {
     expect((b as any).threads).toBeUndefined()
     expect((b as any).chapters).toBeUndefined()
     expect((b as any).activeChapterId).toBeUndefined()
+  })
+
+  it('normalizeBook 旧格式：章节标题为空/纯空白时跳过章标题卡，且迁移出的 doc 能被真实 Editor 无错加载（回归：ProseMirror 空文本节点会抛错并拖垮整本书迁移）', () => {
+    const cardA = { type: 'card', attrs: { cardId: 'a' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'A' }] }] }
+    const cardB = { type: 'card', attrs: { cardId: 'b' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'B' }] }] }
+    const raw = {
+      id: 'x',
+      title: 't',
+      chapters: [
+        { id: 'c1', title: '', doc: { type: 'doc', content: [cardA] } },
+        { id: 'c2', title: '   ', doc: { type: 'doc', content: [cardB] } },
+      ],
+    }
+    const b = normalizeBook(raw)
+    // No title cards emitted for blank titles — only the two chapters' own cards.
+    expect(b.doc.content).toHaveLength(2)
+    expect(b.doc.content[0]).toEqual(cardA)
+    expect(b.doc.content[1]).toEqual(cardB)
+
+    // Key regression assertion: the migrated doc must load into a real
+    // TipTap Editor without throwing "Empty text nodes are not allowed".
+    expect(() => {
+      const editor = new Editor({ extensions: baseExtensions, content: b.doc })
+      editor.destroy()
+    }).not.toThrow()
+  })
+
+  it('normalizeBook 旧格式：章节有有效标题但 doc.content 缺失/为空时不崩溃，只贡献标题卡', () => {
+    const raw = {
+      id: 'x',
+      title: 't',
+      chapters: [
+        { id: 'c1', title: '第一章' }, // doc missing entirely
+        { id: 'c2', title: '第二章', doc: { type: 'doc', content: [] } }, // doc.content empty
+      ],
+    }
+    const b = normalizeBook(raw)
+    expect(b.doc.content).toHaveLength(2)
+    expect(b.doc.content[0].content[0].content[0].text).toBe('第一章')
+    expect(b.doc.content[1].content[0].content[0].text).toBe('第二章')
+
+    expect(() => {
+      const editor = new Editor({ extensions: baseExtensions, content: b.doc })
+      editor.destroy()
+    }).not.toThrow()
   })
 
   it('normalizeBook 旧格式缺 boxes 时补空数组', () => {

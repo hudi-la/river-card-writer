@@ -46,7 +46,11 @@ export function normalizeBook(raw: any): Book {
   const chapters = Array.isArray(raw.chapters) ? raw.chapters : []
   const content: any[] = []
   for (const ch of chapters) {
-    content.push(chapterTitleCard(ch.title))
+    // 空文本节点会让 ProseMirror 在加载时抛错（"Empty text nodes are not
+    // allowed"），进而拖垮整本书的迁移。标题为空/纯空白/缺失时跳过标题卡，
+    // 该章的卡片正文照常拼入。
+    const title = typeof ch.title === 'string' ? ch.title.trim() : ''
+    if (title) content.push(chapterTitleCard(title))
     const chapterCards = Array.isArray(ch.doc?.content) ? ch.doc.content : []
     content.push(...chapterCards)
   }
