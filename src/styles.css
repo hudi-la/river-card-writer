@@ -13,6 +13,8 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 .chap { padding:6px 8px; border-radius:5px; color:var(--muted); cursor:pointer; }
 .chap.on { color:var(--ink); font-weight:600; background:rgba(120,158,196,.12); }
 .add { padding:6px 8px; color:var(--muted); cursor:pointer; opacity:.8; }
+.outline-item.outline-h2 { padding-left:20px; font-size:.95em; }
+.outline-hint { padding:6px 8px; color:var(--muted); opacity:.6; font-size:12px; }
 .chap-edit { width:100%; border:1px solid var(--hair); border-radius:4px; background:var(--paper); color:var(--ink); font:inherit; padding:4px 6px; }
 .page { padding:36px 0; display:flex; justify-content:center; position:relative; }
 .river-wrap { width: min(var(--reading-measure), 90%); }

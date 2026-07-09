@@ -1,59 +1,53 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { LeftNav } from './LeftNav'
+import { LeftNav, outlineFromDoc } from './LeftNav'
 import { useBookStore } from '../state/bookStore'
+
+function docWithHeadings() {
+  return {
+    type: 'doc',
+    content: [
+      { type: 'card', content: [{ type: 'paragraph', attrs: { style: 'chapter' }, content: [{ type: 'text', text: '一' }] }] },
+      { type: 'card', content: [{ type: 'paragraph', attrs: { style: 'h1' }, content: [{ type: 'text', text: '第一节' }] }] },
+      { type: 'card', content: [{ type: 'paragraph', content: [{ type: 'text', text: '正文段落，不算标题' }] }] },
+      { type: 'card', content: [{ type: 'paragraph', attrs: { style: 'chapter' }, content: [{ type: 'text', text: '二' }] }] },
+    ],
+  }
+}
 
 beforeEach(() => {
   localStorage.clear()
   useBookStore.getState().__resetForTest()
 })
 
+describe('outlineFromDoc', () => {
+  it('按顺序抽出 chapter(level 1)/h1(level 2) 段落，忽略 body 段落，index 为标题间的序号', () => {
+    expect(outlineFromDoc(docWithHeadings())).toEqual([
+      { level: 1, text: '一', index: 0 },
+      { level: 2, text: '第一节', index: 1 },
+      { level: 1, text: '二', index: 2 },
+    ])
+  })
+
+  it('空文档（无标题段落）返回空数组', () => {
+    expect(outlineFromDoc(useBookStore.getState().book.doc)).toEqual([])
+  })
+})
+
 describe('LeftNav', () => {
-  it('双击章名可改名', async () => {
+  it('目录区显示 doc 里的章/节标题文本', () => {
+    useBookStore.getState().updateDoc(docWithHeadings())
     render(<LeftNav />)
-    const chap = screen.getByText('第一章')
-    await userEvent.dblClick(chap)
-    const input = screen.getByDisplayValue('第一章')
-    await userEvent.clear(input)
-    await userEvent.type(input, '离岸{Enter}')
-    expect(useBookStore.getState().book.chapters[0].title).toBe('离岸')
+    expect(screen.getByText('一')).toBeTruthy()
+    expect(screen.getByText('第一节')).toBeTruthy()
+    expect(screen.getByText('二')).toBeTruthy()
+    expect(screen.queryByText('正文段落，不算标题')).toBeNull()
   })
 
-  it('单击仍然只是切换 active，不进入编辑态', async () => {
-    useBookStore.getState().addChapter('第二章')
+  it('空文档时目录区显示提示，而不是空白', () => {
     render(<LeftNav />)
-    const second = screen.getByText('第二章')
-    await userEvent.click(second)
-    expect(useBookStore.getState().activeChapterId).toBe(useBookStore.getState().book.chapters[1].id)
-    expect(screen.queryByDisplayValue('第二章')).toBeNull()
-  })
-
-  it('Escape 取消改名：输入草稿后按 Escape，store 里仍是原标题（不会被卸载时的 blur 悄悄存回）', async () => {
-    render(<LeftNav />)
-    const chap = screen.getByText('第一章')
-    await userEvent.dblClick(chap)
-    const input = screen.getByDisplayValue('第一章')
-    await userEvent.clear(input)
-    await userEvent.type(input, '未提交的草稿')
-    await userEvent.keyboard('{Escape}')
-    expect(useBookStore.getState().book.chapters[0].title).toBe('第一章')
-    expect(screen.queryByDisplayValue('未提交的草稿')).toBeNull()
-  })
-
-  it('单击章后 openChapter 生效：viewKind 回到 chapter（回归：不是老的 setActiveChapter）', async () => {
-    useBookStore.getState().addBox('盒子甲')
-    useBookStore.setState({ viewKind: 'box' })
-    render(<LeftNav />)
-    await userEvent.click(screen.getByText('第一章'))
-    expect(useBookStore.getState().viewKind).toBe('chapter')
-    expect(useBookStore.getState().activeChapterId).toBe(useBookStore.getState().book.chapters[0].id)
-  })
-
-  it('渲染后能看到"章"与"盒子"两个分组标题', () => {
-    render(<LeftNav />)
-    expect(screen.getByText('章')).toBeTruthy()
-    expect(screen.getByText('盒子')).toBeTruthy()
+    expect(screen.getByText('还没有章节标题')).toBeTruthy()
   })
 
   it('点"＋ 新盒子"后 store.boxes +1，并进入该盒子', async () => {
@@ -66,10 +60,12 @@ describe('LeftNav', () => {
     expect(useBookStore.getState().activeBoxId).toBe(boxes[0].id)
   })
 
-  it('点某盒子后 viewKind 变为 box，且该盒子被记为 active', async () => {
+  it('点某盒子后 viewKind 变为 box，且该盒子被记为 active（data-box-id 供拖放命中）', async () => {
     const box = useBookStore.getState().addBox('素材盒')
     render(<LeftNav />)
-    await userEvent.click(screen.getByText('素材盒'))
+    const row = screen.getByText('素材盒')
+    expect(row.closest('[data-box-id]')?.getAttribute('data-box-id')).toBe(box.id)
+    await userEvent.click(row)
     expect(useBookStore.getState().viewKind).toBe('box')
     expect(useBookStore.getState().activeBoxId).toBe(box.id)
   })
