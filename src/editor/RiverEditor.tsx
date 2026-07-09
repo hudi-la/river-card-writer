@@ -4,6 +4,50 @@ import { baseExtensions } from './schema'
 import { useBookStore } from '../state/bookStore'
 
 const HANDLE_ZONE_PX = 28 // .card 左内边距 40px 里，把手落在最左侧这一段
+const DRAG_MOVE_THRESHOLD_PX = 4 // 小于这个位移当作一次点击，不进入拖拽态
+
+type DragState = {
+  cardId: string
+  sourceEl: HTMLElement
+  ghostEl: HTMLElement
+  indicatorEl: HTMLElement
+  startX: number
+  startY: number
+  moved: boolean
+}
+
+// 算出「放到这里」对应的 moveCardTo targetIndex：数一下光标之上、除了被拖那张卡以外
+// 还有几张卡的中点在光标上方——这正好是 moveCardTo 的 splice 语义（摘掉拖拽卡之后剩下
+// 那串卡里的插入下标），不需要再做额外换算。
+function otherCards(dom: HTMLElement, dragCardId: string): HTMLElement[] {
+  return Array.from(dom.querySelectorAll<HTMLElement>('.card')).filter((el) => el.dataset.cardId !== dragCardId)
+}
+
+function dropIndexAt(dom: HTMLElement, dragCardId: string, clientY: number): number {
+  const cards = otherCards(dom, dragCardId)
+  for (let i = 0; i < cards.length; i++) {
+    const rect = cards[i].getBoundingClientRect()
+    if (clientY < rect.top + rect.height / 2) return i
+  }
+  return cards.length
+}
+
+function indicatorRectAt(dom: HTMLElement, dragCardId: string, clientY: number): { top: number; left: number; width: number } | null {
+  const cards = otherCards(dom, dragCardId)
+  if (cards.length === 0) return null
+  const idx = dropIndexAt(dom, dragCardId, clientY)
+  if (idx <= 0) {
+    const r = cards[0].getBoundingClientRect()
+    return { top: r.top, left: r.left, width: r.width }
+  }
+  if (idx >= cards.length) {
+    const r = cards[cards.length - 1].getBoundingClientRect()
+    return { top: r.bottom, left: r.left, width: r.width }
+  }
+  const prev = cards[idx - 1].getBoundingClientRect()
+  const next = cards[idx].getBoundingClientRect()
+  return { top: (prev.bottom + next.top) / 2, left: next.left, width: next.width }
+}
 
 export function RiverEditor({ chapterId }: { chapterId: string }) {
   const chapter = useBookStore((s) => s.book.chapters.find((c) => c.id === chapterId))!
@@ -13,7 +57,7 @@ export function RiverEditor({ chapterId }: { chapterId: string }) {
   const takeCardFromBox = useBookStore((s) => s.takeCardFromBox)
   const cancelCarry = useBookStore((s) => s.cancelCarry)
   const dropCarried = useBookStore((s) => s.dropCarried)
-  const dragStart = useRef<{ y: number; card: HTMLElement } | null>(null)
+  const dragRef = useRef<DragState | null>(null)
   const carriedRef = useRef(carried)
   carriedRef.current = carried
 
@@ -25,42 +69,106 @@ export function RiverEditor({ chapterId }: { chapterId: string }) {
     editorProps: { attributes: { class: 'river' } },
   })
 
+  // ⠿ 把手的真拖拽：抓住 -> 一个跟着光标走的浮动预览 + 卡之间的落点线 -> 松手落定。
+  // 全部走命令式 DOM（ghost/indicator 元素直接 append 到 body），拖拽过程中每次
+  // pointermove 都要更新，走 React state 重渲染代价太大也没必要。
   useEffect(() => {
     if (!editor) return
     const dom = editor.view.dom as HTMLElement
 
+    const endDrag = () => {
+      const drag = dragRef.current
+      if (!drag) return
+      drag.ghostEl.remove()
+      drag.indicatorEl.remove()
+      drag.sourceEl.classList.remove('dragging')
+      dragRef.current = null
+    }
+
     const onPointerDown = (e: PointerEvent) => {
-      const card = (e.target as HTMLElement).closest<HTMLElement>('.card')
+      if (e.button !== 0) return
+      if (carriedRef.current) return // 带着盒子里的卡时，落定点击优先，不进入拖拽
+      const target = e.target as HTMLElement
+      if (target.closest('.card-ctrls')) return
+      const card = target.closest<HTMLElement>('.card')
       if (!card) return
       const rect = card.getBoundingClientRect()
       // 把手渲染在 card 左侧 ::after（约 14px~26px 处），只在这段区域内响应
       if (e.clientX - rect.left > HANDLE_ZONE_PX) return
-      dragStart.current = { y: e.clientY, card }
-      // 把选区挪到抓取的这张 card 里，这样 pointerup 时 moveCardUp/Down 操作的是它，
-      // 而不是原本光标所在的那张 card
-      try {
-        const pos = editor.view.posAtDOM(card, 0)
-        editor.commands.setTextSelection(pos + 1)
-      } catch {
-        // card 未挂载到编辑器 DOM 时忽略
+      const cardId = card.dataset.cardId
+      if (!cardId) return
+      e.preventDefault()
+
+      const ghost = document.createElement('div')
+      ghost.className = 'card-drag-ghost'
+      const preview = card.querySelector('.card-body')?.textContent?.trim().slice(0, 60) || '（空卡）'
+      ghost.textContent = preview
+      ghost.style.display = 'none' // 只在真正越过拖拽阈值之后才现身，纯点击不会闪一下
+      document.body.appendChild(ghost)
+
+      const indicator = document.createElement('div')
+      indicator.className = 'card-drop-indicator'
+      indicator.style.display = 'none'
+      document.body.appendChild(indicator)
+
+      dragRef.current = {
+        cardId,
+        sourceEl: card,
+        ghostEl: ghost,
+        indicatorEl: indicator,
+        startX: e.clientX,
+        startY: e.clientY,
+        moved: false,
+      }
+    }
+
+    const positionGhost = (ghost: HTMLElement, x: number, y: number) => {
+      ghost.style.transform = `translate(${x + 12}px, ${y + 12}px)`
+    }
+
+    const onPointerMove = (e: PointerEvent) => {
+      const drag = dragRef.current
+      if (!drag) return
+      if (!drag.moved) {
+        const dx = e.clientX - drag.startX
+        const dy = e.clientY - drag.startY
+        if (Math.hypot(dx, dy) < DRAG_MOVE_THRESHOLD_PX) return
+        drag.moved = true
+        drag.ghostEl.style.display = 'block'
+        drag.sourceEl.classList.add('dragging')
+      }
+      positionGhost(drag.ghostEl, e.clientX, e.clientY)
+      const rect = indicatorRectAt(dom, drag.cardId, e.clientY)
+      if (rect) {
+        drag.indicatorEl.style.display = 'block'
+        drag.indicatorEl.style.top = `${rect.top}px`
+        drag.indicatorEl.style.left = `${rect.left}px`
+        drag.indicatorEl.style.width = `${rect.width}px`
+      } else {
+        drag.indicatorEl.style.display = 'none'
       }
     }
 
     const onPointerUp = (e: PointerEvent) => {
-      const start = dragStart.current
-      dragStart.current = null
-      if (!start) return
-      const dy = e.clientY - start.y
-      if (Math.abs(dy) < 4) return
-      if (dy < 0) editor.commands.moveCardUp()
-      else editor.commands.moveCardDown()
+      const drag = dragRef.current
+      if (!drag) {
+        return
+      }
+      if (drag.moved) {
+        const targetIndex = dropIndexAt(dom, drag.cardId, e.clientY)
+        editor.commands.moveCardTo(drag.cardId, targetIndex)
+      }
+      endDrag()
     }
 
     dom.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
     return () => {
       dom.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', onPointerUp)
+      endDrag()
     }
   }, [editor])
 

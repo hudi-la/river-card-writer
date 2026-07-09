@@ -46,9 +46,23 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 .river { outline:none; }
 .river .card { position:relative; padding:12px 16px 12px 40px; }
 .river .card[data-thread-id] { background: color-mix(in srgb, var(--thread) 15%, transparent); }
+.river .card[data-auto-color] { background: color-mix(in srgb, var(--thread) 11%, transparent); }
 .river .card + .card::before { content:""; position:absolute; left:40px; right:16px; top:0; border-top:1px solid var(--hair); }
 .river .card::after { content:"⠿"; position:absolute; left:14px; top:14px; color:var(--muted); opacity:0; cursor:grab; font-size:12px; }
 .river .card:hover::after { opacity:.5; }
+.river .card.dragging { opacity:.35; }
+.card-drag-ghost {
+  position: fixed; top: 0; left: 0; z-index: 50; pointer-events: none;
+  max-width: 320px; padding: 8px 12px; border-radius: 6px;
+  background: var(--paper); border: 1px solid var(--hair); box-shadow: 0 6px 20px rgba(0,0,0,.14);
+  font-family: var(--reading-font); font-size: 13px; line-height: 1.6; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.card-drop-indicator {
+  position: fixed; z-index: 49; pointer-events: none;
+  height: 2px; border-radius: 1px; background: var(--thread, #7fa3c4);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--thread, #7fa3c4) 20%, transparent);
+}
 /* Cluster lives in the gutter just past the right edge of the text column —
    never over the card's own text — revealed on card hover. The gap to the
    text is a transparent LEFT PADDING (part of this element), not an empty

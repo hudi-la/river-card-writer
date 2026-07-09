@@ -5,6 +5,7 @@ import Text from '@tiptap/extension-text'
 import Placeholder from '@tiptap/extension-placeholder'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import { EditorState, Plugin, Transaction, TextSelection } from '@tiptap/pm/state'
+import type { Node as PMNode } from '@tiptap/pm/model'
 import { nanoid } from 'nanoid'
 import { CardView } from './CardView'
 
@@ -17,6 +18,7 @@ declare module '@tiptap/core' {
       mergeCardBackward: () => ReturnType
       moveCardUp: () => ReturnType
       moveCardDown: () => ReturnType
+      moveCardTo: (cardId: string, targetIndex: number) => ReturnType
       insertCardAfter: () => ReturnType
       appendCard: () => ReturnType
       setCardThread: (threadId: string | null) => ReturnType
@@ -67,6 +69,42 @@ function moveCard(state: EditorState, dispatch: ((tr: Transaction) => void) | un
       tr.insert(prevPos, cardNode)
       dispatch(tr.scrollIntoView())
     }
+  }
+  return true
+}
+
+// 把 cardId 指定的卡挪到 targetIndex —— 语义是"先从文档里摘掉这张卡，再把它插入到
+// 剩下那串卡（长度 = 原 childCount - 1）里第 targetIndex 个位置"，即标准的拖拽排序
+// splice 语义：move(A, 2) on [A,B,C] → 摘掉 A 剩 [B,C] → 插到 index2（末尾）→ [B,C,A]。
+function moveCardToIndex(state: EditorState, dispatch: ((tr: Transaction) => void) | undefined, cardId: string, targetIndex: number): boolean {
+  const doc = state.doc
+  let dragPos = -1
+  let dragNode: PMNode | null = null
+  let offset = 0
+  for (let i = 0; i < doc.childCount; i++) {
+    const child = doc.child(i)
+    if (dragPos === -1 && child.type.name === 'card' && child.attrs.cardId === cardId) {
+      dragPos = offset
+      dragNode = child
+    }
+    offset += child.nodeSize
+  }
+  if (dragPos === -1 || !dragNode) return false
+  const node: PMNode = dragNode
+  const clamped = Math.max(0, Math.min(targetIndex, doc.childCount - 1))
+  if (dispatch) {
+    const tr = state.tr
+    tr.delete(dragPos, dragPos + node.nodeSize)
+    // 删除之后重新在（剩下的）doc 里数到第 clamped 个 child 的 offset 作为插入点；
+    // 数不到（clamped 落在末尾之外）就插到文档末尾。
+    let insertPos: number | null = null
+    let idx = 0
+    tr.doc.forEach((_node, offset) => {
+      if (idx === clamped && insertPos === null) insertPos = offset
+      idx++
+    })
+    tr.insert(insertPos === null ? tr.doc.content.size : insertPos, node)
+    dispatch(tr.scrollIntoView())
   }
   return true
 }
@@ -170,6 +208,9 @@ export const Card = Node.create({
       moveCardDown:
         () =>
         ({ state, dispatch }) => moveCard(state, dispatch, +1),
+      moveCardTo:
+        (cardId: string, targetIndex: number) =>
+        ({ state, dispatch }) => moveCardToIndex(state, dispatch, cardId, targetIndex),
       insertCardAfter:
         () =>
         ({ state, dispatch }) => {
