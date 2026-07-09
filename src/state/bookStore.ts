@@ -4,28 +4,17 @@ import { nanoid } from 'nanoid'
 export const EMPTY_DOC = { type: 'doc', content: [{ type: 'card', content: [{ type: 'paragraph' }] }] }
 const KEY = 'card-writer:book'
 
-export type Chapter = { id: string; title: string; doc: object }
-export type Thread = { id: string; name: string; color: string }
 export type Box = { id: string; name: string; cards: any[] }
-export type Book = { id: string; title: string; chapters: Chapter[]; threads: Thread[]; boxes: Box[] }
-
-export const THREAD_PALETTE = ['#7fa3c4', '#d98b7a', '#8bad86', '#d8b46a', '#a98cc4', '#6bb0ad']
+export type Book = { id: string; title: string; doc: any; boxes: Box[] }
 
 type BookState = {
   book: Book
-  activeChapterId: string
-  viewKind: 'chapter' | 'box'
+  viewKind: 'doc' | 'box'
   activeBoxId: string | null
   carried: { boxId: string; cardId: string } | null
-  addChapter: (title: string) => void
-  setActiveChapter: (id: string) => void
-  updateChapterDoc: (id: string, doc: object) => void
-  renameChapter: (id: string, title: string) => void
-  getActiveChapter: () => Chapter
-  addThread: (name: string, color?: string) => Thread
-  getThread: (id: string | null) => Thread | undefined
+  updateDoc: (doc: object) => void
+  openDoc: () => void
   addBox: (name: string) => Box
-  openChapter: (id: string) => void
   openBox: (id: string) => void
   parkCard: (boxId: string, cardJSON: any) => void
   takeCardFromBox: (boxId: string, cardId: string) => any | undefined
@@ -37,28 +26,46 @@ type BookState = {
 }
 
 function freshBook(): Book {
-  const ch: Chapter = { id: nanoid(), title: '第一章', doc: structuredClone(EMPTY_DOC) }
-  return { id: nanoid(), title: '未命名', chapters: [ch], threads: [], boxes: [] }
+  return { id: nanoid(), title: '未命名', doc: structuredClone(EMPTY_DOC), boxes: [] }
 }
-export function normalizeBook(raw: any): Book {
+
+// 把一章的段落文本拼成一张"章标题卡"：card > paragraph(style:'chapter', text: chapter.title)。
+function chapterTitleCard(title: string) {
   return {
-    id: raw.id,
-    title: raw.title,
-    chapters: raw.chapters,
-    threads: Array.isArray(raw.threads) ? raw.threads : [],
-    boxes: Array.isArray(raw.boxes) ? raw.boxes : [],
+    type: 'card',
+    content: [{ type: 'paragraph', attrs: { style: 'chapter' }, content: [{ type: 'text', text: title }] }],
   }
 }
+
+export function normalizeBook(raw: any): Book {
+  const boxes: Box[] = Array.isArray(raw.boxes) ? raw.boxes : []
+  if (raw.doc) {
+    return { id: raw.id, title: raw.title, doc: raw.doc, boxes }
+  }
+  // 旧格式迁移：每章 → [章标题卡, ...该章的卡]，顺次拼进一个大 doc。
+  const chapters = Array.isArray(raw.chapters) ? raw.chapters : []
+  const content: any[] = []
+  for (const ch of chapters) {
+    content.push(chapterTitleCard(ch.title))
+    const chapterCards = Array.isArray(ch.doc?.content) ? ch.doc.content : []
+    content.push(...chapterCards)
+  }
+  const doc = content.length > 0 ? { type: 'doc', content } : structuredClone(EMPTY_DOC)
+  return { id: raw.id, title: raw.title, doc, boxes }
+}
+
 export function load(): Book {
   try {
     const raw = localStorage.getItem(KEY)
     if (raw) {
       const b = JSON.parse(raw)
+      if (b && b.doc) return normalizeBook(b)
       if (b && Array.isArray(b.chapters) && b.chapters.length > 0 && b.chapters[0]?.id) return normalizeBook(b)
     }
   } catch {}
   return freshBook()
 }
+
 function persist(book: Book) {
   try {
     localStorage.setItem(KEY, JSON.stringify(book))
@@ -71,43 +78,15 @@ export const useBookStore = create<BookState>((set, get) => {
   const initial = load()
   return {
     book: initial,
-    activeChapterId: initial.chapters[0].id,
-    viewKind: 'chapter',
+    viewKind: 'doc',
     activeBoxId: null,
     carried: null,
-    addChapter: (title) => {
-      const ch: Chapter = { id: nanoid(), title, doc: structuredClone(EMPTY_DOC) }
-      const book = { ...get().book, chapters: [...get().book.chapters, ch] }
+    updateDoc: (doc) => {
+      const book = { ...get().book, doc }
       persist(book)
       set({ book })
     },
-    setActiveChapter: (id) => set({ activeChapterId: id }),
-    renameChapter: (id, title) => {
-      const trimmed = title.trim()
-      if (!trimmed) return
-      const book = { ...get().book, chapters: get().book.chapters.map((c) => (c.id === id ? { ...c, title: trimmed } : c)) }
-      persist(book)
-      set({ book })
-    },
-    updateChapterDoc: (id, doc) => {
-      const book = { ...get().book, chapters: get().book.chapters.map((c) => (c.id === id ? { ...c, doc } : c)) }
-      persist(book)
-      set({ book })
-    },
-    getActiveChapter: () => {
-      const { book, activeChapterId } = get()
-      return book.chapters.find((c) => c.id === activeChapterId) ?? book.chapters[0]
-    },
-    addThread: (name, color) => {
-      const used = new Set(get().book.threads.map((t) => t.color))
-      const auto = THREAD_PALETTE.find((c) => !used.has(c)) ?? THREAD_PALETTE[get().book.threads.length % THREAD_PALETTE.length]
-      const thread: Thread = { id: nanoid(), name, color: color ?? auto }
-      const book = { ...get().book, threads: [...get().book.threads, thread] }
-      persist(book)
-      set({ book })
-      return thread
-    },
-    getThread: (id) => (id ? get().book.threads.find((t) => t.id === id) : undefined),
+    openDoc: () => set({ viewKind: 'doc' }),
     addBox: (name) => {
       const box: Box = { id: nanoid(), name, cards: [] }
       const book = { ...get().book, boxes: [...get().book.boxes, box] }
@@ -115,7 +94,6 @@ export const useBookStore = create<BookState>((set, get) => {
       set({ book })
       return box
     },
-    openChapter: (id) => set({ viewKind: 'chapter', activeChapterId: id }),
     openBox: (id) => set({ viewKind: 'box', activeBoxId: id }),
     parkCard: (boxId, cardJSON) => {
       const book = { ...get().book, boxes: get().book.boxes.map((b) => (b.id === boxId ? { ...b, cards: [...b.cards, cardJSON] } : b)) }
@@ -136,7 +114,7 @@ export const useBookStore = create<BookState>((set, get) => {
       // Non-destructive: the card stays in the box until the moment of drop.
       // Just replacing the reference here is safe — nothing was ever removed.
       set({ carried: { boxId, cardId } })
-      get().openChapter(get().activeChapterId)
+      get().openDoc()
     },
     cancelCarry: () => {
       // Card was never removed from the box, so there's nothing to put back.
@@ -146,7 +124,7 @@ export const useBookStore = create<BookState>((set, get) => {
     __resetForTest: () => {
       const book = freshBook()
       persist(book)
-      set({ book, activeChapterId: book.chapters[0].id, viewKind: 'chapter', activeBoxId: null, carried: null })
+      set({ book, viewKind: 'doc', activeBoxId: null, carried: null })
     },
   }
 })
