@@ -81,4 +81,68 @@ describe('bookStore', () => {
     expect(useBookStore.getState().getThread(t.id)).toEqual(t)
     expect(useBookStore.getState().getThread(null)).toBeUndefined()
   })
+  it('初始 boxes 为空、viewKind 为 chapter、activeBoxId 为 null', () => {
+    const s = useBookStore.getState()
+    expect(s.book.boxes).toEqual([])
+    expect(s.viewKind).toBe('chapter')
+    expect(s.activeBoxId).toBeNull()
+  })
+  it('addBox 建盒、持久化、返回它', () => {
+    const box = useBookStore.getState().addBox('素材')
+    expect(box.name).toBe('素材')
+    expect(box.cards).toEqual([])
+    expect(useBookStore.getState().book.boxes).toHaveLength(1)
+    const raw = JSON.parse(localStorage.getItem('card-writer:book')!)
+    expect(raw.boxes[0].name).toBe('素材')
+  })
+  it('openBox 设置 viewKind 为 box 并设 activeBoxId', () => {
+    const box = useBookStore.getState().addBox('素材')
+    useBookStore.getState().openBox(box.id)
+    const s = useBookStore.getState()
+    expect(s.viewKind).toBe('box')
+    expect(s.activeBoxId).toBe(box.id)
+  })
+  it('openChapter 设置 viewKind 为 chapter 并设 activeChapterId', () => {
+    const box = useBookStore.getState().addBox('素材')
+    useBookStore.getState().openBox(box.id)
+    const chapterId = useBookStore.getState().book.chapters[0].id
+    useBookStore.getState().openChapter(chapterId)
+    const s = useBookStore.getState()
+    expect(s.viewKind).toBe('chapter')
+    expect(s.activeChapterId).toBe(chapterId)
+  })
+  it('parkCard 把 cardJSON 追加进盒并持久化', () => {
+    const box = useBookStore.getState().addBox('素材')
+    const cardJSON = { type: 'card', attrs: { cardId: 'c1', threadId: null }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] }
+    useBookStore.getState().parkCard(box.id, cardJSON)
+    const b = useBookStore.getState().getBox(box.id)
+    expect(b!.cards).toEqual([cardJSON])
+    const raw = JSON.parse(localStorage.getItem('card-writer:book')!)
+    expect(raw.boxes.find((x: any) => x.id === box.id).cards).toEqual([cardJSON])
+  })
+  it('takeCardFromBox 移除并返回该卡，盒里少一张，且持久化', () => {
+    const box = useBookStore.getState().addBox('素材')
+    const cardJSON = { type: 'card', attrs: { cardId: 'c1', threadId: null }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] }
+    useBookStore.getState().parkCard(box.id, cardJSON)
+    const taken = useBookStore.getState().takeCardFromBox(box.id, 'c1')
+    expect(taken).toEqual(cardJSON)
+    const b = useBookStore.getState().getBox(box.id)
+    expect(b!.cards).toEqual([])
+    const raw = JSON.parse(localStorage.getItem('card-writer:book')!)
+    expect(raw.boxes.find((x: any) => x.id === box.id).cards).toEqual([])
+  })
+  it('takeCardFromBox 找不到卡返回 undefined', () => {
+    const box = useBookStore.getState().addBox('素材')
+    const taken = useBookStore.getState().takeCardFromBox(box.id, 'nope')
+    expect(taken).toBeUndefined()
+  })
+  it('getBox 按 id 查找，null 返回 undefined', () => {
+    const box = useBookStore.getState().addBox('素材')
+    expect(useBookStore.getState().getBox(box.id)).toEqual(box)
+    expect(useBookStore.getState().getBox(null)).toBeUndefined()
+  })
+  it('normalizeBook 给缺 boxes 的旧数据补空数组', () => {
+    const b = normalizeBook({ id: 'x', title: 't', chapters: [{ id: 'c', title: 'c', doc: { type: 'doc', content: [{ type: 'card', content: [{ type: 'paragraph' }] }] } }] })
+    expect(b.boxes).toEqual([])
+  })
 })

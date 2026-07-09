@@ -6,13 +6,16 @@ const KEY = 'card-writer:book'
 
 export type Chapter = { id: string; title: string; doc: object }
 export type Thread = { id: string; name: string; color: string }
-export type Book = { id: string; title: string; chapters: Chapter[]; threads: Thread[] }
+export type Box = { id: string; name: string; cards: any[] }
+export type Book = { id: string; title: string; chapters: Chapter[]; threads: Thread[]; boxes: Box[] }
 
 export const THREAD_PALETTE = ['#7fa3c4', '#d98b7a', '#8bad86', '#d8b46a', '#a98cc4', '#6bb0ad']
 
 type BookState = {
   book: Book
   activeChapterId: string
+  viewKind: 'chapter' | 'box'
+  activeBoxId: string | null
   addChapter: (title: string) => void
   setActiveChapter: (id: string) => void
   updateChapterDoc: (id: string, doc: object) => void
@@ -20,15 +23,27 @@ type BookState = {
   getActiveChapter: () => Chapter
   addThread: (name: string, color?: string) => Thread
   getThread: (id: string | null) => Thread | undefined
+  addBox: (name: string) => Box
+  openChapter: (id: string) => void
+  openBox: (id: string) => void
+  parkCard: (boxId: string, cardJSON: any) => void
+  takeCardFromBox: (boxId: string, cardId: string) => any | undefined
+  getBox: (id: string | null) => Box | undefined
   __resetForTest: () => void
 }
 
 function freshBook(): Book {
   const ch: Chapter = { id: nanoid(), title: '第一章', doc: structuredClone(EMPTY_DOC) }
-  return { id: nanoid(), title: '未命名', chapters: [ch], threads: [] }
+  return { id: nanoid(), title: '未命名', chapters: [ch], threads: [], boxes: [] }
 }
 export function normalizeBook(raw: any): Book {
-  return { id: raw.id, title: raw.title, chapters: raw.chapters, threads: Array.isArray(raw.threads) ? raw.threads : [] }
+  return {
+    id: raw.id,
+    title: raw.title,
+    chapters: raw.chapters,
+    threads: Array.isArray(raw.threads) ? raw.threads : [],
+    boxes: Array.isArray(raw.boxes) ? raw.boxes : [],
+  }
 }
 export function load(): Book {
   try {
@@ -53,6 +68,8 @@ export const useBookStore = create<BookState>((set, get) => {
   return {
     book: initial,
     activeChapterId: initial.chapters[0].id,
+    viewKind: 'chapter',
+    activeBoxId: null,
     addChapter: (title) => {
       const ch: Chapter = { id: nanoid(), title, doc: structuredClone(EMPTY_DOC) }
       const book = { ...get().book, chapters: [...get().book.chapters, ch] }
@@ -86,10 +103,34 @@ export const useBookStore = create<BookState>((set, get) => {
       return thread
     },
     getThread: (id) => (id ? get().book.threads.find((t) => t.id === id) : undefined),
+    addBox: (name) => {
+      const box: Box = { id: nanoid(), name, cards: [] }
+      const book = { ...get().book, boxes: [...get().book.boxes, box] }
+      persist(book)
+      set({ book })
+      return box
+    },
+    openChapter: (id) => set({ viewKind: 'chapter', activeChapterId: id }),
+    openBox: (id) => set({ viewKind: 'box', activeBoxId: id }),
+    parkCard: (boxId, cardJSON) => {
+      const book = { ...get().book, boxes: get().book.boxes.map((b) => (b.id === boxId ? { ...b, cards: [...b.cards, cardJSON] } : b)) }
+      persist(book)
+      set({ book })
+    },
+    takeCardFromBox: (boxId, cardId) => {
+      const box = get().book.boxes.find((b) => b.id === boxId)
+      const card = box?.cards.find((c) => c?.attrs?.cardId === cardId)
+      if (!box || !card) return undefined
+      const book = { ...get().book, boxes: get().book.boxes.map((b) => (b.id === boxId ? { ...b, cards: b.cards.filter((c) => c !== card) } : b)) }
+      persist(book)
+      set({ book })
+      return card
+    },
+    getBox: (id) => (id ? get().book.boxes.find((b) => b.id === id) : undefined),
     __resetForTest: () => {
       const book = freshBook()
       persist(book)
-      set({ book, activeChapterId: book.chapters[0].id })
+      set({ book, activeChapterId: book.chapters[0].id, viewKind: 'chapter', activeBoxId: null })
     },
   }
 })
