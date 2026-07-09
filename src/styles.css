@@ -99,6 +99,42 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
   background: none; border-color: var(--faint);
 }
 
+.shelf { max-width: 980px; margin: 0 auto; padding: 56px 24px; }
+.shelf-hint { color: var(--muted); text-align: center; padding: 96px 0; font-size: 14px; }
+.shelf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 26px; margin-bottom: 36px; }
+.book-card { position: relative; cursor: pointer; }
+.book-cover {
+  position: relative; aspect-ratio: 3 / 4; border-radius: 8px; border: 1px solid var(--hair);
+  box-shadow: 0 6px 16px rgba(0,0,0,.08); overflow: hidden; transition: transform .15s ease, box-shadow .15s ease;
+}
+.book-cover::after {
+  content: ""; position: absolute; inset: 0; mix-blend-mode: overlay;
+  background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.14) 0 1px, transparent 1px 6px);
+}
+.book-card:hover .book-cover { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0,0,0,.14); }
+.book-title { margin: 10px 2px 0; font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.book-title-edit {
+  width: 100%; margin: 10px 0 0; font: inherit; font-size: 13px; border: 1px solid var(--hair);
+  border-radius: 4px; padding: 3px 5px; background: var(--paper); color: var(--ink);
+}
+.book-delete {
+  position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.5); background: rgba(30,26,20,.35); color: #fff;
+  font-size: 13px; line-height: 1; cursor: pointer; opacity: 0; transition: opacity .15s ease;
+}
+.book-card:hover .book-delete { opacity: 1; }
+.shelf-add {
+  display: inline-block; padding: 10px 18px; border: 1px dashed var(--faint); border-radius: 6px;
+  color: var(--muted); cursor: pointer; font-size: 13px;
+}
+.shelf-add:hover { color: var(--ink); border-color: var(--hair); }
+.back-to-shelf {
+  position: absolute; top: 12px; left: 24px; z-index: 6;
+  border: 1px solid var(--faint); background: var(--paper); color: var(--muted);
+  border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+}
+.back-to-shelf:hover { color: var(--ink); border-color: var(--hair); }
+
 .box-view { width: min(680px, 90%); }
 .box-header { display:flex; align-items:baseline; gap:8px; margin-bottom:18px; }
 .box-header h2 { margin:0; font-size:18px; font-weight:600; }

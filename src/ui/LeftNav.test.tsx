@@ -19,6 +19,7 @@ function docWithHeadings() {
 beforeEach(() => {
   localStorage.clear()
   useBookStore.getState().__resetForTest()
+  useBookStore.getState().openBook(useBookStore.getState().library.books[0].id)
 })
 
 describe('outlineFromDoc', () => {
@@ -31,7 +32,7 @@ describe('outlineFromDoc', () => {
   })
 
   it('空文档（无标题段落）返回空数组', () => {
-    expect(outlineFromDoc(useBookStore.getState().book.doc)).toEqual([])
+    expect(outlineFromDoc(useBookStore.getState().activeBook()!.doc)).toEqual([])
   })
 })
 
@@ -52,9 +53,9 @@ describe('LeftNav', () => {
 
   it('点"＋ 新盒子"后 store.boxes +1，并进入该盒子', async () => {
     render(<LeftNav />)
-    expect(useBookStore.getState().book.boxes.length).toBe(0)
+    expect(useBookStore.getState().activeBook()!.boxes.length).toBe(0)
     await userEvent.click(screen.getByText('＋ 新盒子'))
-    const boxes = useBookStore.getState().book.boxes
+    const boxes = useBookStore.getState().activeBook()!.boxes
     expect(boxes.length).toBe(1)
     expect(useBookStore.getState().viewKind).toBe('box')
     expect(useBookStore.getState().activeBoxId).toBe(boxes[0].id)

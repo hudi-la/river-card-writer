@@ -6,6 +6,7 @@ import { useBookStore } from '../state/bookStore'
 beforeEach(() => {
   localStorage.clear()
   useBookStore.getState().__resetForTest()
+  useBookStore.getState().openBook(useBookStore.getState().library.books[0].id)
 })
 
 function cardJSON(cardId: string, text: string) {

@@ -14,6 +14,9 @@ const FONT_STACK: Record<'serif' | 'sans', string> = {
 export function Workspace() {
   const viewKind = useBookStore((s) => s.viewKind)
   const activeBoxId = useBookStore((s) => s.activeBoxId)
+  const activeBookId = useBookStore((s) => s.library.activeBookId)
+  const book = useBookStore((s) => s.activeBook())
+  const goToShelf = useBookStore((s) => s.goToShelf)
   const prefs = usePrefsStore((s) => s.prefs)
 
   // useLayoutEffect (not useEffect) so persisted prefs are applied to the
@@ -26,15 +29,22 @@ export function Workspace() {
     root.style.setProperty('--reading-measure', `${prefs.measure}px`)
   }, [prefs])
 
+  // 异常兜底：shell 已经切到 'book' 但没有 activeBook（比如被删掉了）——安全地
+  // 不渲染，而不是读 undefined 崩掉。App 下一次渲染通常会跟着 shell 回书柜。
+  if (!book) return null
+
   return (
     <div className="app">
       <LeftNav />
       <main className="page">
+        <button className="back-to-shelf" onClick={goToShelf}>
+          ← 书柜
+        </button>
         <ReadingSettings />
         {viewKind === 'box' ? (
           <BoxView key={activeBoxId} boxId={activeBoxId} />
         ) : (
-          <RiverEditor />
+          <RiverEditor key={activeBookId} />
         )}
       </main>
     </div>

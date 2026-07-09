@@ -42,6 +42,7 @@ function jsonOfCard(editor: Editor, cardId: string): any {
 describe('拖到盒子：removeCard + store.parkCard 组合', () => {
   beforeEach(() => {
     useBookStore.getState().__resetForTest()
+    useBookStore.getState().openBook(useBookStore.getState().library.books[0].id)
   })
 
   it('把第一张卡从编辑器移除，再 park 进指定盒子；正文只剩另一张', () => {
@@ -74,7 +75,7 @@ describe('拖到盒子：removeCard + store.parkCard 组合', () => {
     expect(removed).toBe(true)
     if (removed) useBookStore.getState().parkCard(box.id, json)
 
-    const boxes = useBookStore.getState().book.boxes
+    const boxes = useBookStore.getState().activeBook()!.boxes
     expect(boxes.length).toBe(1)
     expect(boxes[0].name).toBe('新盒子')
     expect(boxes[0].cards.length).toBe(1)

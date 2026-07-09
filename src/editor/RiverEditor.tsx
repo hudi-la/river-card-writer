@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { baseExtensions } from './schema'
-import { useBookStore } from '../state/bookStore'
+import { useBookStore, EMPTY_DOC } from '../state/bookStore'
 import { SelectionToolbar } from './SelectionToolbar'
 
 const HANDLE_ZONE_PX = 28 // .card 左内边距 40px 里，把手落在最左侧这一段
@@ -64,7 +64,9 @@ export function findCardInDoc(doc: PMNode, cardId: string): { pos: number; node:
 }
 
 export function RiverEditor() {
-  const doc = useBookStore((s) => s.book.doc)
+  // 只在挂载时读一次当前书的 doc 当初始内容——之后的改动全走 onUpdate→updateDoc，
+  // 不需要响应 activeBook() 变化（Workspace 用 key={activeBookId} 换书时整体重挂载）。
+  const book = useBookStore((s) => s.activeBook())
   const updateDoc = useBookStore((s) => s.updateDoc)
   const carried = useBookStore((s) => s.carried)
   const getBox = useBookStore((s) => s.getBox)
@@ -78,7 +80,7 @@ export function RiverEditor() {
 
   const editor = useEditor({
     extensions: baseExtensions,
-    content: doc,
+    content: book?.doc ?? EMPTY_DOC,
     immediatelyRender: false,
     onUpdate: ({ editor }) => updateDoc(editor.getJSON()),
     editorProps: { attributes: { class: 'river' } },
@@ -247,7 +249,7 @@ export function RiverEditor() {
     }
   }, [editor, getBox, takeCardFromBox, cancelCarry, dropCarried])
 
-  if (!editor) return null
+  if (!editor || !book) return null
   return (
     <div className="river-wrap">
       {carried && (

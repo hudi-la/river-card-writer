@@ -4,7 +4,11 @@ import userEvent from '@testing-library/user-event'
 import { Workspace } from './Workspace'
 import { useBookStore } from '../state/bookStore'
 
-beforeEach(() => { localStorage.clear(); useBookStore.getState().__resetForTest() })
+beforeEach(() => {
+  localStorage.clear()
+  useBookStore.getState().__resetForTest()
+  useBookStore.getState().openBook(useBookStore.getState().library.books[0].id)
+})
 
 describe('Workspace', () => {
   it('默认渲染单文档（viewKind doc）：能看到正文里的卡', async () => {
@@ -21,9 +25,9 @@ describe('Workspace', () => {
   it('点"＋ 新盒子"后 store.boxes +1，并切到盒子视图', async () => {
     render(<Workspace />)
     await new Promise((r) => setTimeout(r, 0))
-    expect(useBookStore.getState().book.boxes.length).toBe(0)
+    expect(useBookStore.getState().activeBook()!.boxes.length).toBe(0)
     await userEvent.click(screen.getByText('＋ 新盒子'))
-    const boxes = useBookStore.getState().book.boxes
+    const boxes = useBookStore.getState().activeBook()!.boxes
     expect(boxes.length).toBe(1)
     expect(useBookStore.getState().viewKind).toBe('box')
   })

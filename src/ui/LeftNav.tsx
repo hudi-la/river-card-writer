@@ -34,14 +34,14 @@ function scrollToOutlineIndex(index: number) {
 }
 
 export function LeftNav() {
-  const book = useBookStore((s) => s.book)
+  const book = useBookStore((s) => s.activeBook())
   const viewKind = useBookStore((s) => s.viewKind)
   const activeBoxId = useBookStore((s) => s.activeBoxId)
   const openDoc = useBookStore((s) => s.openDoc)
   const openBox = useBookStore((s) => s.openBox)
   const addBox = useBookStore((s) => s.addBox)
 
-  const outline = outlineFromDoc(book.doc)
+  const outline = outlineFromDoc(book?.doc)
 
   const handleOutlineClick = (entry: OutlineEntry) => {
     openDoc()
@@ -68,7 +68,7 @@ export function LeftNav() {
       )}
 
       <p className="rlabel nav-group">盒子</p>
-      {book.boxes.map((b) => (
+      {(book?.boxes ?? []).map((b) => (
         <div
           key={b.id}
           data-box-id={b.id}
@@ -82,7 +82,7 @@ export function LeftNav() {
         className="add"
         onClick={() => {
           const b = addBox('新盒子')
-          openBox(b.id)
+          if (b) openBox(b.id)
         }}
       >
         ＋ 新盒子

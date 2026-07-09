@@ -6,7 +6,11 @@ import { Editor } from '@tiptap/core'
 import { baseExtensions } from './schema'
 import { useBookStore } from '../state/bookStore'
 
-beforeEach(() => { localStorage.clear(); useBookStore.getState().__resetForTest() })
+beforeEach(() => {
+  localStorage.clear()
+  useBookStore.getState().__resetForTest()
+  useBookStore.getState().openBook(useBookStore.getState().library.books[0].id)
+})
 
 describe('RiverEditor', () => {
   it('把 book.doc 渲染成带 data-card-id 的 section，不再需要 chapterId prop', async () => {
@@ -29,7 +33,7 @@ describe('RiverEditor', () => {
     await new Promise((r) => setTimeout(r, 0))
     await userEvent.click(getByText('＋ 加一张卡'))
     await new Promise((r) => setTimeout(r, 0))
-    const cards = (useBookStore.getState().book.doc as any).content
+    const cards = (useBookStore.getState().activeBook()!.doc as any).content
     expect(cards.length).toBe(2)
   })
 })
