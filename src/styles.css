@@ -50,13 +50,17 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 .river .card::after { content:"⠿"; position:absolute; left:14px; top:14px; color:var(--muted); opacity:0; cursor:grab; font-size:12px; }
 .river .card:hover::after { opacity:.5; }
 /* Cluster lives in the gutter just past the right edge of the text column —
-   never over the card's own text — revealed on card hover. */
+   never over the card's own text — revealed on card hover. The gap to the
+   text is a transparent LEFT PADDING (part of this element), not an empty
+   margin, so moving the mouse from the card onto the controls never lands on
+   dead space and un-hovers the card mid-crossing. */
 .river .card .card-ctrls {
-  position: absolute; top: 8px; left: 100%; margin-left: 10px;
+  position: absolute; top: 8px; left: 100%; padding-left: 12px;
   display: flex; flex-direction: column; gap: 3px;
   opacity: 0; pointer-events: none; transition: opacity .12s;
 }
-.river .card:hover .card-ctrls { opacity: 1; pointer-events: auto; }
+.river .card:hover .card-ctrls,
+.river .card .card-ctrls:hover { opacity: 1; pointer-events: auto; }
 .river .card-ctrls button {
   border: 1px solid var(--faint); background: var(--paper); color: var(--muted);
   border-radius: 4px; width: 22px; height: 22px; font-size: 11px; cursor: pointer; line-height: 1;
