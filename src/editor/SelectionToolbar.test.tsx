@@ -1,0 +1,109 @@
+import { describe, it, expect, afterEach } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
+import { Editor } from '@tiptap/core'
+import { EditorContent } from '@tiptap/react'
+import { TextSelection } from '@tiptap/pm/state'
+import { baseExtensions, CARD_PALETTE } from './schema'
+import { SelectionToolbar } from './SelectionToolbar'
+
+function makeEditor() {
+  return new Editor({
+    extensions: baseExtensions,
+    content: {
+      type: 'doc',
+      content: [
+        {
+          type: 'card',
+          attrs: { cardId: 'c0' },
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hello world' }] }],
+        },
+      ],
+    },
+  })
+}
+
+// 选区必须在 render() 之前就设好，这样 BubbleMenu 的插件在初次注册（passive
+// effect）时读到的就已经是非空选区，同步走 show()，不用等它默认的 250ms 防抖。
+function selectRange(editor: Editor, from: number, to: number) {
+  editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to)))
+}
+
+function mount(editor: Editor) {
+  return render(
+    <>
+      <EditorContent editor={editor} />
+      <SelectionToolbar editor={editor} />
+    </>,
+  )
+}
+
+describe('SelectionToolbar', () => {
+  let editor: Editor
+  afterEach(() => {
+    editor?.destroy()
+  })
+
+  it('点"章"调用 setParagraphStyle("chapter")，段落 style 属性随之改变', () => {
+    editor = makeEditor()
+    selectRange(editor, 2, 7)
+    mount(editor)
+
+    fireEvent.mouseDown(screen.getByText('章'))
+
+    expect(editor.getJSON().content![0].content![0].attrs?.style).toBe('chapter')
+  })
+
+  it('点"正文"把已经是章的段落设回 body', () => {
+    editor = makeEditor()
+    selectRange(editor, 2, 7)
+    editor.commands.setParagraphStyle('chapter')
+    mount(editor)
+
+    fireEvent.mouseDown(screen.getByText('正文'))
+
+    expect(editor.getJSON().content![0].content![0].attrs?.style).toBe('body')
+  })
+
+  it('点"强调"调用 toggleEmphasis，选中文字带上 emphasis mark', () => {
+    editor = makeEditor()
+    selectRange(editor, 2, 7)
+    mount(editor)
+
+    fireEvent.mouseDown(screen.getByText('强调'))
+
+    const marks = editor.getJSON().content![0].content![0].content?.[0]?.marks ?? []
+    expect(marks.map((m: any) => m.type)).toContain('emphasis')
+  })
+
+  it('点"refer"调用 toggleRefer，选中文字带上 refer mark', () => {
+    editor = makeEditor()
+    selectRange(editor, 2, 7)
+    mount(editor)
+
+    fireEvent.mouseDown(screen.getByText('refer'))
+
+    const marks = editor.getJSON().content![0].content![0].content?.[0]?.marks ?? []
+    expect(marks.map((m: any) => m.type)).toContain('refer')
+  })
+
+  it('点某个色块调用 setCardColor(hex)，作用于选区所在的整张卡', () => {
+    editor = makeEditor()
+    selectRange(editor, 2, 7)
+    mount(editor)
+
+    fireEvent.mouseDown(screen.getByLabelText(`色块 ${CARD_PALETTE[0]}`))
+
+    expect(editor.getJSON().content![0].attrs.color).toBe(CARD_PALETTE[0])
+  })
+
+  it('点"自动/清除"调用 setCardColor(null)', () => {
+    editor = makeEditor()
+    selectRange(editor, 2, 7)
+    editor.commands.setCardColor(CARD_PALETTE[1])
+    mount(editor)
+
+    fireEvent.mouseDown(screen.getByLabelText('自动/清除'))
+
+    expect(editor.getJSON().content![0].attrs.color).toBe(null)
+  })
+})

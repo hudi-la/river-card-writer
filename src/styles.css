@@ -76,6 +76,29 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 .add-card:hover { color: var(--ink); border-color: var(--hair); }
 .river p.is-empty::before { content: attr(data-placeholder); color: var(--muted); opacity: .5; float: left; height: 0; pointer-events: none; }
 
+.selection-toolbar {
+  display: flex; align-items: center; gap: 10px; z-index: 30;
+  background: var(--paper); border: 1px solid var(--hair); border-radius: 8px;
+  padding: 6px 8px; box-shadow: 0 6px 20px rgba(0,0,0,.16);
+  font-family: -apple-system, 'Songti SC', sans-serif;
+}
+.selection-toolbar .sel-group { display: flex; align-items: center; gap: 4px; }
+.selection-toolbar .sel-group + .sel-group { padding-left: 8px; border-left: 1px solid var(--faint); }
+.selection-toolbar button {
+  border: 1px solid transparent; background: none; color: var(--ink);
+  font-size: 12px; padding: 5px 8px; border-radius: 5px; cursor: pointer; white-space: nowrap;
+}
+.selection-toolbar button:hover { border-color: var(--hair); }
+.selection-toolbar button.on { background: rgba(120,158,196,.16); border-color: var(--hair); font-weight: 600; }
+.selection-toolbar .swatch {
+  width: 18px; height: 18px; padding: 0; border-radius: 50%; border: 1px solid var(--hair);
+}
+.selection-toolbar .swatch:hover { border-color: var(--ink); }
+.selection-toolbar .swatch.clear {
+  width: auto; height: auto; border-radius: 5px; padding: 5px 8px; font-size: 11px; color: var(--muted);
+  background: none; border-color: var(--faint);
+}
+
 .box-view { width: min(680px, 90%); }
 .box-header { display:flex; align-items:baseline; gap:8px; margin-bottom:18px; }
 .box-header h2 { margin:0; font-size:18px; font-weight:600; }

@@ -3,6 +3,7 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { baseExtensions } from './schema'
 import { useBookStore } from '../state/bookStore'
+import { SelectionToolbar } from './SelectionToolbar'
 
 const HANDLE_ZONE_PX = 28 // .card 左内边距 40px 里，把手落在最左侧这一段
 const DRAG_MOVE_THRESHOLD_PX = 4 // 小于这个位移当作一次点击，不进入拖拽态
@@ -255,6 +256,7 @@ export function RiverEditor() {
         </div>
       )}
       <EditorContent editor={editor} />
+      <SelectionToolbar editor={editor} />
       <button
         className="add-card"
         onMouseDown={(e) => {
