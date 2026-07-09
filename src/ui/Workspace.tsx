@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useLayoutEffect } from 'react'
 import { useBookStore } from '../state/bookStore'
 import { usePrefsStore } from '../state/prefsStore'
 import { LeftNav } from './LeftNav'
@@ -17,7 +17,10 @@ export function Workspace() {
   const activeBoxId = useBookStore((s) => s.activeBoxId)
   const prefs = usePrefsStore((s) => s.prefs)
 
-  useEffect(() => {
+  // useLayoutEffect (not useEffect) so persisted prefs are applied to the
+  // CSS vars before the browser paints the first frame — otherwise a user
+  // with non-default prefs sees one flash of the :root defaults.
+  useLayoutEffect(() => {
     const root = document.documentElement
     root.style.setProperty('--reading-font', FONT_STACK[prefs.font])
     root.style.setProperty('--reading-size', `${prefs.size}px`)

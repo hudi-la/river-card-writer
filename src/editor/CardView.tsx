@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react'
 import { useBookStore } from '../state/bookStore'
+import { useDismiss } from '../ui/useDismiss'
 
 const ROLE_ITEMS: { label: string; role: 'body' | 'heading' | 'quote' | 'note' }[] = [
   { label: '正文', role: 'body' },
@@ -24,6 +25,14 @@ export function CardView({ editor, getPos, node }: NodeViewProps) {
   const [name, setName] = useState('')
   const [boxMenuOpen, setBoxMenuOpen] = useState(false)
   const [roleMenuOpen, setRoleMenuOpen] = useState(false)
+
+  const threadPopRef = useDismiss<HTMLDivElement>(menuOpen, () => {
+    setMenuOpen(false)
+    setCreating(false)
+    setName('')
+  })
+  const boxPopRef = useDismiss<HTMLDivElement>(boxMenuOpen, () => setBoxMenuOpen(false))
+  const rolePopRef = useDismiss<HTMLDivElement>(roleMenuOpen, () => setRoleMenuOpen(false))
 
   const run = (cmd: 'up' | 'down' | 'add' | 'merge') => (e: React.MouseEvent) => {
     e.preventDefault()
@@ -114,66 +123,72 @@ export function CardView({ editor, getPos, node }: NodeViewProps) {
         <button data-card-ctrl="merge" title="合并进上一张" disabled={isFirst} onMouseDown={run('merge')}>
           ✕
         </button>
-        <button
-          data-card-ctrl="thread"
-          title="选择线"
-          onMouseDown={toggleMenu}
-          style={{ color: thread ? thread.color : undefined }}
-        >
-          ●
-        </button>
-        <button data-card-ctrl="tobox" title="收进盒子" onMouseDown={toggleBoxMenu}>
-          ⇢
-        </button>
-        <button data-card-ctrl="role" title="选择样式" onMouseDown={toggleRoleMenu}>
-          Aa
-        </button>
-        {roleMenuOpen && (
-          <div className="role-menu" contentEditable={false}>
-            {ROLE_ITEMS.map((item) => (
-              <button
-                key={item.role}
-                className={role === item.role ? 'on' : undefined}
-                onMouseDown={(e) => { e.preventDefault(); assignRole(item.role) }}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        )}
-        {boxMenuOpen && (
-          <div className="box-menu" contentEditable={false}>
-            {boxes.map((b) => (
-              <button key={b.id} onMouseDown={(e) => { e.preventDefault(); parkInto(b.id) }}>
-                {b.name}
-              </button>
-            ))}
-            <button onMouseDown={(e) => { e.preventDefault(); parkIntoNewBox() }}>＋新盒子</button>
-          </div>
-        )}
-        {menuOpen && (
-          <div className="thread-menu" contentEditable={false}>
-            {threads.map((t) => (
-              <button key={t.id} onMouseDown={(e) => { e.preventDefault(); assign(t.id) }}>
-                <span className="thread-dot" style={{ ['--dot' as any]: t.color }} />
-                {t.name}
-              </button>
-            ))}
-            <button onMouseDown={(e) => { e.preventDefault(); assign(null) }}>去色</button>
-            {!creating ? (
-              <button onMouseDown={startCreate}>＋ 新建线</button>
-            ) : (
-              <input
-                autoFocus
-                value={name}
-                placeholder="线名"
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={confirmCreate}
-                onMouseDown={(e) => e.stopPropagation()}
-              />
-            )}
-          </div>
-        )}
+        <div className="ctrl-pop" ref={threadPopRef}>
+          <button
+            data-card-ctrl="thread"
+            title="选择线"
+            onMouseDown={toggleMenu}
+            style={{ color: thread ? thread.color : undefined }}
+          >
+            ●
+          </button>
+          {menuOpen && (
+            <div className="thread-menu" contentEditable={false}>
+              {threads.map((t) => (
+                <button key={t.id} onMouseDown={(e) => { e.preventDefault(); assign(t.id) }}>
+                  <span className="thread-dot" style={{ ['--dot' as any]: t.color }} />
+                  {t.name}
+                </button>
+              ))}
+              <button onMouseDown={(e) => { e.preventDefault(); assign(null) }}>去色</button>
+              {!creating ? (
+                <button onMouseDown={startCreate}>＋ 新建线</button>
+              ) : (
+                <input
+                  autoFocus
+                  value={name}
+                  placeholder="线名"
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={confirmCreate}
+                  onMouseDown={(e) => e.stopPropagation()}
+                />
+              )}
+            </div>
+          )}
+        </div>
+        <div className="ctrl-pop" ref={boxPopRef}>
+          <button data-card-ctrl="tobox" title="收进盒子" onMouseDown={toggleBoxMenu}>
+            ⇢
+          </button>
+          {boxMenuOpen && (
+            <div className="box-menu" contentEditable={false}>
+              {boxes.map((b) => (
+                <button key={b.id} onMouseDown={(e) => { e.preventDefault(); parkInto(b.id) }}>
+                  {b.name}
+                </button>
+              ))}
+              <button onMouseDown={(e) => { e.preventDefault(); parkIntoNewBox() }}>＋新盒子</button>
+            </div>
+          )}
+        </div>
+        <div className="ctrl-pop" ref={rolePopRef}>
+          <button data-card-ctrl="role" title="选择样式" onMouseDown={toggleRoleMenu}>
+            Aa
+          </button>
+          {roleMenuOpen && (
+            <div className="role-menu" contentEditable={false}>
+              {ROLE_ITEMS.map((item) => (
+                <button
+                  key={item.role}
+                  className={role === item.role ? 'on' : undefined}
+                  onMouseDown={(e) => { e.preventDefault(); assignRole(item.role) }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
       <NodeViewContent className="card-body" />
     </NodeViewWrapper>

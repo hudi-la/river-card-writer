@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { usePrefsStore } from '../state/prefsStore'
+import { useDismiss } from './useDismiss'
 
 export function ReadingSettings() {
   const prefs = usePrefsStore((s) => s.prefs)
@@ -7,9 +8,10 @@ export function ReadingSettings() {
   const setSize = usePrefsStore((s) => s.setSize)
   const setMeasure = usePrefsStore((s) => s.setMeasure)
   const [open, setOpen] = useState(false)
+  const ref = useDismiss<HTMLDivElement>(open, () => setOpen(false))
 
   return (
-    <div className="reading-settings">
+    <div className="reading-settings" ref={ref}>
       <button
         className="settings-gear"
         title="阅读设置"
