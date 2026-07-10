@@ -32,6 +32,14 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 .rail .nav-group:not(:first-child) { margin-top:20px; }
 .chap { padding:6px 8px; border-radius:5px; color:var(--muted); cursor:pointer; }
 .chap.on { color:var(--ink); font-weight:600; background:rgba(120,158,196,.12); }
+/* 拖一张卡悬停在盒子条目上时的落点反馈——之前完全没有，用户没法确认自己真的
+   悬停在这条窄窄的盒子行上，松手常常偏出去几像素就悄悄掉回重排。颜色跟
+   note-popover 的 focus 描边同一套（--thread 兜底 --hair 那个蓝灰）。 */
+.chap.drop-target {
+  color:var(--ink); font-weight:600;
+  background:rgba(120,158,196,.22);
+  outline:1.5px solid var(--thread, #7fa3c4); outline-offset:-1.5px;
+}
 .add { padding:6px 8px; color:var(--muted); cursor:pointer; opacity:.8; }
 /* 通用盒子在盒子组末尾：一条浅分隔线 + 共享图标，跟本书的盒子区分开——它不是
    本书的第 N 个盒子，是跨所有书共享的同一个实例。 */

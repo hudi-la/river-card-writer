@@ -18,7 +18,13 @@ type DragState = {
   startY: number
   moved: boolean
   pointerId: number
+  // 悬停在哪个盒子条目上——在 pointermove 里持续更新，pointerup 直接读它，不再
+  // 现场重新 elementFromPoint（见下面 onPointerMove/onPointerUp 里的注释）。
+  targetBoxId: string | null
+  targetBoxEl: HTMLElement | null
 }
+
+const DROP_TARGET_CLASS = 'drop-target'
 
 // 拖拽进行时挂在 <html> 上的类名：CSS 借它把 user-select 关掉，防止真实鼠标在
 // contenteditable 上按下之后被浏览器判定成"选字/拖字"，抢在我们自己的拖拽逻辑前面。
@@ -113,6 +119,7 @@ export function RiverEditor() {
       drag.ghostEl.remove()
       drag.indicatorEl.remove()
       drag.sourceEl.classList.remove('dragging')
+      drag.targetBoxEl?.classList.remove(DROP_TARGET_CLASS)
       document.documentElement.classList.remove(DRAG_ACTIVE_CLASS)
       try {
         dom.releasePointerCapture(drag.pointerId)
@@ -156,6 +163,8 @@ export function RiverEditor() {
         startY: e.clientY,
         moved: false,
         pointerId: e.pointerId,
+        targetBoxId: null,
+        targetBoxEl: null,
       }
       // 真实鼠标按下之后，浏览器可能在 contenteditable 上另起一套原生选区/拖拽
       // （跟我们这套命令式拖拽抢事件）——用 pointer capture 把后续 move/up 锁定
@@ -185,6 +194,20 @@ export function RiverEditor() {
       ghost.style.transform = `translate(${x + 12}px, ${y + 12}px)`
     }
 
+    // 拖拽 ghost/indicator 都是 pointer-events:none（见 CSS），不会挡住
+    // elementFromPoint——不需要现场隐藏它们再探测。
+    const boxElAt = (x: number, y: number): HTMLElement | null =>
+      document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-box-id]') ?? null
+
+    const setDropTarget = (drag: DragState, boxEl: HTMLElement | null) => {
+      const boxId = boxEl?.dataset.boxId ?? null
+      if (drag.targetBoxId === boxId) return
+      drag.targetBoxEl?.classList.remove(DROP_TARGET_CLASS)
+      drag.targetBoxId = boxId
+      drag.targetBoxEl = boxEl
+      boxEl?.classList.add(DROP_TARGET_CLASS)
+    }
+
     const onPointerMove = (e: PointerEvent) => {
       const drag = dragRef.current
       if (!drag) return
@@ -197,6 +220,20 @@ export function RiverEditor() {
         drag.sourceEl.classList.add('dragging')
       }
       positionGhost(drag.ghostEl, e.clientX, e.clientY)
+
+      // 悬停判定放在 move 里做，而不是只在 pointerup 那一帧才查——这样才能在悬停
+      // 期间给盒子条目高亮反馈，且 pointerup 时不必再赌那最后一帧的坐标是否精确
+      // 落在小小的盒子行上（真实鼠标松手前最后一次 move 和 up 的坐标可能有几像素
+      // 出入，之前就是靠这一帧现查，稍微偏一点就掉回「重排」分支，卡没进盒子却也
+      // 没有任何提示）。
+      const boxEl = boxElAt(e.clientX, e.clientY)
+      setDropTarget(drag, boxEl)
+
+      if (boxEl) {
+        // 悬停在盒子上时，重排落点线没有意义（不会重排），隐藏掉避免视觉打架。
+        drag.indicatorEl.style.display = 'none'
+        return
+      }
       const rect = indicatorRectAt(dom, drag.cardId, e.clientY)
       if (rect) {
         drag.indicatorEl.style.display = 'block'
@@ -214,12 +251,10 @@ export function RiverEditor() {
         return
       }
       if (drag.moved) {
-        // 落在左栏某个 [data-box-id] 元素上 → 收进那个盒子（park + 从正文移除），
-        // 而不是重排。LeftNav（Task 4）会给盒子条目打上 data-box-id；这里防御性地
-        // 直接查 document，不假设 LeftNav 具体长什么样。
-        const dropEl = document.elementFromPoint(e.clientX, e.clientY)
-        const boxEl = dropEl?.closest<HTMLElement>('[data-box-id]')
-        const boxId = boxEl?.dataset.boxId
+        // 用 move 阶段就跟踪好的 targetBoxId，不在 up 这一帧重新 elementFromPoint——
+        // 那一帧的坐标可能因为指针抖动/浏览器合并事件跟最后一次 move 略有出入，
+        // 真实鼠标下足以让判定从「在盒子上」变成「不在」，静默掉回重排分支。
+        const boxId = drag.targetBoxId
         if (boxId) {
           const found = findCardInDoc(editor.state.doc, drag.cardId)
           if (found) {
