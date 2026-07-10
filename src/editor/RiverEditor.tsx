@@ -22,14 +22,21 @@ type DragState = {
   // 现场重新 elementFromPoint（见下面 onPointerMove/finishDrag 里的注释）。
   targetBoxId: string | null
   targetBoxEl: HTMLElement | null
-  // 同理，重排分支要用的落点 Y 坐标也在 pointermove 里持续记录，收尾时不读
+  // 同理，重排分支要用的落点坐标也在 pointermove 里持续记录，收尾时不读
   // 触发收尾那个事件自己的坐标——pointercancel/lostpointercapture 不保证带着
   // 有意义的坐标，且就算是 pointerup，最后一帧也可能因为指针抖动跟前一帧的
-  // 悬停判定对不上。
+  // 悬停判定对不上。lastX 还兼作 finishDrag 里 targetBoxId 丢失时的兜底
+  // 重新探测坐标（见 finishDrag 注释）。
+  lastX: number
   lastY: number
 }
 
 const DROP_TARGET_CLASS = 'drop-target'
+
+// 左栏/侧栏容器的选择器——LeftNav 渲染的 <nav className="rail">，盒子条目（[data-box-id]）
+// 都是它的子元素。sticky 悬停判定（见 onPointerMove）用它来区分"指针只是从盒子行边缘
+// 滑出去了一点点，但还在栏内"和"指针真的移到正文/河流区域了，用户想重排"。
+const RAIL_SELECTOR = '.rail'
 
 // 拖拽进行时挂在 <html> 上的类名：CSS 借它把 user-select 关掉，防止真实鼠标在
 // contenteditable 上按下之后被浏览器判定成"选字/拖字"，抢在我们自己的拖拽逻辑前面。
@@ -144,7 +151,12 @@ export function RiverEditor() {
       if (!drag) return
       dragRef.current = null
       if (drag.moved) {
-        const boxId = drag.targetBoxId
+        // 正常情况下 targetBoxId 在 pointermove 里已经跟踪好了（含下面的 sticky
+        // 悬停判定）。这里再加一道兜底：万一它出于某种原因始终是 null（比如拖拽
+        // 极短、还没来得及跑一次有意义的 pointermove 就直接收尾），用最后一次记录
+        // 的指针坐标现查一次，而不是直接判定为「用户想重排」——这是 park 判定的
+        // 最后一道保险，不是主路径。
+        const boxId = drag.targetBoxId ?? boxElAt(drag.lastX, drag.lastY)?.dataset.boxId ?? null
         if (boxId) {
           const found = findCardInDoc(editor.state.doc, drag.cardId)
           if (found) {
@@ -207,6 +219,7 @@ export function RiverEditor() {
         pointerId: e.pointerId,
         targetBoxId: null,
         targetBoxEl: null,
+        lastX: e.clientX,
         lastY: e.clientY,
       }
       // 真实鼠标按下之后，浏览器可能在 contenteditable 上另起一套原生选区/拖拽
@@ -254,6 +267,7 @@ export function RiverEditor() {
     const onPointerMove = (e: PointerEvent) => {
       const drag = dragRef.current
       if (!drag) return
+      drag.lastX = e.clientX
       drag.lastY = e.clientY
       if (!drag.moved) {
         const dx = e.clientX - drag.startX
@@ -270,14 +284,29 @@ export function RiverEditor() {
       // 落在小小的盒子行上（真实鼠标松手前最后一次 move 和 up 的坐标可能有几像素
       // 出入，之前就是靠这一帧现查，稍微偏一点就掉回「重排」分支，卡没进盒子却也
       // 没有任何提示）。
-      const boxEl = boxElAt(e.clientX, e.clientY)
-      setDropTarget(drag, boxEl)
+      const elAt = document.elementFromPoint(e.clientX, e.clientY)
+      const boxEl = elAt?.closest<HTMLElement>('[data-box-id]') ?? null
 
       if (boxEl) {
+        setDropTarget(drag, boxEl)
         // 悬停在盒子上时，重排落点线没有意义（不会重排），隐藏掉避免视觉打架。
         drag.indicatorEl.style.display = 'none'
         return
       }
+
+      // 这一帧指针底下没有盒子行。盒子行又矮又挨在一起（.chap 之间没有间距），
+      // 真实的手在松手前最后一次移动，很容易落在刚刚悬停的那一行外面几像素——
+      // 落到相邻的非盒子行（比如"+ 新盒子"）上，或栏自身的内边距里，但仍然
+      // 明显还在左栏/侧栏（.rail）范围内，并不是往正文挪。这种情况下继续沿用
+      // 之前跟踪好的目标和高亮（sticky），不要清掉——只有指针确实离开了 .rail、
+      // 落到正文（河流）区域，才当作"用户想重排，放弃 park"来处理。
+      const overRail = !!elAt?.closest(RAIL_SELECTOR)
+      if (overRail) {
+        drag.indicatorEl.style.display = 'none'
+        return
+      }
+
+      setDropTarget(drag, null)
       const rect = indicatorRectAt(dom, drag.cardId, e.clientY)
       if (rect) {
         drag.indicatorEl.style.display = 'block'
