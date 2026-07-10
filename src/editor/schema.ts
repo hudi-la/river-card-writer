@@ -25,6 +25,14 @@ export const ParagraphWithStyle = Paragraph.extend({
         parseHTML: (el: HTMLElement) => el.getAttribute('data-style') || 'body',
         renderHTML: (attrs: { style: ParagraphStyle }) => ({ 'data-style': attrs.style }),
       },
+      // 标题的梗概/说明——纯元数据，不进正文渲染。有值时才落一个隐藏的
+      // data-note 属性用来在 HTML 往返时保住它；没有 note 的老段落解析出来
+      // 就是默认空串，完全向后兼容。
+      note: {
+        default: '',
+        parseHTML: (el: HTMLElement) => el.getAttribute('data-note') || '',
+        renderHTML: (attrs: { note: string }) => (attrs.note ? { 'data-note': attrs.note } : {}),
+      },
     }
   },
   addCommands() {
@@ -55,6 +63,24 @@ export const ParagraphWithStyle = Paragraph.extend({
           }
           return true
         },
+      setHeadingNote:
+        (headingIndex: number, note: string) =>
+        ({ state, dispatch }) => {
+          // 按文档顺序数第 headingIndex 个 chapter/h1 段落——顺序与
+          // outlineFromDoc/LeftNav 的编号规则保持一致。
+          let targetPos = -1
+          let count = 0
+          state.doc.descendants((node, pos) => {
+            if (targetPos !== -1) return false
+            if (node.type.name === 'paragraph' && (node.attrs.style === 'chapter' || node.attrs.style === 'h1')) {
+              if (count === headingIndex) targetPos = pos
+              count++
+            }
+          })
+          if (targetPos === -1) return false
+          if (dispatch) dispatch(state.tr.setNodeAttribute(targetPos, 'note', note))
+          return true
+        },
     }
   },
 })
@@ -73,6 +99,7 @@ declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     paragraphStyle: {
       setParagraphStyle: (style: ParagraphStyle) => ReturnType
+      setHeadingNote: (headingIndex: number, note: string) => ReturnType
     }
     card: {
       splitCard: () => ReturnType

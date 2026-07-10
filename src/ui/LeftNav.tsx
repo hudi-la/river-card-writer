@@ -3,7 +3,7 @@ import { useBookStore } from '../state/bookStore'
 // 大纲项：从 book.doc 里所有 style==='chapter'（章，level 1）/'h1'（节，level 2）的
 // 段落派生出来。index 是该标题在"所有章/节标题"里的序号（不分级别），点击大纲项时
 // 拿它去数 DOM 里第几个 [data-style="chapter"|"h1"] 段落，滚过去。
-export type OutlineEntry = { level: 1 | 2; text: string; index: number }
+export type OutlineEntry = { level: 1 | 2; text: string; index: number; note: string }
 
 function paragraphText(paragraph: any): string {
   return (paragraph?.content || []).map((n: any) => n?.text || '').join('')
@@ -18,7 +18,12 @@ export function outlineFromDoc(doc: any): OutlineEntry[] {
     for (const paragraph of card?.content || []) {
       const style = paragraph?.attrs?.style
       if (style === 'chapter' || style === 'h1') {
-        entries.push({ level: style === 'chapter' ? 1 : 2, text: paragraphText(paragraph), index })
+        entries.push({
+          level: style === 'chapter' ? 1 : 2,
+          text: paragraphText(paragraph),
+          index,
+          note: paragraph?.attrs?.note || '',
+        })
         index++
       }
     }

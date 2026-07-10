@@ -3,6 +3,7 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { baseExtensions } from './schema'
 import { useBookStore, EMPTY_DOC } from '../state/bookStore'
+import { useEditorBridge } from '../state/editorBridge'
 import { SelectionToolbar } from './SelectionToolbar'
 
 const HANDLE_ZONE_PX = 28 // .card 左内边距 40px 里，把手落在最左侧这一段
@@ -77,6 +78,7 @@ export function RiverEditor() {
   const dragRef = useRef<DragState | null>(null)
   const carriedRef = useRef(carried)
   carriedRef.current = carried
+  const setEditor = useEditorBridge((s) => s.setEditor)
 
   const editor = useEditor({
     extensions: baseExtensions,
@@ -85,6 +87,13 @@ export function RiverEditor() {
     onUpdate: ({ editor }) => updateDoc(editor.getJSON()),
     editorProps: { attributes: { class: 'river' } },
   })
+
+  // 把挂载好的 editor 实例发布到 editorBridge，供左栏 sidebar 等编辑器树之外
+  // 的组件调用命令（比如设置标题 note）；卸载/换书重挂载时要清空，避免陈旧引用。
+  useEffect(() => {
+    setEditor(editor ?? null)
+    return () => setEditor(null)
+  }, [editor, setEditor])
 
   // ⠿ 把手的真拖拽：抓住 -> 一个跟着光标走的浮动预览 + 卡之间的落点线 -> 松手落定。
   // 全部走命令式 DOM（ghost/indicator 元素直接 append 到 body），拖拽过程中每次

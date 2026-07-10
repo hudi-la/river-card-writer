@@ -25,9 +25,9 @@ beforeEach(() => {
 describe('outlineFromDoc', () => {
   it('按顺序抽出 chapter(level 1)/h1(level 2) 段落，忽略 body 段落，index 为标题间的序号', () => {
     expect(outlineFromDoc(docWithHeadings())).toEqual([
-      { level: 1, text: '一', index: 0 },
-      { level: 2, text: '第一节', index: 1 },
-      { level: 1, text: '二', index: 2 },
+      { level: 1, text: '一', index: 0, note: '' },
+      { level: 2, text: '第一节', index: 1, note: '' },
+      { level: 1, text: '二', index: 2, note: '' },
     ])
   })
 
