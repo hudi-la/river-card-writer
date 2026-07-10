@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useBookStore, type Book } from '../state/bookStore'
+import { BackupControls } from './BackupControls'
 
 // 纯函数：书 id 哈希出两三个低饱和柔色，拼一个 linear-gradient 当封面——不碰真实
 // 图片，呼应"纹理+三色渐变"的封面审美（具体纹理叠层在 CSS ::after 里统一加，不
@@ -82,6 +83,7 @@ export function Bookshelf() {
 
   return (
     <div className="shelf">
+      <BackupControls />
       {books.length === 0 ? (
         <p className="shelf-hint">书柜还是空的，点下面「＋ 新书」开始写第一本</p>
       ) : (

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
+import { mergeImported } from './backup'
 
 export const EMPTY_DOC = { type: 'doc', content: [{ type: 'card', content: [{ type: 'paragraph' }] }] }
 const OLD_BOOK_KEY = 'card-writer:book'
@@ -24,6 +25,8 @@ type BookState = {
   // 供 sync 模块使用：整体替换 library 并落盘（首登下载/上传回填 uuid 时用），
   // 绕开各 action 自己的局部更新逻辑，最小侵入地把云同步挂进 store。
   setLibrary: (library: Library) => void
+  // 备份导入：只增不减地把 books 并进当前 library 并持久化（合并逻辑见 backup.ts）。
+  importBooks: (books: Book[]) => void
   updateDoc: (doc: object) => void
   openDoc: () => void
   addBox: (name: string) => Box | undefined
@@ -158,6 +161,11 @@ export const useBookStore = create<BookState>((set, get) => {
     },
 
     setLibrary: (library) => {
+      persist(library)
+      set({ library })
+    },
+    importBooks: (books) => {
+      const library = mergeImported(get().library, books)
       persist(library)
       set({ library })
     },

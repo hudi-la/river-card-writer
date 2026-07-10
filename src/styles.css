@@ -100,6 +100,15 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 }
 
 .shelf { max-width: 980px; margin: 0 auto; padding: 56px 24px; }
+.backup-controls { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+.backup-btn {
+  border: 1px solid var(--faint); background: var(--paper); color: var(--muted);
+  border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer;
+}
+.backup-btn:hover { color: var(--ink); border-color: var(--hair); }
+.backup-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+.backup-msg { font-size: 12px; color: var(--muted); }
+.backup-msg-error { color: #b5533c; }
 .shelf-hint { color: var(--muted); text-align: center; padding: 96px 0; font-size: 14px; }
 .shelf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 26px; margin-bottom: 36px; }
 .book-card { position: relative; cursor: pointer; }
