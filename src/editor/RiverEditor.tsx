@@ -18,10 +18,15 @@ type DragState = {
   startY: number
   moved: boolean
   pointerId: number
-  // 悬停在哪个盒子条目上——在 pointermove 里持续更新，pointerup 直接读它，不再
-  // 现场重新 elementFromPoint（见下面 onPointerMove/onPointerUp 里的注释）。
+  // 悬停在哪个盒子条目上——在 pointermove 里持续更新，收尾时直接读它，不再
+  // 现场重新 elementFromPoint（见下面 onPointerMove/finishDrag 里的注释）。
   targetBoxId: string | null
   targetBoxEl: HTMLElement | null
+  // 同理，重排分支要用的落点 Y 坐标也在 pointermove 里持续记录，收尾时不读
+  // 触发收尾那个事件自己的坐标——pointercancel/lostpointercapture 不保证带着
+  // 有意义的坐标，且就算是 pointerup，最后一帧也可能因为指针抖动跟前一帧的
+  // 悬停判定对不上。
+  lastY: number
 }
 
 const DROP_TARGET_CLASS = 'drop-target'
@@ -113,9 +118,9 @@ export function RiverEditor() {
     if (!editor) return
     const dom = editor.view.dom as HTMLElement
 
-    const endDrag = () => {
-      const drag = dragRef.current
-      if (!drag) return
+    // 纯 DOM/视觉层面的收尾——ghost、落点线、高亮、user-select 类、指针 capture
+    // 全部还原。不碰 dragRef，调用方负责先把 dragRef.current 置空。
+    const cleanupDragVisuals = (drag: DragState) => {
       drag.ghostEl.remove()
       drag.indicatorEl.remove()
       drag.sourceEl.classList.remove('dragging')
@@ -126,7 +131,44 @@ export function RiverEditor() {
       } catch {
         // 指针早已释放（比如浏览器在 up 之前就自己放开了 capture）时会抛，忽略即可
       }
+    }
+
+    // 真正"落地"的收尾：读 move 阶段跟踪好的 targetBoxId/lastY 做落定判定
+    // （park 或重排），然后做视觉清理。dragRef 立刻置空是关键的幂等闸门——
+    // pointerup/pointercancel/lostpointercapture 三个事件都可能触发这里
+    // （见下面的监听器注册），不管 WebKit 下 pointer capture 把哪一个事件
+    // 送到 window、哪一个只送到被 capture 的编辑器 DOM 上，第一个先到的
+    // 跑完全部逻辑，其余的直接因为 dragRef.current 已经是 null 而提前返回。
+    const finishDrag = () => {
+      const drag = dragRef.current
+      if (!drag) return
       dragRef.current = null
+      if (drag.moved) {
+        const boxId = drag.targetBoxId
+        if (boxId) {
+          const found = findCardInDoc(editor.state.doc, drag.cardId)
+          if (found) {
+            const json = found.node.toJSON()
+            const removed = editor.chain().focus().setTextSelection(found.pos + 2).removeCard().run()
+            // removeCard 拒绝删掉文档里最后一张卡——那种情况下也不 park，避免出现
+            // "卡从正文消失了但也没进盒子"的悬空态。
+            if (removed) parkCard(boxId, json)
+          }
+        } else {
+          const targetIndex = dropIndexAt(dom, drag.cardId, drag.lastY)
+          editor.commands.moveCardTo(drag.cardId, targetIndex)
+        }
+      }
+      cleanupDragVisuals(drag)
+    }
+
+    // 卸载时中途放弃一场还没走完的拖拽——只清理视觉，不触发落定（跟真正松手
+    // 完成拖拽是两回事）。
+    const abortDrag = () => {
+      const drag = dragRef.current
+      if (!drag) return
+      dragRef.current = null
+      cleanupDragVisuals(drag)
     }
 
     const onPointerDown = (e: PointerEvent) => {
@@ -165,6 +207,7 @@ export function RiverEditor() {
         pointerId: e.pointerId,
         targetBoxId: null,
         targetBoxEl: null,
+        lastY: e.clientY,
       }
       // 真实鼠标按下之后，浏览器可能在 contenteditable 上另起一套原生选区/拖拽
       // （跟我们这套命令式拖拽抢事件）——用 pointer capture 把后续 move/up 锁定
@@ -211,6 +254,7 @@ export function RiverEditor() {
     const onPointerMove = (e: PointerEvent) => {
       const drag = dragRef.current
       if (!drag) return
+      drag.lastY = e.clientY
       if (!drag.moved) {
         const dx = e.clientX - drag.startX
         const dy = e.clientY - drag.startY
@@ -245,36 +289,24 @@ export function RiverEditor() {
       }
     }
 
-    const onPointerUp = (e: PointerEvent) => {
-      const drag = dragRef.current
-      if (!drag) {
-        return
-      }
-      if (drag.moved) {
-        // 用 move 阶段就跟踪好的 targetBoxId，不在 up 这一帧重新 elementFromPoint——
-        // 那一帧的坐标可能因为指针抖动/浏览器合并事件跟最后一次 move 略有出入，
-        // 真实鼠标下足以让判定从「在盒子上」变成「不在」，静默掉回重排分支。
-        const boxId = drag.targetBoxId
-        if (boxId) {
-          const found = findCardInDoc(editor.state.doc, drag.cardId)
-          if (found) {
-            const json = found.node.toJSON()
-            const removed = editor.chain().focus().setTextSelection(found.pos + 2).removeCard().run()
-            // removeCard 拒绝删掉文档里最后一张卡——那种情况下也不 park，避免出现
-            // "卡从正文消失了但也没进盒子"的悬空态。
-            if (removed) parkCard(boxId, json)
-          }
-        } else {
-          const targetIndex = dropIndexAt(dom, drag.cardId, e.clientY)
-          editor.commands.moveCardTo(drag.cardId, targetIndex)
-        }
-      }
-      endDrag()
-    }
-
     dom.addEventListener('pointerdown', onPointerDown)
     window.addEventListener('pointermove', onPointerMove)
-    window.addEventListener('pointerup', onPointerUp)
+    // 收尾监听器同时挂在 window 和被 setPointerCapture 锁定的编辑器 dom 上，
+    // 且监听 pointerup/pointercancel/lostpointercapture 三种事件——这是这次
+    // 修复的核心。背景：pointerdown 里给 dom 做了 setPointerCapture，Chromium
+    // 下 pointerup 之后依然照常冒泡到 window，只挂 window 监听就够用；但
+    // WebKit/Safari 在指针被 capture 之后，有版本会把 pointerup 完全重定向到
+    // capture 元素而不再冒泡到 window（真机上表现为：拖拽悬停高亮正常——那是
+    // pointermove 走的——但松手后卡既不进盒子也不重排，因为 window 上的
+    // pointerup 压根没收到事件）。直接把同一套收尾逻辑也挂到 dom 自己身上，
+    // 不管事件最终冒到哪层都能兜住；finishDrag 内部用 dragRef 置空做幂等闸门，
+    // 同一次拖拽被多个监听器/多个事件重复触发时只有第一次真正执行。
+    dom.addEventListener('pointerup', finishDrag)
+    dom.addEventListener('pointercancel', finishDrag)
+    dom.addEventListener('lostpointercapture', finishDrag)
+    window.addEventListener('pointerup', finishDrag)
+    window.addEventListener('pointercancel', finishDrag)
+    window.addEventListener('lostpointercapture', finishDrag)
     // dragstart/selectstart 用 capture 阶段监听在 document 上：不管原生行为想在哪个
     // 元素上冒出来（编辑器内、甚至冒泡链更早的祖先），都能在它长成"选区"/"拖拽会话"
     // 之前拦下来。
@@ -283,10 +315,15 @@ export function RiverEditor() {
     return () => {
       dom.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('pointermove', onPointerMove)
-      window.removeEventListener('pointerup', onPointerUp)
+      dom.removeEventListener('pointerup', finishDrag)
+      dom.removeEventListener('pointercancel', finishDrag)
+      dom.removeEventListener('lostpointercapture', finishDrag)
+      window.removeEventListener('pointerup', finishDrag)
+      window.removeEventListener('pointercancel', finishDrag)
+      window.removeEventListener('lostpointercapture', finishDrag)
       document.removeEventListener('dragstart', onDragStart, true)
       document.removeEventListener('selectstart', onSelectStart, true)
-      endDrag()
+      abortDrag()
     }
   }, [editor])
 
