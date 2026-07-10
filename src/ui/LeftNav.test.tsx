@@ -1,8 +1,17 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { LeftNav, outlineFromDoc } from './LeftNav'
 import { useBookStore } from '../state/bookStore'
+import { usePrefsStore } from '../state/prefsStore'
+
+// mock 掉 editorBridge：LeftNav 编辑 note 时只应该经它调 setHeadingNote，不直接碰
+// doc——mock 让我们断言调用参数，而不必真起一个 TipTap editor。
+const setHeadingNote = vi.fn()
+vi.mock('../state/editorBridge', () => ({
+  useEditorBridge: (selector: (s: any) => any) =>
+    selector({ editor: {}, setEditor: vi.fn(), setHeadingNote }),
+}))
 
 function docWithHeadings() {
   return {
@@ -16,10 +25,27 @@ function docWithHeadings() {
   }
 }
 
+function docWithNote() {
+  return {
+    type: 'doc',
+    content: [
+      {
+        type: 'card',
+        content: [
+          { type: 'paragraph', attrs: { style: 'chapter', note: '讲主角出发' }, content: [{ type: 'text', text: '一' }] },
+        ],
+      },
+      { type: 'card', content: [{ type: 'paragraph', attrs: { style: 'h1' }, content: [{ type: 'text', text: '第一节' }] }] },
+    ],
+  }
+}
+
 beforeEach(() => {
   localStorage.clear()
+  setHeadingNote.mockClear()
   useBookStore.getState().__resetForTest()
   useBookStore.getState().openBook(useBookStore.getState().library.books[0].id)
+  usePrefsStore.getState().__resetForTest()
 })
 
 describe('outlineFromDoc', () => {
@@ -69,5 +95,50 @@ describe('LeftNav', () => {
     await userEvent.click(row)
     expect(useBookStore.getState().viewKind).toBe('box')
     expect(useBookStore.getState().activeBoxId).toBe(box.id)
+  })
+})
+
+describe('LeftNav 简略/详细两视图', () => {
+  it('默认简略视图：不铺出 note 文本框', () => {
+    useBookStore.getState().updateDoc(docWithNote())
+    render(<LeftNav />)
+    expect(screen.queryByDisplayValue('讲主角出发')).toBeNull()
+  })
+
+  it('切到详细视图后，每条 outline 项下面铺出显示该条 note 的文本框', async () => {
+    useBookStore.getState().updateDoc(docWithNote())
+    render(<LeftNav />)
+    await userEvent.click(screen.getByText('详细'))
+    expect(screen.getByDisplayValue('讲主角出发')).toBeTruthy()
+    // 没 note 的条目也有一个（空的）文本框，占位一致
+    const textareas = screen.getAllByPlaceholderText('写点说明…')
+    expect(textareas.length).toBeGreaterThan(0)
+  })
+
+  it('详细视图切回简略后，note 文本框不再渲染', async () => {
+    useBookStore.getState().updateDoc(docWithNote())
+    render(<LeftNav />)
+    await userEvent.click(screen.getByText('详细'))
+    expect(screen.getByDisplayValue('讲主角出发')).toBeTruthy()
+    await userEvent.click(screen.getByText('简略'))
+    expect(screen.queryByDisplayValue('讲主角出发')).toBeNull()
+  })
+
+  it('详细视图里编辑某条 note，失焦后调 editorBridge.setHeadingNote(index, value)', async () => {
+    useBookStore.getState().updateDoc(docWithNote())
+    render(<LeftNav />)
+    await userEvent.click(screen.getByText('详细'))
+    const textarea = screen.getByDisplayValue('讲主角出发')
+    await userEvent.clear(textarea)
+    await userEvent.type(textarea, '改过的说明')
+    await userEvent.tab()
+    expect(setHeadingNote).toHaveBeenCalledWith(0, '改过的说明')
+  })
+
+  it('视图选择持久化到 prefsStore.prefs.outlineView', async () => {
+    useBookStore.getState().updateDoc(docWithNote())
+    render(<LeftNav />)
+    await userEvent.click(screen.getByText('详细'))
+    expect(usePrefsStore.getState().prefs.outlineView).toBe('detail')
   })
 })

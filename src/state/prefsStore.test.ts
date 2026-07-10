@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { usePrefsStore } from './prefsStore'
+import { usePrefsStore, load } from './prefsStore'
 
 beforeEach(() => {
   localStorage.clear()
@@ -7,9 +7,21 @@ beforeEach(() => {
 })
 
 describe('prefsStore', () => {
-  it('默认值：serif / 15 / 680', () => {
+  it('默认值：serif / 15 / 680 / brief', () => {
     const s = usePrefsStore.getState()
-    expect(s.prefs).toEqual({ font: 'serif', size: 15, measure: 680 })
+    expect(s.prefs).toEqual({ font: 'serif', size: 15, measure: 680, outlineView: 'brief' })
+  })
+
+  it('setOutlineView 改并持久化到 card-writer:prefs', () => {
+    usePrefsStore.getState().setOutlineView('detail')
+    expect(usePrefsStore.getState().prefs.outlineView).toBe('detail')
+    const raw = JSON.parse(localStorage.getItem('card-writer:prefs')!)
+    expect(raw.outlineView).toBe('detail')
+  })
+
+  it('老的持久化数据没有 outlineView 字段时，load() 缺省回 brief', () => {
+    localStorage.setItem('card-writer:prefs', JSON.stringify({ font: 'sans', size: 16, measure: 700 }))
+    expect(load().outlineView).toBe('brief')
   })
 
   it('setFont 改并持久化到 card-writer:prefs', () => {
