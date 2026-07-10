@@ -161,10 +161,18 @@ export function RiverEditor() {
           const found = findCardInDoc(editor.state.doc, drag.cardId)
           if (found) {
             const json = found.node.toJSON()
-            const removed = editor.chain().focus().setTextSelection(found.pos + 2).removeCard().run()
-            // removeCard 拒绝删掉文档里最后一张卡——那种情况下也不 park，避免出现
-            // "卡从正文消失了但也没进盒子"的悬空态。
-            if (removed) parkCard(boxId, json)
+            if (editor.state.doc.childCount > 1) {
+              const removed = editor.chain().focus().setTextSelection(found.pos + 2).removeCard().run()
+              if (removed) parkCard(boxId, json)
+            } else {
+              // 只剩这一张卡时 removeCard 会拒删（文档不能空）。先把内容安全存进盒子
+              // （先落袋、不丢），再追加一张空卡让文档 >1，然后删掉原卡——内容进了盒子、
+              // 文档留下一张空卡不悬空。用的都是会触发 onUpdate 保存的命令。
+              parkCard(boxId, json)
+              editor.commands.appendCard()
+              const again = findCardInDoc(editor.state.doc, drag.cardId)
+              if (again) editor.chain().focus().setTextSelection(again.pos + 2).removeCard().run()
+            }
           }
         } else {
           const targetIndex = dropIndexAt(dom, drag.cardId, drag.lastY)
