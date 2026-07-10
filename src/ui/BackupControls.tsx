@@ -1,12 +1,7 @@
 import { useRef, useState } from 'react'
 import { useBookStore } from '../state/bookStore'
 import { exportLibrary, parseBackup } from '../state/backup'
-
-function todayStamp(): string {
-  const d = new Date()
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
+import { downloadTextFile, todayStamp } from './download'
 
 // 用户完全掌控的本地备份：导出全部书到一个 JSON 文件，导入时只增不减地并入书柜
 // （合并逻辑见 state/backup.ts 的 mergeImported，id 撞车会给导入书换新 id，绝不
@@ -14,20 +9,13 @@ function todayStamp(): string {
 export function BackupControls() {
   const library = useBookStore((s) => s.library)
   const importBooks = useBookStore((s) => s.importBooks)
+  const importUniversalCards = useBookStore((s) => s.importUniversalCards)
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleExport = () => {
     const json = exportLibrary(library, new Date().toISOString())
-    const blob = new Blob([json], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `card-writer-备份-${todayStamp()}.json`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
+    downloadTextFile(`card-writer-备份-${todayStamp()}.json`, json)
     setMessage({ text: `已导出 ${library.books.length} 本书` })
   }
 
@@ -44,7 +32,11 @@ export function BackupControls() {
       return
     }
     importBooks(result.books)
-    setMessage({ text: `导入了 ${result.books.length} 本书` })
+    // 老备份文件（Phase 11 之前导出的）没有 universalBox 字段——result.universalBox
+    // 缺失时就跳过这一步，不当错误处理。
+    if (result.universalBox) importUniversalCards(result.universalBox.cards)
+    const suffix = result.universalBox ? `，通用盒子 ${result.universalBox.cards.length} 张卡已合并` : ''
+    setMessage({ text: `导入了 ${result.books.length} 本书${suffix}` })
   }
 
   return (

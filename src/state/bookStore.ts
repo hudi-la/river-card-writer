@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
-import { mergeImported } from './backup'
+import { mergeImported, mergeUniversalCards } from './backup'
 
 export const EMPTY_DOC = { type: 'doc', content: [{ type: 'card', content: [{ type: 'paragraph' }] }] }
 const OLD_BOOK_KEY = 'card-writer:book'
@@ -39,6 +39,9 @@ type BookState = {
   setLibrary: (library: Library) => void
   // 备份导入：只增不减地把 books 并进当前 library 并持久化（合并逻辑见 backup.ts）。
   importBooks: (books: Book[]) => void
+  // 通用盒子备份导入：按 cardId 去重地把 cards 并进当前 universalBox 并持久化
+  // （合并逻辑见 backup.ts 的 mergeUniversalCards）——只增不减，重复导入不产生重复卡。
+  importUniversalCards: (cards: any[]) => void
   updateDoc: (doc: object) => void
   openDoc: () => void
   addBox: (name: string) => Box | undefined
@@ -186,6 +189,13 @@ export const useBookStore = create<BookState>((set, get) => {
     importBooks: (books) => {
       const merged = mergeImported(get().library, books)
       const library = { ...merged, universalBox: get().library.universalBox }
+      persist(library)
+      set({ library })
+    },
+    importUniversalCards: (cards) => {
+      const cur = get().library
+      const mergedCards = mergeUniversalCards(cur.universalBox.cards, cards)
+      const library = { ...cur, universalBox: { ...cur.universalBox, cards: mergedCards } }
       persist(library)
       set({ library })
     },

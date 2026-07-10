@@ -7,9 +7,11 @@ import { Bookshelf } from './ui/Bookshelf'
 import { Workspace } from './ui/Workspace'
 import { SignIn } from './ui/SignIn'
 import { BoxView } from './ui/BoxView'
+import { UniversalBoxControls } from './ui/UniversalBoxControls'
 
 // 从书柜直接打开的通用盒子：全屏、没有编辑器上下文——插入按钮在这里没有可插入的
-// 文档，交给 BoxView 的 readOnly 禁用它（而不是让它悄悄空操作）。
+// 文档，交给 BoxView 的 readOnly 禁用它（而不是让它悄悄空操作）。带自己的备份
+// 导出/导入（跟整库备份分开，见 UniversalBoxControls）。
 function UniversalBoxScreen() {
   const goToShelf = useBookStore((s) => s.goToShelf)
   return (
@@ -18,7 +20,10 @@ function UniversalBoxScreen() {
         <button className="back-to-shelf" onClick={goToShelf}>
           ← 书柜
         </button>
-        <BoxView boxId={UNIVERSAL_BOX_ID} readOnly />
+        <div className="universal-box-screen-body">
+          <UniversalBoxControls />
+          <BoxView boxId={UNIVERSAL_BOX_ID} readOnly />
+        </div>
       </main>
     </div>
   )

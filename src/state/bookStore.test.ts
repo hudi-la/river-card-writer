@@ -230,6 +230,32 @@ describe('bookStore — 库级通用盒子', () => {
     expect(s.activeBoxId).toBe(UNIVERSAL_BOX_ID)
     expect(s.getBox(s.activeBoxId)).toBe(s.library.universalBox)
   })
+
+  it('importUniversalCards：非破坏性地按 cardId 去重合并进 universalBox，并持久化', () => {
+    const existing = { type: 'card', attrs: { cardId: 'kept' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '已有' }] }] }
+    useBookStore.getState().parkCard(UNIVERSAL_BOX_ID, existing)
+
+    const fresh = { type: 'card', attrs: { cardId: 'new1' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '新的' }] }] }
+    const dup = { type: 'card', attrs: { cardId: 'kept' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '撞车，理应被丢弃' }] }] }
+    useBookStore.getState().importUniversalCards([fresh, dup])
+
+    const s = useBookStore.getState()
+    expect(s.library.universalBox.cards).toHaveLength(2)
+    expect(s.library.universalBox.cards).toContainEqual(existing)
+    expect(s.library.universalBox.cards).toContainEqual(fresh)
+    // 撞车的导入卡被丢弃，现有那张原样保留（内容没被覆盖）
+    expect(s.library.universalBox.cards.filter((c) => c.attrs.cardId === 'kept')).toEqual([existing])
+
+    const raw = JSON.parse(localStorage.getItem('card-writer:library')!)
+    expect(raw.universalBox.cards).toHaveLength(2)
+  })
+
+  it('importUniversalCards：重复导入同一批卡不会堆出重复', () => {
+    const card = { type: 'card', attrs: { cardId: 'once' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '一次' }] }] }
+    useBookStore.getState().importUniversalCards([card])
+    useBookStore.getState().importUniversalCards([card])
+    expect(useBookStore.getState().library.universalBox.cards).toHaveLength(1)
+  })
 })
 
 describe('bookStore — 迁移 & normalizeLibrary', () => {

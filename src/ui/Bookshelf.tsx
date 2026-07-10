@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useBookStore, type Book } from '../state/bookStore'
 import { BackupControls } from './BackupControls'
+import { exportBook, sanitizeFilename } from '../state/backup'
+import { downloadTextFile, todayStamp } from './download'
 
 // 纯函数：书 id 哈希出两三个低饱和柔色，拼一个 linear-gradient 当封面——不碰真实
 // 图片，呼应"纹理+三色渐变"的封面审美（具体纹理叠层在 CSS ::after 里统一加，不
@@ -27,9 +29,18 @@ function BookCard({ book }: { book: Book }) {
     setEditing(false)
   }
 
+  const handleExportBook = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    const json = exportBook(book, new Date().toISOString())
+    downloadTextFile(`card-writer-${sanitizeFilename(book.title)}-${todayStamp()}.json`, json)
+  }
+
   return (
     <div className="book-card" onClick={() => !editing && openBook(book.id)}>
       <div className="book-cover" style={{ backgroundImage: coverGradient(book.id) }} />
+      <button className="book-export" aria-label="导出这本书" title="导出这本书" onClick={handleExportBook}>
+        ⬇
+      </button>
       <button
         className="book-delete"
         aria-label="删除这本书"

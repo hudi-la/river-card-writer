@@ -1,9 +1,26 @@
 import { describe, it, expect } from 'vitest'
-import { exportLibrary, parseBackup, mergeImported } from './backup'
-import { EMPTY_DOC, type Book, type Library } from './bookStore'
+import {
+  exportLibrary,
+  exportBook,
+  exportUniversalBox,
+  parseBackup,
+  parseUniversalExport,
+  mergeImported,
+  mergeUniversalCards,
+  sanitizeFilename,
+} from './backup'
+import { EMPTY_DOC, UNIVERSAL_BOX_ID, type Book, type Box, type Library } from './bookStore'
 
 function book(id: string, title: string): Book {
   return { id, title, doc: structuredClone(EMPTY_DOC), boxes: [] }
+}
+
+function universalBox(cards: any[] = []): Box {
+  return { id: UNIVERSAL_BOX_ID, name: '通用盒子', cards }
+}
+
+function card(cardId: string, text: string) {
+  return { type: 'card', attrs: { cardId }, content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] }
 }
 
 describe('backup — exportLibrary', () => {
@@ -98,5 +115,125 @@ describe('backup — mergeImported', () => {
     const current: Library = { books: [book('c1', '当前')], activeBookId: null }
     const merged = mergeImported(current, [book('i1', '导入')])
     expect(merged.activeBookId).toBeNull()
+  })
+})
+
+describe('backup — exportLibrary 包含 universalBox（全库备份不再遗漏通用盒子）', () => {
+  it('exportLibrary 产出的 JSON 带 universalBox 字段，内容跟传入的一致', () => {
+    const library: Library = { books: [book('b1', 'A')], activeBookId: 'b1', universalBox: universalBox([card('u1', '通用卡')]) }
+    const json = exportLibrary(library, '2026-07-10T00:00:00.000Z')
+    const parsed = JSON.parse(json)
+    expect(parsed.universalBox).toEqual(library.universalBox)
+  })
+
+  it('exportLibrary → parseBackup 往返：universalBox 原样还原', () => {
+    const library: Library = { books: [book('b1', 'A')], activeBookId: null, universalBox: universalBox([card('u1', '通用卡'), card('u2', '第二张')]) }
+    const json = exportLibrary(library, '2026-07-10T00:00:00.000Z')
+    const result = parseBackup(json)
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.universalBox).toEqual(library.universalBox)
+  })
+
+  it('parseBackup 对老备份文件（无 universalBox 字段）：books 照常解析，universalBox 缺失而不是报错', () => {
+    const result = parseBackup(JSON.stringify({ format: 'card-writer-backup', version: 1, books: [book('b1', 'A')] }))
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.universalBox).toBeUndefined()
+  })
+})
+
+describe('backup — exportBook（单本书导出）', () => {
+  it('产出跟 exportLibrary 同格式、但 books 只有这一本', () => {
+    const b = book('b1', '这一本')
+    const json = exportBook(b, '2026-07-10T00:00:00.000Z')
+    const parsed = JSON.parse(json)
+    expect(parsed.format).toBe('card-writer-backup')
+    expect(parsed.version).toBe(1)
+    expect(parsed.books).toEqual([b])
+  })
+
+  it('exportBook → parseBackup 能解析出正好一本书，且能被 mergeImported 并入现有库（走现有导入通道）', () => {
+    const b = book('exported', '被导出的书')
+    const json = exportBook(b, '2026-07-10T00:00:00.000Z')
+    const result = parseBackup(json)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.books).toEqual([b])
+
+    const current: Library = { books: [book('existing', '现有书')], activeBookId: 'existing', universalBox: universalBox() }
+    const merged = mergeImported(current, result.books)
+    expect(merged.books).toHaveLength(2)
+    expect(merged.books.some((x) => x.id === 'existing')).toBe(true)
+    expect(merged.books.some((x) => x.id === 'exported')).toBe(true)
+  })
+})
+
+describe('backup — exportUniversalBox / parseUniversalExport（通用盒子单独备份）', () => {
+  it('往返：cards 一致', () => {
+    const box = universalBox([card('u1', '甲'), card('u2', '乙')])
+    const json = exportUniversalBox(box, '2026-07-10T00:00:00.000Z')
+    const parsed = JSON.parse(json)
+    expect(parsed.format).toBe('card-writer-universal')
+    expect(parsed.version).toBe(1)
+    expect(parsed.cards).toEqual(box.cards)
+
+    const result = parseUniversalExport(json)
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.cards).toEqual(box.cards)
+  })
+
+  it('parseUniversalExport 对乱码/形状不对 → {ok:false}，不抛出', () => {
+    expect(() => parseUniversalExport('not json {{{')).not.toThrow()
+    expect(parseUniversalExport('not json {{{').ok).toBe(false)
+    expect(parseUniversalExport('{}').ok).toBe(false)
+    expect(parseUniversalExport(JSON.stringify({ cards: 'nope' })).ok).toBe(false)
+  })
+})
+
+describe('backup — mergeUniversalCards（通用盒子按 cardId 去重合并）', () => {
+  it('无冲突：全部保留 + 追加', () => {
+    const current = [card('c1', '现有')]
+    const imported = [card('i1', '导入甲'), card('i2', '导入乙')]
+    const merged = mergeUniversalCards(current, imported)
+    expect(merged.map((c) => c.attrs.cardId)).toEqual(['c1', 'i1', 'i2'])
+  })
+
+  it('cardId 撞车：已存在的卡保留，撞车的导入卡被跳过（不产生重复，不覆盖现有内容）', () => {
+    const current = [card('same', '现有内容')]
+    const imported = [card('same', '导入内容，理应被丢弃')]
+    const merged = mergeUniversalCards(current, imported)
+    expect(merged).toHaveLength(1)
+    expect(merged[0]).toEqual(card('same', '现有内容'))
+  })
+
+  it('重复导入同一份备份两次：不堆出重复卡', () => {
+    const current = [card('c1', '现有')]
+    const imported = [card('i1', '导入甲')]
+    const once = mergeUniversalCards(current, imported)
+    const twice = mergeUniversalCards(once, imported)
+    expect(twice).toHaveLength(2)
+    expect(twice.map((c) => c.attrs.cardId)).toEqual(['c1', 'i1'])
+  })
+
+  it('不 mutate 传入的数组', () => {
+    const current = [card('c1', '现有')]
+    const imported = [card('i1', '导入')]
+    mergeUniversalCards(current, imported)
+    expect(current).toHaveLength(1)
+    expect(imported).toHaveLength(1)
+  })
+})
+
+describe('backup — sanitizeFilename', () => {
+  it('替换文件名里的非法字符', () => {
+    expect(sanitizeFilename('a/b:c*d?e"f<g>h|i')).toBe('a_b_c_d_e_f_g_h_i')
+  })
+
+  it('空字符串/纯非法字符 → 兜底 untitled', () => {
+    expect(sanitizeFilename('')).toBe('untitled')
+    expect(sanitizeFilename('   ')).toBe('untitled')
+  })
+
+  it('正常标题原样保留', () => {
+    expect(sanitizeFilename('我的读书笔记')).toBe('我的读书笔记')
   })
 })

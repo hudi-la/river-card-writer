@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Bookshelf } from './Bookshelf'
@@ -7,6 +7,12 @@ import { useBookStore, EMPTY_DOC, UNIVERSAL_BOX_ID } from '../state/bookStore'
 beforeEach(() => {
   localStorage.clear()
   useBookStore.getState().__resetForTest()
+  // jsdom 没实现 URL.createObjectURL/revokeObjectURL，导出流程要用到，先垫一个假的。
+  vi.stubGlobal('URL', {
+    ...URL,
+    createObjectURL: vi.fn(() => 'blob:mock'),
+    revokeObjectURL: vi.fn(),
+  })
 })
 
 describe('Bookshelf', () => {
@@ -70,5 +76,21 @@ describe('Bookshelf', () => {
     })
     render(<Bookshelf />)
     expect(screen.getByText('2 张')).toBeTruthy()
+  })
+
+  it('每张书卡有一个"导出这本书"按钮，点击触发一次下载，且不打开这本书（不冒泡到卡片）', async () => {
+    const book = useBookStore.getState().addBook('目标书')
+    render(<Bookshelf />)
+    const card = screen.getByText('目标书').closest('.book-card')!
+    const exportBtn = card.querySelector('.book-export') as HTMLButtonElement
+    expect(exportBtn).toBeTruthy()
+
+    await userEvent.click(exportBtn)
+
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1)
+    // 没有触发 openBook：shell 仍是 shelf，activeBookId 未指向这本书
+    expect(useBookStore.getState().shell).toBe('shelf')
+    expect(useBookStore.getState().library.activeBookId).not.toBe(book.id)
   })
 })
