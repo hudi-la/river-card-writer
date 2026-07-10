@@ -6,13 +6,28 @@
 }
 * { box-sizing: border-box; }
 body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia,'Songti SC','Noto Serif',serif; }
-.app { display:grid; grid-template-columns:172px 1fr; min-height:100vh; align-items:start; }
+.app { display:grid; grid-template-columns:var(--rail-width, 172px) 1fr; min-height:100vh; align-items:start; }
 /* 目录+盒子这一整栏钉在视口左侧、随正文滚动的页面"浮"在原地不跟着跑；栏自己内容
    超过一屏高度时（大纲很长）栏内部单独出滚动条，不影响 body 的滚动。 */
 .rail {
   padding:20px 12px; border-right:1px solid var(--faint); font-size:13px;
   position:sticky; top:0; align-self:start; height:100vh; overflow-y:auto;
 }
+/* 拖拽把手：不放在 .rail 内部——.rail 是 overflow-y:auto 的滚动容器，CSS 规范下会让
+   overflow-x 隐式变 auto，任何越界的 absolute/sticky 子元素都会被裁掉（hover 便签
+   踩过这个坑，见上面的 note-popover 注释）。改用 position:fixed，贴着 --rail-width
+   这条列边界，脱离 .rail 的裁剪上下文，且天然跨越整个视口高度、不随栏内部滚动。
+   命中区比视觉线宽（6px vs 2px），鼠标靠近才有反馈，不抢视觉。 */
+.rail-resize-handle {
+  position:fixed; top:0; left:calc(var(--rail-width, 172px) - 3px);
+  width:6px; height:100vh; cursor:col-resize; z-index:20;
+  background:transparent; touch-action:none;
+}
+.rail-resize-handle::after {
+  content:""; position:absolute; top:0; left:2px; width:2px; height:100%;
+  background:transparent;
+}
+.rail-resize-handle:hover::after, .rail-resize-handle.dragging::after { background:var(--hair); }
 .rlabel { font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin:0 0 10px; }
 .rail .nav-group:not(:first-child) { margin-top:20px; }
 .chap { padding:6px 8px; border-radius:5px; color:var(--muted); cursor:pointer; }

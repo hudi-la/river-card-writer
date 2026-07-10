@@ -4,9 +4,16 @@ const KEY = 'card-writer:prefs'
 
 export type Font = 'serif' | 'sans'
 export type OutlineView = 'brief' | 'detail'
-export type Prefs = { font: Font; size: number; measure: number; outlineView: OutlineView }
+export type Prefs = { font: Font; size: number; measure: number; outlineView: OutlineView; railWidth: number }
 
-const DEFAULT_PREFS: Prefs = { font: 'serif', size: 15, measure: 680, outlineView: 'brief' }
+const DEFAULT_PREFS: Prefs = { font: 'serif', size: 15, measure: 680, outlineView: 'brief', railWidth: 172 }
+
+export const RAIL_WIDTH_MIN = 150
+export const RAIL_WIDTH_MAX = 520
+
+export function clampRailWidth(px: number): number {
+  return Math.min(RAIL_WIDTH_MAX, Math.max(RAIL_WIDTH_MIN, px))
+}
 
 type PrefsState = {
   prefs: Prefs
@@ -14,6 +21,7 @@ type PrefsState = {
   setSize: (size: number) => void
   setMeasure: (measure: number) => void
   setOutlineView: (view: OutlineView) => void
+  setRailWidth: (px: number) => void
   __resetForTest: () => void
 }
 
@@ -23,9 +31,10 @@ export function load(): Prefs {
     if (raw) {
       const p = JSON.parse(raw)
       if (p && (p.font === 'serif' || p.font === 'sans') && typeof p.size === 'number' && typeof p.measure === 'number') {
-        // outlineView 是后加的字段——老的持久化数据里没有，缺省/非法值都落回 'brief'。
+        // outlineView / railWidth 是后加的字段——老的持久化数据里没有，缺省/非法值都落回默认。
         const outlineView: OutlineView = p.outlineView === 'detail' ? 'detail' : 'brief'
-        return { font: p.font, size: p.size, measure: p.measure, outlineView }
+        const railWidth = typeof p.railWidth === 'number' ? clampRailWidth(p.railWidth) : DEFAULT_PREFS.railWidth
+        return { font: p.font, size: p.size, measure: p.measure, outlineView, railWidth }
       }
     }
   } catch {}
@@ -59,6 +68,11 @@ export const usePrefsStore = create<PrefsState>((set, get) => ({
   },
   setOutlineView: (outlineView) => {
     const prefs = { ...get().prefs, outlineView }
+    persist(prefs)
+    set({ prefs })
+  },
+  setRailWidth: (px) => {
+    const prefs = { ...get().prefs, railWidth: clampRailWidth(px) }
     persist(prefs)
     set({ prefs })
   },

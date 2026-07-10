@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { usePrefsStore, load } from './prefsStore'
+import { usePrefsStore, load, clampRailWidth, RAIL_WIDTH_MIN, RAIL_WIDTH_MAX } from './prefsStore'
 
 beforeEach(() => {
   localStorage.clear()
@@ -7,9 +7,9 @@ beforeEach(() => {
 })
 
 describe('prefsStore', () => {
-  it('默认值：serif / 15 / 680 / brief', () => {
+  it('默认值：serif / 15 / 680 / brief / 172', () => {
     const s = usePrefsStore.getState()
-    expect(s.prefs).toEqual({ font: 'serif', size: 15, measure: 680, outlineView: 'brief' })
+    expect(s.prefs).toEqual({ font: 'serif', size: 15, measure: 680, outlineView: 'brief', railWidth: 172 })
   })
 
   it('setOutlineView 改并持久化到 card-writer:prefs', () => {
@@ -43,5 +43,35 @@ describe('prefsStore', () => {
     expect(usePrefsStore.getState().prefs.measure).toBe(720)
     const raw = JSON.parse(localStorage.getItem('card-writer:prefs')!)
     expect(raw.measure).toBe(720)
+  })
+
+  it('setRailWidth 改并持久化到 card-writer:prefs', () => {
+    usePrefsStore.getState().setRailWidth(260)
+    expect(usePrefsStore.getState().prefs.railWidth).toBe(260)
+    const raw = JSON.parse(localStorage.getItem('card-writer:prefs')!)
+    expect(raw.railWidth).toBe(260)
+  })
+
+  it('setRailWidth 夹在 [150, 520] 区间内', () => {
+    usePrefsStore.getState().setRailWidth(10)
+    expect(usePrefsStore.getState().prefs.railWidth).toBe(RAIL_WIDTH_MIN)
+    usePrefsStore.getState().setRailWidth(9999)
+    expect(usePrefsStore.getState().prefs.railWidth).toBe(RAIL_WIDTH_MAX)
+  })
+
+  it('clampRailWidth 是纯函数，直接夹值', () => {
+    expect(clampRailWidth(100)).toBe(150)
+    expect(clampRailWidth(300)).toBe(300)
+    expect(clampRailWidth(600)).toBe(520)
+  })
+
+  it('老的持久化数据没有 railWidth 字段时，load() 缺省回 172', () => {
+    localStorage.setItem('card-writer:prefs', JSON.stringify({ font: 'sans', size: 16, measure: 700 }))
+    expect(load().railWidth).toBe(172)
+  })
+
+  it('持久化数据里 railWidth 越界时，load() 夹回合法区间', () => {
+    localStorage.setItem('card-writer:prefs', JSON.stringify({ font: 'sans', size: 16, measure: 700, railWidth: 5 }))
+    expect(load().railWidth).toBe(RAIL_WIDTH_MIN)
   })
 })
