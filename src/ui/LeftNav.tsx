@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { useBookStore } from '../state/bookStore'
+import { useBookStore, UNIVERSAL_BOX_ID } from '../state/bookStore'
 import { usePrefsStore } from '../state/prefsStore'
 import { useEditorBridge } from '../state/editorBridge'
 
@@ -254,6 +254,16 @@ export function LeftNav() {
         }}
       >
         ＋ 新盒子
+      </div>
+      {/* 通用盒子不属于本书，跟本书的盒子隔一条浅分隔线，并带一个共享图标——
+          提示这是跨所有书共享的同一个盒子，而不是本书的第 N 个盒子。 */}
+      <div className="universal-box-divider" />
+      <div
+        data-box-id={UNIVERSAL_BOX_ID}
+        className={'chap universal-box' + (UNIVERSAL_BOX_ID === activeBoxId && viewKind === 'box' ? ' on' : '')}
+        onClick={() => openBox(UNIVERSAL_BOX_ID)}
+      >
+        <span className="universal-box-icon" aria-hidden="true">⟡</span> 通用盒子
       </div>
     </nav>
   )

@@ -1,11 +1,28 @@
 import { useEffect } from 'react'
-import { useBookStore } from './state/bookStore'
+import { useBookStore, UNIVERSAL_BOX_ID } from './state/bookStore'
 import { useAuthStore } from './state/authStore'
 import { supabase, cloudEnabled } from './lib/supabase'
 import { startSync } from './state/sync'
 import { Bookshelf } from './ui/Bookshelf'
 import { Workspace } from './ui/Workspace'
 import { SignIn } from './ui/SignIn'
+import { BoxView } from './ui/BoxView'
+
+// 从书柜直接打开的通用盒子：全屏、没有编辑器上下文——插入按钮在这里没有可插入的
+// 文档，交给 BoxView 的 readOnly 禁用它（而不是让它悄悄空操作）。
+function UniversalBoxScreen() {
+  const goToShelf = useBookStore((s) => s.goToShelf)
+  return (
+    <div className="app universal-shell">
+      <main className="page">
+        <button className="back-to-shelf" onClick={goToShelf}>
+          ← 书柜
+        </button>
+        <BoxView boxId={UNIVERSAL_BOX_ID} readOnly />
+      </main>
+    </div>
+  )
+}
 
 export function App() {
   const shell = useBookStore((s) => s.shell)
@@ -32,5 +49,7 @@ export function App() {
     return <SignIn />
   }
 
-  return shell === 'shelf' ? <Bookshelf /> : <Workspace />
+  if (shell === 'shelf') return <Bookshelf />
+  if (shell === 'universal') return <UniversalBoxScreen />
+  return <Workspace />
 }

@@ -76,6 +76,23 @@ function BookCard({ book }: { book: Book }) {
   )
 }
 
+// 书柜里的通用盒子入口：不是某本书的盒子，是跨所有书共享的同一个实例——放在
+// 书卡网格下方单独一行，带名字+张数，点击直接全屏打开（openUniversalBox）。
+// library.universalBox 用可选链兜底：一些老测试/合并路径拼的 library 字面量可能
+// 还没补上这个字段，读取时不该整页崩掉。
+function UniversalBoxEntry() {
+  const cardCount = useBookStore((s) => s.library.universalBox?.cards.length ?? 0)
+  const openUniversalBox = useBookStore((s) => s.openUniversalBox)
+
+  return (
+    <div className="universal-box-entry" onClick={openUniversalBox}>
+      <span className="universal-box-icon" aria-hidden="true">⟡</span>
+      <span className="universal-box-entry-name">通用盒子</span>
+      <span className="universal-box-entry-count">{cardCount} 张</span>
+    </div>
+  )
+}
+
 export function Bookshelf() {
   const books = useBookStore((s) => s.library.books)
   const addBook = useBookStore((s) => s.addBook)
@@ -93,6 +110,7 @@ export function Bookshelf() {
           ))}
         </div>
       )}
+      <UniversalBoxEntry />
       <div
         className="shelf-add"
         onClick={() => {

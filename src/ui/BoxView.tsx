@@ -10,7 +10,10 @@ function cardText(cardJSON: any): string {
     .join('\n')
 }
 
-export function BoxView({ boxId }: { boxId: string | null }) {
+// readOnly：从书柜全屏打开通用盒子时没有编辑器/正文可插入——禁用插入按钮而不是
+// 让它悄悄空操作。在书内打开（无论是本书的盒子还是通用盒子）readOnly 都是
+// false，插入照常走 carry。
+export function BoxView({ boxId, readOnly = false }: { boxId: string | null; readOnly?: boolean }) {
   const box = useBookStore((s) => s.getBox(boxId))
   const carry = useBookStore((s) => s.carry)
   const cards = box?.cards ?? []
@@ -33,7 +36,9 @@ export function BoxView({ boxId }: { boxId: string | null }) {
                 <button
                   data-box-action="insert"
                   data-card-id={cardId}
-                  onClick={() => boxId && carry(boxId, cardId)}
+                  disabled={readOnly}
+                  title={readOnly ? '在书里打开通用盒子才能插入正文' : undefined}
+                  onClick={() => !readOnly && boxId && carry(boxId, cardId)}
                 >
                   ⤵ 插入正文
                 </button>

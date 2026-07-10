@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Bookshelf } from './Bookshelf'
-import { useBookStore, EMPTY_DOC } from '../state/bookStore'
+import { useBookStore, EMPTY_DOC, UNIVERSAL_BOX_ID } from '../state/bookStore'
 
 beforeEach(() => {
   localStorage.clear()
@@ -18,6 +18,7 @@ describe('Bookshelf', () => {
           { id: 'b2', title: 'B', doc: EMPTY_DOC, boxes: [] },
         ],
         activeBookId: null,
+        universalBox: { id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [] },
       },
     })
     render(<Bookshelf />)
@@ -48,8 +49,26 @@ describe('Bookshelf', () => {
   })
 
   it('空书柜显示提示，而不是空白', () => {
-    useBookStore.setState({ library: { books: [], activeBookId: null } })
+    useBookStore.setState({
+      library: { books: [], activeBookId: null, universalBox: { id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [] } },
+    })
     render(<Bookshelf />)
     expect(screen.getByText(/书柜还是空的/)).toBeTruthy()
+  })
+
+  it('书卡网格下方渲染通用盒子入口，显示名称与张数，点击后 openUniversalBox 且 shell 变为 universal', async () => {
+    render(<Bookshelf />)
+    expect(screen.getByText('通用盒子')).toBeTruthy()
+    expect(screen.getByText('0 张')).toBeTruthy()
+    await userEvent.click(screen.getByText('通用盒子'))
+    expect(useBookStore.getState().shell).toBe('universal')
+  })
+
+  it('通用盒子入口显示的张数跟着 library.universalBox.cards 走', () => {
+    useBookStore.setState({
+      library: { ...useBookStore.getState().library, universalBox: { id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [{}, {}] } },
+    })
+    render(<Bookshelf />)
+    expect(screen.getByText('2 张')).toBeTruthy()
   })
 })

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { LeftNav, outlineFromDoc } from './LeftNav'
-import { useBookStore } from '../state/bookStore'
+import { useBookStore, UNIVERSAL_BOX_ID } from '../state/bookStore'
 import { usePrefsStore } from '../state/prefsStore'
 
 // mock 掉 editorBridge：LeftNav 编辑 note 时只应该经它调 setHeadingNote，不直接碰
@@ -114,6 +114,22 @@ describe('LeftNav', () => {
     await userEvent.click(row)
     expect(useBookStore.getState().viewKind).toBe('box')
     expect(useBookStore.getState().activeBoxId).toBe(box.id)
+  })
+
+  it('盒子组渲染出通用盒子项，点击后 openBox(UNIVERSAL_BOX_ID)', async () => {
+    render(<LeftNav />)
+    const row = screen.getByText('通用盒子')
+    expect(row.closest('[data-box-id]')?.getAttribute('data-box-id')).toBe(UNIVERSAL_BOX_ID)
+    await userEvent.click(row)
+    expect(useBookStore.getState().viewKind).toBe('box')
+    expect(useBookStore.getState().activeBoxId).toBe(UNIVERSAL_BOX_ID)
+  })
+
+  it('打开通用盒子后，该项被记为 active', async () => {
+    render(<LeftNav />)
+    await userEvent.click(screen.getByText('通用盒子'))
+    const row = screen.getByText('通用盒子').closest('[data-box-id]')
+    expect(row?.className).toContain('on')
   })
 })
 
