@@ -17,7 +17,12 @@ type DragState = {
   startX: number
   startY: number
   moved: boolean
+  pointerId: number
 }
+
+// 拖拽进行时挂在 <html> 上的类名：CSS 借它把 user-select 关掉，防止真实鼠标在
+// contenteditable 上按下之后被浏览器判定成"选字/拖字"，抢在我们自己的拖拽逻辑前面。
+const DRAG_ACTIVE_CLASS = 'card-drag-active'
 
 // 算出「放到这里」对应的 moveCardTo targetIndex：数一下光标之上、除了被拖那张卡以外
 // 还有几张卡的中点在光标上方——这正好是 moveCardTo 的 splice 语义（摘掉拖拽卡之后剩下
@@ -108,6 +113,12 @@ export function RiverEditor() {
       drag.ghostEl.remove()
       drag.indicatorEl.remove()
       drag.sourceEl.classList.remove('dragging')
+      document.documentElement.classList.remove(DRAG_ACTIVE_CLASS)
+      try {
+        dom.releasePointerCapture(drag.pointerId)
+      } catch {
+        // 指针早已释放（比如浏览器在 up 之前就自己放开了 capture）时会抛，忽略即可
+      }
       dragRef.current = null
     }
 
@@ -144,7 +155,30 @@ export function RiverEditor() {
         startX: e.clientX,
         startY: e.clientY,
         moved: false,
+        pointerId: e.pointerId,
       }
+      // 真实鼠标按下之后，浏览器可能在 contenteditable 上另起一套原生选区/拖拽
+      // （跟我们这套命令式拖拽抢事件）——用 pointer capture 把后续 move/up 锁定
+      // 到编辑器 dom 上，同时靠下面的 dragstart/selectstart 拦截 + user-select:none
+      // 把原生那条路彻底堵死，不管落点在编辑器外的左栏盒子上事件是否还会自然冒泡。
+      try {
+        dom.setPointerCapture(e.pointerId)
+      } catch {
+        // 极少数环境不支持 setPointerCapture 时忽略，不影响后续 move/up 走 window 监听
+      }
+      document.documentElement.classList.add(DRAG_ACTIVE_CLASS)
+    }
+
+    // 命中判定/把手区间靠 pointerdown 里的 e.preventDefault()已经能挡住大多数浏览器的
+    // 原生行为，但这只在 preventDefault 发生在浏览器真正决定"要不要开始选字/开始原生
+    // 拖拽"之前才生效——不同引擎（尤其是 WebKit/Safari）时序不完全一致。这里再加一层
+    // 兜底：只要我们自己的拖拽在进行中（dragRef.current 非空），任何原生 dragstart /
+    // selectstart 一律拦截，避免它抢在 pointerup 之前把拖拽状态弄乱。
+    const onDragStart = (e: DragEvent) => {
+      if (dragRef.current) e.preventDefault()
+    }
+    const onSelectStart = (e: Event) => {
+      if (dragRef.current) e.preventDefault()
     }
 
     const positionGhost = (ghost: HTMLElement, x: number, y: number) => {
@@ -206,10 +240,17 @@ export function RiverEditor() {
     dom.addEventListener('pointerdown', onPointerDown)
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
+    // dragstart/selectstart 用 capture 阶段监听在 document 上：不管原生行为想在哪个
+    // 元素上冒出来（编辑器内、甚至冒泡链更早的祖先），都能在它长成"选区"/"拖拽会话"
+    // 之前拦下来。
+    document.addEventListener('dragstart', onDragStart, true)
+    document.addEventListener('selectstart', onSelectStart, true)
     return () => {
       dom.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', onPointerUp)
+      document.removeEventListener('dragstart', onDragStart, true)
+      document.removeEventListener('selectstart', onSelectStart, true)
       endDrag()
     }
   }, [editor])

@@ -113,6 +113,10 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 .river .card::after { content:"⠿"; position:absolute; left:14px; top:14px; color:var(--muted); opacity:0; cursor:grab; font-size:12px; }
 .river .card:hover::after { opacity:.5; }
 .river .card.dragging { opacity:.35; }
+/* 真实鼠标拖卡片时挂在 <html> 上（见 RiverEditor.tsx）：把整个页面的原生文字选区
+   关掉，防止按手把手之后、松手落到左栏盒子之前，contenteditable 抢着开一段原生
+   选区/拖拽，跟自家这套命令式拖拽打架。 */
+html.card-drag-active, html.card-drag-active * { user-select: none !important; -webkit-user-select: none !important; }
 .card-drag-ghost {
   position: fixed; top: 0; left: 0; z-index: 50; pointer-events: none;
   max-width: 320px; padding: 8px 12px; border-radius: 6px;
