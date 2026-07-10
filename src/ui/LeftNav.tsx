@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useBookStore } from '../state/bookStore'
 import { usePrefsStore } from '../state/prefsStore'
 import { useEditorBridge } from '../state/editorBridge'
@@ -80,6 +81,29 @@ function NoteField({
 // 秒关，够不到点进去打字。进入条目/浮层任一个都清定时器重开，两个都离开才真关。
 const HOVER_CLOSE_DELAY = 200
 
+// .rail 是 position:sticky + overflow-y:auto 的独立滚动容器——按 CSS 规范，设了
+// overflow-y 后 overflow-x 也会隐式变成 auto，任何超出栏右边界的绝对定位子元素都会
+// 被裁掉。hover 便签就是这样的子元素，之前直接裁没了。改法：便签不再是栏内的绝对
+// 定位子元素，而是 portal 到 body 的 fixed 定位元素，坐标从被 hover 条目的
+// getBoundingClientRect() 算出来（贴条目右侧），并夹在视口内不出屏——这样栏还能
+// 正常独立滚动，便签也不会被栏的裁剪上下文切掉。
+const POPOVER_WIDTH = 220
+const POPOVER_HEIGHT_ESTIMATE = 170
+const POPOVER_GAP = 8
+const VIEWPORT_MARGIN = 8
+
+function computePopoverPos(rect: DOMRect) {
+  let left = rect.right + POPOVER_GAP
+  if (left + POPOVER_WIDTH > window.innerWidth - VIEWPORT_MARGIN) {
+    left = Math.max(VIEWPORT_MARGIN, window.innerWidth - POPOVER_WIDTH - VIEWPORT_MARGIN)
+  }
+  let top = rect.top
+  if (top + POPOVER_HEIGHT_ESTIMATE > window.innerHeight - VIEWPORT_MARGIN) {
+    top = Math.max(VIEWPORT_MARGIN, window.innerHeight - POPOVER_HEIGHT_ESTIMATE - VIEWPORT_MARGIN)
+  }
+  return { left, top }
+}
+
 export function LeftNav() {
   const book = useBookStore((s) => s.activeBook())
   const viewKind = useBookStore((s) => s.viewKind)
@@ -93,19 +117,38 @@ export function LeftNav() {
 
   const outline = outlineFromDoc(book?.doc)
 
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null)
+  const [hover, setHover] = useState<{ entry: OutlineEntry; left: number; top: number } | null>(null)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const openHover = (index: number) => {
+  // 进条目才重算位置（贴着它);进浮层本身只是取消关闭定时器，位置不变——这样
+  // 鼠标从条目挪进浮层的路上便签不会跳动。
+  const openHover = (entry: OutlineEntry, el: HTMLElement) => {
     if (closeTimer.current) {
       clearTimeout(closeTimer.current)
       closeTimer.current = null
     }
-    setHoverIndex(index)
+    setHover({ entry, ...computePopoverPos(el.getBoundingClientRect()) })
+  }
+  const cancelCloseHover = () => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current)
+      closeTimer.current = null
+    }
   }
   const scheduleCloseHover = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current)
-    closeTimer.current = setTimeout(() => setHoverIndex(null), HOVER_CLOSE_DELAY)
+    closeTimer.current = setTimeout(() => setHover(null), HOVER_CLOSE_DELAY)
+  }
+  // 栏是独立滚动的——hover 便签的坐标是开 hover 那一刻算的快照,栏一滚条目就挪了位置,
+  // 便签会跟丢;不追踪滚动重算,直接关掉最省事,鼠标还悬停在条目上的话下一次
+  // mouseenter/mousemove 都不会重开(条目自己没动,鼠标没跟着挪),但滚动本身通常
+  // 就意味着用户在找别的条目,关掉是合理的。
+  const closeHoverForScroll = () => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current)
+      closeTimer.current = null
+    }
+    setHover(null)
   }
 
   const handleOutlineClick = (entry: OutlineEntry) => {
@@ -116,7 +159,7 @@ export function LeftNav() {
   }
 
   return (
-    <nav className="rail">
+    <nav className="rail" onScroll={closeHoverForScroll}>
       <p className="rlabel nav-group">目录</p>
       <div className="outline-view-toggle">
         <button type="button" className={outlineView === 'brief' ? 'on' : ''} onClick={() => setOutlineView('brief')}>
@@ -148,7 +191,7 @@ export function LeftNav() {
           <div
             key={entry.index}
             className="outline-item-wrap"
-            onMouseEnter={() => openHover(entry.index)}
+            onMouseEnter={(e) => openHover(entry, e.currentTarget)}
             onMouseLeave={scheduleCloseHover}
           >
             <div
@@ -157,21 +200,29 @@ export function LeftNav() {
             >
               {entry.text || '（无标题）'}
             </div>
-            {hoverIndex === entry.index && (
-              <div className="note-popover" onMouseEnter={() => openHover(entry.index)} onMouseLeave={scheduleCloseHover}>
-                <NoteField
-                  className="note-popover-textarea"
-                  placeholder="写点说明…"
-                  rows={4}
-                  autoFocus
-                  initial={entry.note}
-                  onSave={(value) => setHeadingNote(entry.index, value)}
-                />
-              </div>
-            )}
           </div>
         ))
       )}
+      {hover &&
+        createPortal(
+          <div
+            key={hover.entry.index}
+            className="note-popover"
+            style={{ left: hover.left, top: hover.top }}
+            onMouseEnter={cancelCloseHover}
+            onMouseLeave={scheduleCloseHover}
+          >
+            <NoteField
+              className="note-popover-textarea"
+              placeholder="写点说明…"
+              rows={4}
+              autoFocus
+              initial={hover.entry.note}
+              onSave={(value) => setHeadingNote(hover.entry.index, value)}
+            />
+          </div>,
+          document.body,
+        )}
 
       <p className="rlabel nav-group">盒子</p>
       {(book?.boxes ?? []).map((b) => (
