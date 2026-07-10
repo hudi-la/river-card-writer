@@ -114,6 +114,7 @@ export function LeftNav() {
   const outlineView = usePrefsStore((s) => s.prefs.outlineView)
   const setOutlineView = usePrefsStore((s) => s.setOutlineView)
   const setHeadingNote = useEditorBridge((s) => s.setHeadingNote)
+  const addChapter = useEditorBridge((s) => s.addChapter)
 
   const outline = outlineFromDoc(book?.doc)
 
@@ -170,38 +171,48 @@ export function LeftNav() {
         </button>
       </div>
       {outline.length === 0 ? (
-        <p className="outline-hint">还没有章节标题</p>
-      ) : outlineView === 'detail' ? (
-        outline.map((entry) => (
-          <div key={entry.index} className={'outline-card' + (entry.level === 2 ? ' outline-h2' : '')}>
-            <div className="outline-card-title" onClick={() => handleOutlineClick(entry)}>
-              {entry.text || '（无标题）'}
-            </div>
-            <NoteField
-              className="outline-card-note"
-              placeholder="写点说明…"
-              rows={2}
-              initial={entry.note}
-              onSave={(value) => setHeadingNote(entry.index, value)}
-            />
+        <>
+          <p className="outline-hint">还没有章节标题</p>
+          <div className="add" onClick={() => addChapter()}>
+            ＋ 新章节
           </div>
-        ))
+        </>
       ) : (
-        outline.map((entry) => (
-          <div
-            key={entry.index}
-            className="outline-item-wrap"
-            onMouseEnter={(e) => openHover(entry, e.currentTarget)}
-            onMouseLeave={scheduleCloseHover}
-          >
-            <div
-              className={'chap outline-item' + (entry.level === 2 ? ' outline-h2' : '')}
-              onClick={() => handleOutlineClick(entry)}
-            >
-              {entry.text || '（无标题）'}
-            </div>
+        <>
+          {outlineView === 'detail'
+            ? outline.map((entry) => (
+                <div key={entry.index} className={'outline-card' + (entry.level === 2 ? ' outline-h2' : '')}>
+                  <div className="outline-card-title" onClick={() => handleOutlineClick(entry)}>
+                    {entry.text || '（无标题）'}
+                  </div>
+                  <NoteField
+                    className="outline-card-note"
+                    placeholder="写点说明…"
+                    rows={2}
+                    initial={entry.note}
+                    onSave={(value) => setHeadingNote(entry.index, value)}
+                  />
+                </div>
+              ))
+            : outline.map((entry) => (
+                <div
+                  key={entry.index}
+                  className="outline-item-wrap"
+                  onMouseEnter={(e) => openHover(entry, e.currentTarget)}
+                  onMouseLeave={scheduleCloseHover}
+                >
+                  <div
+                    className={'chap outline-item' + (entry.level === 2 ? ' outline-h2' : '')}
+                    onClick={() => handleOutlineClick(entry)}
+                  >
+                    {entry.text || '（无标题）'}
+                  </div>
+                </div>
+              ))}
+          <div className="add" onClick={() => addChapter()}>
+            ＋ 新章节
           </div>
-        ))
+        </>
       )}
       {hover &&
         createPortal(

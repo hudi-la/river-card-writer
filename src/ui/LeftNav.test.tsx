@@ -8,9 +8,10 @@ import { usePrefsStore } from '../state/prefsStore'
 // mock 掉 editorBridge：LeftNav 编辑 note 时只应该经它调 setHeadingNote，不直接碰
 // doc——mock 让我们断言调用参数，而不必真起一个 TipTap editor。
 const setHeadingNote = vi.fn()
+const addChapter = vi.fn()
 vi.mock('../state/editorBridge', () => ({
   useEditorBridge: (selector: (s: any) => any) =>
-    selector({ editor: {}, setEditor: vi.fn(), setHeadingNote }),
+    selector({ editor: {}, setEditor: vi.fn(), setHeadingNote, addChapter }),
 }))
 
 function docWithHeadings() {
@@ -43,6 +44,7 @@ function docWithNote() {
 beforeEach(() => {
   localStorage.clear()
   setHeadingNote.mockClear()
+  addChapter.mockClear()
   useBookStore.getState().__resetForTest()
   useBookStore.getState().openBook(useBookStore.getState().library.books[0].id)
   usePrefsStore.getState().__resetForTest()
@@ -75,6 +77,23 @@ describe('LeftNav', () => {
   it('空文档时目录区显示提示，而不是空白', () => {
     render(<LeftNav />)
     expect(screen.getByText('还没有章节标题')).toBeTruthy()
+  })
+
+  it('空文档时目录区显示可点击的＋新章节，点击后调 editorBridge.addChapter', async () => {
+    render(<LeftNav />)
+    const btn = screen.getByText('＋ 新章节')
+    await userEvent.click(btn)
+    expect(addChapter).toHaveBeenCalledTimes(1)
+  })
+
+  it('已有章节时，＋新章节出现在目录列表底部', async () => {
+    useBookStore.getState().updateDoc(docWithHeadings())
+    render(<LeftNav />)
+    expect(screen.getByText('一')).toBeTruthy()
+    const btn = screen.getByText('＋ 新章节')
+    expect(btn).toBeTruthy()
+    await userEvent.click(btn)
+    expect(addChapter).toHaveBeenCalledTimes(1)
   })
 
   it('点"＋ 新盒子"后 store.boxes +1，并进入该盒子', async () => {

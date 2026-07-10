@@ -109,6 +109,7 @@ declare module '@tiptap/core' {
       moveCardTo: (cardId: string, targetIndex: number) => ReturnType
       insertCardAfter: () => ReturnType
       appendCard: () => ReturnType
+      addChapterHeading: () => ReturnType
       setCardColor: (color: string | null) => ReturnType
       removeCard: () => ReturnType
       insertCardJSONAfter: (cardJSON: any, pos: number) => ReturnType
@@ -118,6 +119,13 @@ declare module '@tiptap/core' {
 
 function emptyCardNode(schema: EditorState['schema']) {
   const paragraph = schema.nodes.paragraph.createAndFill()!
+  return schema.nodes.card.create({ cardId: null, color: null }, paragraph)
+}
+
+// 同 emptyCardNode，但段落带上 style:'chapter'——给"＋ 新章节"用：新卡一落地就是
+// 一个（空文本的）章名段落，outlineFromDoc 立刻能认出它、大纲里多一条。
+function emptyChapterCardNode(schema: EditorState['schema']) {
+  const paragraph = schema.nodes.paragraph.createAndFill({ style: 'chapter' })!
   return schema.nodes.card.create({ cardId: null, color: null }, paragraph)
 }
 
@@ -320,6 +328,18 @@ export const Card = Node.create({
           if (dispatch) {
             const end = state.doc.content.size
             const card = emptyCardNode(state.schema)
+            const tr = state.tr.insert(end, card)
+            tr.setSelection(TextSelection.create(tr.doc, end + 2))
+            dispatch(tr.scrollIntoView())
+          }
+          return true
+        },
+      addChapterHeading:
+        () =>
+        ({ state, dispatch }) => {
+          if (dispatch) {
+            const end = state.doc.content.size
+            const card = emptyChapterCardNode(state.schema)
             const tr = state.tr.insert(end, card)
             tr.setSelection(TextSelection.create(tr.doc, end + 2))
             dispatch(tr.scrollIntoView())

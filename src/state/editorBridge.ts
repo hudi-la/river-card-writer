@@ -8,6 +8,7 @@ type EditorBridgeState = {
   editor: Editor | null
   setEditor: (editor: Editor | null) => void
   setHeadingNote: (headingIndex: number, note: string) => void
+  addChapter: () => void
 }
 
 export const useEditorBridge = create<EditorBridgeState>((set, get) => ({
@@ -17,5 +18,12 @@ export const useEditorBridge = create<EditorBridgeState>((set, get) => ({
     const editor = get().editor
     if (!editor) return
     editor.commands.setHeadingNote(headingIndex, note)
+  },
+  // "＋ 新章节"：空书/已有章节都走这个——在文档末尾插入一张空 chapter 段落的卡，
+  // 聚焦进去，用户能立刻打字。outline 是从 doc 派生的，插入后自然多一条目录项。
+  addChapter: () => {
+    const editor = get().editor
+    if (!editor) return
+    editor.chain().focus().addChapterHeading().run()
   },
 }))
