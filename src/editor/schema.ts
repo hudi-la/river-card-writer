@@ -66,13 +66,18 @@ export const ParagraphWithStyle = Paragraph.extend({
       setHeadingNote:
         (headingIndex: number, note: string) =>
         ({ state, dispatch }) => {
-          // 按文档顺序数第 headingIndex 个 chapter/h1 段落——顺序与
-          // outlineFromDoc/LeftNav 的编号规则保持一致。
+          // 按文档顺序数第 headingIndex 个 chapter/h1/h2 段落——顺序与
+          // outlineFromDoc（仅 chapter/h1）以及 outlineTreeFromDoc（chapter/h1/h2
+          // 都算 heading 行）的编号规则保持一致。h2 也要算进来，否则大纲树里的
+          // 三级标题行传进来的 headingIndex 会对不上，改到别的标题头上去。
           let targetPos = -1
           let count = 0
           state.doc.descendants((node, pos) => {
             if (targetPos !== -1) return false
-            if (node.type.name === 'paragraph' && (node.attrs.style === 'chapter' || node.attrs.style === 'h1')) {
+            if (
+              node.type.name === 'paragraph' &&
+              (node.attrs.style === 'chapter' || node.attrs.style === 'h1' || node.attrs.style === 'h2')
+            ) {
               if (count === headingIndex) targetPos = pos
               count++
             }

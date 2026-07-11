@@ -104,10 +104,42 @@ export function outlineTreeFromDoc(doc: any): OutlineRow[] {
 }
 
 // RiverEditor（Task 1）把每个段落渲染成 p[data-style=...]，顺序与 doc 里一致——
-// 用组合选择器一次查，浏览器按文档顺序返回，第 index 个就是目标标题。
+// 用组合选择器一次查，浏览器按文档顺序返回，第 index 个就是目标标题。三种
+// 标题样式都要占位（跟 setHeadingNote/outlineTreeFromDoc 的三级 heading 判定
+// 保持一致），querySelectorAll 对逗号选择器始终按文档顺序返回，不受选择器
+// 书写顺序影响。
 function scrollToOutlineIndex(index: number) {
-  const nodes = document.querySelectorAll<HTMLElement>('.river p[data-style="chapter"], .river p[data-style="h1"]')
+  const nodes = document.querySelectorAll<HTMLElement>(
+    '.river p[data-style="chapter"], .river p[data-style="h1"], .river p[data-style="h2"]',
+  )
   nodes[index]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+// 块行点击滚动到对应的卡——CardView 把每张卡渲成 section.card，doc.content
+// 顶层顺序 = DOM 顺序，cardIndex 直接拿去当下标。
+function scrollToCardIndex(cardIndex: number) {
+  const nodes = document.querySelectorAll<HTMLElement>('.river section.card')
+  nodes[cardIndex]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+// 大纲树里一行的显示文案：有 note 优先显示 note；否则标题行显示标题文本
+// （没有文本给"（无标题）"占位，跟原来一致），块行显示预览（没有预览的空块
+// 给淡色"（空块）"占位）。
+function outlineRowLabel(row: OutlineRow): { text: string; faint: boolean } {
+  if (row.note) return { text: row.note, faint: false }
+  if (row.kind === 'heading') return { text: row.text || '（无标题）', faint: false }
+  if (row.preview) return { text: row.preview, faint: false }
+  return { text: '（空块）', faint: true }
+}
+
+function outlineRowClassName(row: OutlineRow): string {
+  const kindClass = row.kind === 'heading' ? 'outline-heading' : 'outline-block'
+  return `chap outline-row ${kindClass} outline-level-${row.level}`
+}
+
+function outlineCardClassName(row: OutlineRow): string {
+  const kindClass = row.kind === 'block' ? ' outline-card-block' : ''
+  return `outline-card outline-card-level-${row.level}${kindClass}`
 }
 
 // hover 便签 / 详细视图卡片里的 note 文本框都用这个：本地 state 撑显示，失焦才
@@ -184,11 +216,22 @@ export function LeftNav() {
   const outlineView = usePrefsStore((s) => s.prefs.outlineView)
   const setOutlineView = usePrefsStore((s) => s.setOutlineView)
   const setHeadingNote = useEditorBridge((s) => s.setHeadingNote)
+  const setCardNote = useEditorBridge((s) => s.setCardNote)
   const addChapter = useEditorBridge((s) => s.addChapter)
 
-  const outline = outlineFromDoc(book?.doc)
+  const rows = outlineTreeFromDoc(book?.doc)
+  // 每个 heading 行在"所有 heading 行"里的序号（chapter/h1/h2 都算，跟
+  // setHeadingNote 的计数规则一致，见 schema.ts 里的注释）；block 行没有意义，
+  // 占位 -1 不会被用到。空文档默认还有一张空的正文卡（EMPTY_DOC），rows 不为
+  // 空但一个 heading 都没有——沿用旧版"没有章节标题就显示提示"的判定，不能
+  // 简单看 rows.length。
+  let headingCounter = -1
+  const headingIndices = rows.map((r) => (r.kind === 'heading' ? ++headingCounter : -1))
+  const hasHeadings = headingCounter >= 0
 
-  const [hover, setHover] = useState<{ entry: OutlineEntry; left: number; top: number } | null>(null)
+  const [hover, setHover] = useState<{ row: OutlineRow; headingIndex: number; left: number; top: number } | null>(
+    null,
+  )
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 盒子的卡片列表默认展开——集合里存的是"已折叠"的盒子 id，不在集合里 == 展开。
@@ -204,13 +247,17 @@ export function LeftNav() {
   }
 
   // 进条目才重算位置（贴着它);进浮层本身只是取消关闭定时器，位置不变——这样
-  // 鼠标从条目挪进浮层的路上便签不会跳动。
-  const openHover = (entry: OutlineEntry, el: HTMLElement) => {
+  // 鼠标从条目挪进浮层的路上便签不会跳动。wrapEl 是整行（hover 命中区，留大一点
+  // 好触发），但量坐标要用行内那截"文字"元素的 rect（.outline-row-text 是行内
+  // span，天然只有文字宽度，不会像整行 div 那样撑满栏宽）——这样便签才会贴在
+  // 文字右侧一点点，而不是远在栏的右边缘。
+  const openHover = (row: OutlineRow, headingIndex: number, wrapEl: HTMLElement) => {
     if (closeTimer.current) {
       clearTimeout(closeTimer.current)
       closeTimer.current = null
     }
-    setHover({ entry, ...computePopoverPos(el.getBoundingClientRect()) })
+    const textEl = wrapEl.querySelector<HTMLElement>('.outline-row-text') ?? wrapEl
+    setHover({ row, headingIndex, ...computePopoverPos(textEl.getBoundingClientRect()) })
   }
   const cancelCloseHover = () => {
     if (closeTimer.current) {
@@ -234,11 +281,21 @@ export function LeftNav() {
     setHover(null)
   }
 
-  const handleOutlineClick = (entry: OutlineEntry) => {
+  const handleRowClick = (row: OutlineRow, headingIndex: number) => {
     openDoc()
     // 若刚从盒子视图切回正文，RiverEditor 要等这次 state 更新渲染完才会挂载
     // 对应的 DOM——用 setTimeout(0) 让这次点击先把 React 更新跑完再滚动。
-    setTimeout(() => scrollToOutlineIndex(entry.index), 0)
+    setTimeout(() => {
+      if (row.kind === 'heading') scrollToOutlineIndex(headingIndex)
+      else scrollToCardIndex(row.cardIndex)
+    }, 0)
+  }
+
+  // note 编辑保存的路由：标题行走 setHeadingNote（按 heading 序号），块行走
+  // setCardNote（按 doc.content 顶层卡序号）——editorBridge 是唯一改 doc 的路。
+  const saveRowNote = (row: OutlineRow, headingIndex: number, value: string) => {
+    if (row.kind === 'heading') setHeadingNote(headingIndex, value)
+    else setCardNote(row.cardIndex, value)
   }
 
   return (
@@ -252,7 +309,7 @@ export function LeftNav() {
           详细
         </button>
       </div>
-      {outline.length === 0 ? (
+      {!hasHeadings ? (
         <>
           <p className="outline-hint">还没有章节标题</p>
           <div className="add" onClick={() => addChapter()}>
@@ -262,35 +319,35 @@ export function LeftNav() {
       ) : (
         <>
           {outlineView === 'detail'
-            ? outline.map((entry) => (
-                <div key={entry.index} className={'outline-card' + (entry.level === 2 ? ' outline-h2' : '')}>
-                  <div className="outline-card-title" onClick={() => handleOutlineClick(entry)}>
-                    {entry.text || '（无标题）'}
+            ? rows.map((row, i) => (
+                <div key={row.cardIndex} className={outlineCardClassName(row)}>
+                  <div className="outline-card-title" onClick={() => handleRowClick(row, headingIndices[i])}>
+                    {row.kind === 'heading' ? row.text || '（无标题）' : row.preview || '（空块）'}
                   </div>
                   <NoteField
                     className="outline-card-note"
                     placeholder="写点说明…"
                     rows={2}
-                    initial={entry.note}
-                    onSave={(value) => setHeadingNote(entry.index, value)}
+                    initial={row.note}
+                    onSave={(value) => saveRowNote(row, headingIndices[i], value)}
                   />
                 </div>
               ))
-            : outline.map((entry) => (
-                <div
-                  key={entry.index}
-                  className="outline-item-wrap"
-                  onMouseEnter={(e) => openHover(entry, e.currentTarget)}
-                  onMouseLeave={scheduleCloseHover}
-                >
+            : rows.map((row, i) => {
+                const label = outlineRowLabel(row)
+                return (
                   <div
-                    className={'chap outline-item' + (entry.level === 2 ? ' outline-h2' : '')}
-                    onClick={() => handleOutlineClick(entry)}
+                    key={row.cardIndex}
+                    className="outline-item-wrap"
+                    onMouseEnter={(e) => openHover(row, headingIndices[i], e.currentTarget)}
+                    onMouseLeave={scheduleCloseHover}
                   >
-                    {entry.text || '（无标题）'}
+                    <div className={outlineRowClassName(row)} onClick={() => handleRowClick(row, headingIndices[i])}>
+                      <span className={'outline-row-text' + (label.faint ? ' faint' : '')}>{label.text}</span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
           <div className="add" onClick={() => addChapter()}>
             ＋ 新章节
           </div>
@@ -299,7 +356,7 @@ export function LeftNav() {
       {hover &&
         createPortal(
           <div
-            key={hover.entry.index}
+            key={hover.row.cardIndex}
             className="note-popover"
             style={{ left: hover.left, top: hover.top }}
             onMouseEnter={cancelCloseHover}
@@ -310,8 +367,8 @@ export function LeftNav() {
               placeholder="写点说明…"
               rows={4}
               autoFocus
-              initial={hover.entry.note}
-              onSave={(value) => setHeadingNote(hover.entry.index, value)}
+              initial={hover.row.note}
+              onSave={(value) => saveRowNote(hover.row, hover.headingIndex, value)}
             />
           </div>,
           document.body,

@@ -5,13 +5,14 @@ import { LeftNav, outlineFromDoc } from './LeftNav'
 import { useBookStore, UNIVERSAL_BOX_ID } from '../state/bookStore'
 import { usePrefsStore } from '../state/prefsStore'
 
-// mock 掉 editorBridge：LeftNav 编辑 note 时只应该经它调 setHeadingNote，不直接碰
-// doc——mock 让我们断言调用参数，而不必真起一个 TipTap editor。
+// mock 掉 editorBridge：LeftNav 编辑 note 时只应该经它调 setHeadingNote/setCardNote，
+// 不直接碰 doc——mock 让我们断言调用参数，而不必真起一个 TipTap editor。
 const setHeadingNote = vi.fn()
+const setCardNote = vi.fn()
 const addChapter = vi.fn()
 vi.mock('../state/editorBridge', () => ({
   useEditorBridge: (selector: (s: any) => any) =>
-    selector({ editor: {}, setEditor: vi.fn(), setHeadingNote, addChapter }),
+    selector({ editor: {}, setEditor: vi.fn(), setHeadingNote, setCardNote, addChapter }),
 }))
 
 function docWithHeadings() {
@@ -44,6 +45,7 @@ function docWithNote() {
 beforeEach(() => {
   localStorage.clear()
   setHeadingNote.mockClear()
+  setCardNote.mockClear()
   addChapter.mockClear()
   useBookStore.getState().__resetForTest()
   useBookStore.getState().openBook(useBookStore.getState().library.books[0].id)
@@ -65,13 +67,13 @@ describe('outlineFromDoc', () => {
 })
 
 describe('LeftNav', () => {
-  it('目录区显示 doc 里的章/节标题文本', () => {
+  it('目录区显示 doc 里的章/节标题文本（Phase 12：大纲变成树，正文块也以预览行的形式列在标题下）', () => {
     useBookStore.getState().updateDoc(docWithHeadings())
     render(<LeftNav />)
     expect(screen.getByText('一')).toBeTruthy()
     expect(screen.getByText('第一节')).toBeTruthy()
     expect(screen.getByText('二')).toBeTruthy()
-    expect(screen.queryByText('正文段落，不算标题')).toBeNull()
+    expect(screen.getByText('正文段落，不算标题')).toBeTruthy()
   })
 
   it('空文档时目录区显示提示，而不是空白', () => {
@@ -261,5 +263,103 @@ describe('LeftNav 简略/详细两视图', () => {
     render(<LeftNav />)
     await userEvent.click(screen.getByText('详细'))
     expect(usePrefsStore.getState().prefs.outlineView).toBe('detail')
+  })
+})
+
+// Phase 12 Task 2：大纲从"只列标题"换成"树"——标题行下面挂着它管辖范围内的
+// 正文块行（带预览/note）。
+function docWithChapterAndBlocks() {
+  return {
+    type: 'doc',
+    content: [
+      {
+        type: 'card',
+        attrs: { cardId: 'c0' },
+        content: [{ type: 'paragraph', attrs: { style: 'chapter' }, content: [{ type: 'text', text: '第一章' }] }],
+      },
+      { type: 'card', attrs: { cardId: 'c1' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '正文一' }] }] },
+      { type: 'card', attrs: { cardId: 'c2' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '正文二' }] }] },
+    ],
+  }
+}
+
+describe('LeftNav 大纲树：标题行 + 块行（Phase 12 Task 2）', () => {
+  it('渲染出标题行 + 两个块行，块行显示预览文字', () => {
+    useBookStore.getState().updateDoc(docWithChapterAndBlocks())
+    render(<LeftNav />)
+    expect(screen.getByText('第一章')).toBeTruthy()
+    expect(screen.getByText('正文一')).toBeTruthy()
+    expect(screen.getByText('正文二')).toBeTruthy()
+  })
+
+  it('块写了 note 后该行显示 note，而不是预览', () => {
+    const doc = docWithChapterAndBlocks()
+    ;(doc.content[1] as any).attrs = { cardId: 'c1', note: '这块讲主角觉醒' }
+    useBookStore.getState().updateDoc(doc)
+    render(<LeftNav />)
+    expect(screen.getByText('这块讲主角觉醒')).toBeTruthy()
+    expect(screen.queryByText('正文一')).toBeNull()
+  })
+
+  it('空块（无文字无 note）显示淡色占位「（空块）」', () => {
+    const doc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'card',
+          attrs: { cardId: 'c0' },
+          content: [{ type: 'paragraph', attrs: { style: 'chapter' }, content: [{ type: 'text', text: '第一章' }] }],
+        },
+        { type: 'card', attrs: { cardId: 'c1' }, content: [{ type: 'paragraph', content: [] }] },
+      ],
+    }
+    useBookStore.getState().updateDoc(doc)
+    render(<LeftNav />)
+    expect(screen.getByText('（空块）')).toBeTruthy()
+  })
+
+  it('详细视图里每个块行也铺出 note 文本框，编辑后调 editorBridge.setCardNote(cardIndex, value)', async () => {
+    useBookStore.getState().updateDoc(docWithChapterAndBlocks())
+    render(<LeftNav />)
+    await userEvent.click(screen.getByText('详细'))
+    const textareas = screen.getAllByPlaceholderText('写点说明…')
+    // rows 顺序：[章(cardIndex 0), 正文一(cardIndex 1), 正文二(cardIndex 2)]，
+    // 文本框顺序跟 rows 一致——第二个文本框对应 cardIndex 1 的块。
+    expect(textareas.length).toBe(3)
+    await userEvent.type(textareas[1], '块说明')
+    await userEvent.tab()
+    expect(setCardNote).toHaveBeenCalledWith(1, '块说明')
+  })
+
+  it('详细视图里标题行的 note 仍走 editorBridge.setHeadingNote(headingIndex, value)', async () => {
+    useBookStore.getState().updateDoc(docWithChapterAndBlocks())
+    render(<LeftNav />)
+    await userEvent.click(screen.getByText('详细'))
+    const textareas = screen.getAllByPlaceholderText('写点说明…')
+    await userEvent.type(textareas[0], '章节说明')
+    await userEvent.tab()
+    expect(setHeadingNote).toHaveBeenCalledWith(0, '章节说明')
+    expect(setCardNote).not.toHaveBeenCalled()
+  })
+
+  it('点块行滚动到该块（正文里第 cardIndex 个 section.card scrollIntoView）', async () => {
+    useBookStore.getState().updateDoc(docWithChapterAndBlocks())
+    render(<LeftNav />)
+    const cards = [0, 1, 2].map(() => {
+      const el = document.createElement('section')
+      el.className = 'card'
+      document.body.appendChild(el)
+      el.scrollIntoView = vi.fn()
+      return el
+    })
+    const river = document.createElement('div')
+    river.className = 'river'
+    cards.forEach((c) => river.appendChild(c))
+    document.body.appendChild(river)
+    await userEvent.click(screen.getByText('正文二'))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(cards[2].scrollIntoView).toHaveBeenCalled()
+    river.remove()
+    cards.forEach((c) => c.remove())
   })
 })

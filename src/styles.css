@@ -65,7 +65,22 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
    本书的第 N 个盒子，是跨所有书共享的同一个实例。 */
 .universal-box-divider { height:1px; background:var(--faint); margin:10px 4px; }
 .universal-box-icon { color:var(--muted); font-size:.9em; }
-.outline-item.outline-h2 { padding-left:20px; font-size:.95em; }
+/* 大纲树（Phase 12 Task 2）：标题行加粗程度随层级递减，块行再缩进一级、更淡更小。
+   .outline-row-text 是行内 span，天然只包住文字本身的宽度（不像整行的块级
+   div 会撑满栏宽）——hover 便签的定位就是量这个 span 的 rect，见 LeftNav.tsx
+   的 openHover。 */
+.outline-heading.outline-level-1 { font-weight:600; }
+.outline-heading.outline-level-2 { padding-left:20px; font-size:.95em; font-weight:500; }
+.outline-heading.outline-level-3 { padding-left:34px; font-size:.9em; font-weight:400; }
+.outline-block { font-size:.85em; color:var(--muted); }
+.outline-block.outline-level-1 { padding-left:20px; }
+.outline-block.outline-level-2 { padding-left:34px; }
+.outline-block.outline-level-3 { padding-left:48px; }
+.outline-row-text {
+  display:inline-block; max-width:100%; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; vertical-align:top;
+}
+.outline-row-text.faint { opacity:.55; font-style:italic; }
 .outline-hint { padding:6px 8px; color:var(--muted); opacity:.6; font-size:12px; }
 .chap-edit { width:100%; border:1px solid var(--hair); border-radius:4px; background:var(--paper); color:var(--ink); font:inherit; padding:4px 6px; }
 
@@ -98,7 +113,9 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 .outline-card {
   padding:8px; margin-bottom:8px; border:1px solid var(--faint); border-radius:6px;
 }
-.outline-card.outline-h2 { margin-left:16px; }
+.outline-card-level-2 { margin-left:16px; }
+.outline-card-level-3 { margin-left:32px; }
+.outline-card-block .outline-card-title { font-weight:400; color:var(--muted); }
 .outline-card-title { padding:0 0 6px; color:var(--ink); font-weight:600; cursor:pointer; font-size:.95em; }
 .outline-card-note { min-height:44px; }
 .page { padding:36px 0; display:flex; justify-content:center; position:relative; }
