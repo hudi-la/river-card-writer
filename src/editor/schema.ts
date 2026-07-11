@@ -5,6 +5,7 @@ import Text from '@tiptap/extension-text'
 import Placeholder from '@tiptap/extension-placeholder'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import { EditorState, Plugin, Transaction, TextSelection } from '@tiptap/pm/state'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { Fragment, type Node as PMNode } from '@tiptap/pm/model'
 import { nanoid } from 'nanoid'
 import { CardView } from './CardView'
@@ -32,6 +33,14 @@ export const ParagraphWithStyle = Paragraph.extend({
         default: '',
         parseHTML: (el: HTMLElement) => el.getAttribute('data-note') || '',
         renderHTML: (attrs: { note: string }) => (attrs.note ? { 'data-note': attrs.note } : {}),
+      },
+      // 章/节标题的折叠状态——只在 heading 段落（chapter/h1/h2）上有意义，正文段落
+      // 忽略它。默认 false，老文档（JSON/HTML 里没有 data-collapsed）解析出来也是
+      // false，完全向后兼容、零行为变化。
+      collapsed: {
+        default: false,
+        parseHTML: (el: HTMLElement) => el.getAttribute('data-collapsed') === 'true',
+        renderHTML: (attrs: { collapsed: boolean }) => (attrs.collapsed ? { 'data-collapsed': 'true' } : {}),
       },
     }
   },
@@ -86,6 +95,33 @@ export const ParagraphWithStyle = Paragraph.extend({
           if (dispatch) dispatch(state.tr.setNodeAttribute(targetPos, 'note', note))
           return true
         },
+      toggleCollapsed:
+        (headingCardIndex: number) =>
+        ({ state, dispatch }) => {
+          // 定位 doc.content 第 headingCardIndex 张 card 里的（第一个）heading 段落——
+          // 下标规则跟 moveSection/setCardNote 一致，按 doc 顶层 child 序号数。
+          const doc = state.doc
+          if (headingCardIndex < 0 || headingCardIndex >= doc.childCount) return false
+          const cardNode = doc.child(headingCardIndex)
+          let cardOffset = 0
+          for (let i = 0; i < headingCardIndex; i++) cardOffset += doc.child(i).nodeSize
+          let targetPos = -1
+          cardNode.forEach((paragraph, offsetInCard) => {
+            if (targetPos !== -1) return
+            if (paragraph.type.name !== 'paragraph') return
+            const style = paragraph.attrs.style
+            if (style === 'chapter' || style === 'h1' || style === 'h2') {
+              // +1 跨过 card 节点自身的开始标记，进入其内容位置
+              targetPos = cardOffset + 1 + offsetInCard
+            }
+          })
+          if (targetPos === -1) return false // 不是标题卡，没有 collapsed 可翻
+          if (dispatch) {
+            const node = state.doc.nodeAt(targetPos)!
+            dispatch(state.tr.setNodeAttribute(targetPos, 'collapsed', !node.attrs.collapsed))
+          }
+          return true
+        },
     }
   },
 })
@@ -105,6 +141,7 @@ declare module '@tiptap/core' {
     paragraphStyle: {
       setParagraphStyle: (style: ParagraphStyle) => ReturnType
       setHeadingNote: (headingIndex: number, note: string) => ReturnType
+      toggleCollapsed: (headingCardIndex: number) => ReturnType
     }
     card: {
       splitCard: () => ReturnType
@@ -227,6 +264,55 @@ function cardHeadingLevel(card: PMNode): 1 | 2 | 3 | null {
   return level
 }
 
+// 标题卡 headingCardIndex 的"段正文"范围——它自己之后、直到下一张 level ≤ 它的
+// 标题卡之前的所有卡下标（含中间夹着的更深层子节/正文块，不含标题卡自己）。
+// [startExclusive, endExclusive) 左闭右开，跟 Array.slice 一致。非标题卡（没有
+// "段"这个概念）或下标越界时返回 [headingCardIndex, headingCardIndex]（空区间）。
+// moveSection 与 hiddenCardIndices 共用这份边界计算，保证"挪整段"和"折叠整段"
+// 认的是同一个范围。
+export function sectionRange(doc: PMNode, headingCardIndex: number): [number, number] {
+  if (headingCardIndex < 0 || headingCardIndex >= doc.childCount) return [headingCardIndex, headingCardIndex]
+  const level = cardHeadingLevel(doc.child(headingCardIndex))
+  if (level === null) return [headingCardIndex, headingCardIndex]
+  const start = headingCardIndex + 1
+  let end = doc.childCount
+  for (let i = start; i < doc.childCount; i++) {
+    const l = cardHeadingLevel(doc.child(i))
+    if (l !== null && l <= level) {
+      end = i
+      break
+    }
+  }
+  return [start, end]
+}
+
+// 遍历全文所有 collapsed 的标题段落，收集其"段正文"（sectionRange）覆盖到的
+// card 下标——标题卡自己不算隐藏，只隐藏它后面那段。多个 collapsed 标题（含
+// 嵌套：外层章 collapsed 时，其子节即便自己没 collapsed 也已经在外层段范围内）
+// 靠 Set 自然去重、自然覆盖，不用特殊处理嵌套。没有任何 collapsed 标题时返回
+// 空集——老文档 / 未使用折叠功能时零行为变化。
+export function hiddenCardIndices(doc: PMNode): Set<number> {
+  const hidden = new Set<number>()
+  for (let i = 0; i < doc.childCount; i++) {
+    if (!isCollapsedHeadingCard(doc.child(i))) continue
+    const [start, end] = sectionRange(doc, i)
+    for (let j = start; j < end; j++) hidden.add(j)
+  }
+  return hidden
+}
+
+// 这张卡是不是一张"已折叠"的标题卡——即它的（唯一）heading 段落 collapsed 为 true。
+function isCollapsedHeadingCard(card: PMNode): boolean {
+  let collapsed = false
+  card.forEach((paragraph) => {
+    if (collapsed) return
+    if (paragraph.type.name !== 'paragraph') return
+    const style = paragraph.attrs.style
+    if ((style === 'chapter' || style === 'h1' || style === 'h2') && paragraph.attrs.collapsed) collapsed = true
+  })
+  return collapsed
+}
+
 // 把 headingCardIndex 指定的标题卡「整段」——它自己 + 其后直到下一张 level ≤ 它
 // 的标题卡之前的所有卡（含中间夹着的更深层子节/正文块）——搬到 targetIndex。
 // targetIndex 语义跟 moveCardTo 不同：这里是「原 doc.content 里的下标，插到当前
@@ -247,14 +333,7 @@ function moveSectionToIndex(
   if (level === null) return false // 不是标题卡，没有"整段"可搬
 
   const startIndex = headingCardIndex
-  let endIndex = doc.childCount
-  for (let i = startIndex + 1; i < doc.childCount; i++) {
-    const l = cardHeadingLevel(doc.child(i))
-    if (l !== null && l <= level) {
-      endIndex = i
-      break
-    }
-  }
+  const [, endIndex] = sectionRange(doc, headingCardIndex)
   if (startIndex === 0 && endIndex === doc.childCount) {
     // 整段就是整份文档——没有别的卡可供参照重排，天然是 no-op。也避开下面
     // delete 整个 doc 到 0 张卡时，ProseMirror 会自动塞一张空卡补齐 schema
@@ -547,6 +626,37 @@ export const assignCardIds = Extension.create({
   },
 })
 
+// 折叠态的视觉装饰——纯展示层，不碰文档内容（数据安全：卡永远还在 doc 里，
+// 只是打个 NODE 装饰 class 让 CSS display:none 掉）。装饰是从 state.doc 现算的
+// 派生数据（没有单独 plugin state），每次 doc 变化 ProseMirror 都会重新调用
+// decorations()，天然保持与 collapsed 属性同步，不用手动失效。
+export const collapseDecorations = Extension.create({
+  name: 'collapseDecorations',
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        props: {
+          decorations(state) {
+            const decorations: Decoration[] = []
+            const hidden = hiddenCardIndices(state.doc)
+            state.doc.forEach((node, pos, index) => {
+              if (hidden.has(index)) {
+                decorations.push(Decoration.node(pos, pos + node.nodeSize, { class: 'card-collapsed-hidden' }))
+              }
+              // 标题卡自身若 collapsed，加个 data-collapsed 方便画折叠态样式（可选，
+              // 跟隐藏正文是两回事：标题卡自己永远不隐藏）。
+              if (isCollapsedHeadingCard(node)) {
+                decorations.push(Decoration.node(pos, pos + node.nodeSize, { 'data-collapsed': 'true' }))
+              }
+            })
+            return decorations.length ? DecorationSet.create(state.doc, decorations) : null
+          },
+        },
+      }),
+    ]
+  },
+})
+
 export const baseExtensions = [
   CardDocument,
   Card,
@@ -555,6 +665,7 @@ export const baseExtensions = [
   Emphasis,
   Refer,
   assignCardIds,
+  collapseDecorations,
   // card 的 content 是 paragraph（非顶层 doc 直接子节点），Placeholder 默认只在 doc 第一层
   // 找 textblock，所以要 includeChildren 才能扫到嵌在 card 里的空 paragraph；
   // showOnlyCurrent: false 让占位不依赖光标是否停在这张卡上。

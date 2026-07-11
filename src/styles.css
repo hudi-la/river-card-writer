@@ -191,6 +191,10 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
   height: 2px; border-radius: 1px; background: var(--thread, #7fa3c4);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--thread, #7fa3c4) 20%, transparent);
 }
+/* 折叠：collapsed 标题段的正文卡只是视觉隐藏（display:none），内容仍在文档
+   里——数据从不删除，只是不渲染。 */
+.card-collapsed-hidden { display: none; }
+.river .card[data-collapsed] { opacity: .7; }
 .river .card-body { font-family: var(--reading-font); font-size: var(--reading-size); }
 .river .card-body p { margin: 0; line-height: 1.95; text-indent: 2em; }
 .river .card-body p[data-style="chapter"] { font-size: 1.4em; font-weight: 700; text-indent: 0; margin: .6em 0 .4em; line-height: 1.4; }
