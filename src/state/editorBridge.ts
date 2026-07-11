@@ -16,6 +16,10 @@ type EditorBridgeState = {
   // 关心 moveCardTo 命令内部其实是 splice 语义——换算在这里做一次就够。
   moveCardTo: (cardIndex: number, targetIndex: number) => void
   moveSection: (headingCardIndex: number, targetIndex: number) => void
+  // 目录三角折叠（Phase 13 Task 2）——headingCardIndex 同 moveSection，是标题卡在
+  // doc.content 里的下标，直接转发给 toggleCollapsed 命令（schema.ts 里定位它的
+  // heading 段落、翻转 collapsed 属性）。
+  toggleCollapsed: (headingCardIndex: number) => void
 }
 
 export const useEditorBridge = create<EditorBridgeState>((set, get) => ({
@@ -60,5 +64,10 @@ export const useEditorBridge = create<EditorBridgeState>((set, get) => ({
     const editor = get().editor
     if (!editor) return
     editor.commands.moveSection(headingCardIndex, targetIndex)
+  },
+  toggleCollapsed: (headingCardIndex) => {
+    const editor = get().editor
+    if (!editor) return
+    editor.commands.toggleCollapsed(headingCardIndex)
   },
 }))

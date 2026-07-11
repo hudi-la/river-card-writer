@@ -12,9 +12,19 @@ const setCardNote = vi.fn()
 const addChapter = vi.fn()
 const moveCardTo = vi.fn()
 const moveSection = vi.fn()
+const toggleCollapsed = vi.fn()
 vi.mock('../state/editorBridge', () => ({
   useEditorBridge: (selector: (s: any) => any) =>
-    selector({ editor: {}, setEditor: vi.fn(), setHeadingNote, setCardNote, addChapter, moveCardTo, moveSection }),
+    selector({
+      editor: {},
+      setEditor: vi.fn(),
+      setHeadingNote,
+      setCardNote,
+      addChapter,
+      moveCardTo,
+      moveSection,
+      toggleCollapsed,
+    }),
 }))
 
 function docWithHeadings() {
@@ -51,6 +61,7 @@ beforeEach(() => {
   addChapter.mockClear()
   moveCardTo.mockClear()
   moveSection.mockClear()
+  toggleCollapsed.mockClear()
   useBookStore.getState().__resetForTest()
   useBookStore.getState().openBook(useBookStore.getState().library.books[0].id)
   usePrefsStore.getState().__resetForTest()
@@ -443,5 +454,108 @@ describe('LeftNav 目录内拖动重排（Phase 12 Task 3）', () => {
     dragRow(cardARow, 45, 46) // 位移 1px，远小于阈值
     expect(moveCardTo).not.toHaveBeenCalled()
     expect(moveSection).not.toHaveBeenCalled()
+  })
+})
+
+// Phase 13 Task 2：目录标题行的折叠三角——收起时目录不渲染该标题管辖的后代行
+// （块 + 子节），正文那边的隐藏由 Task 1 的装饰器另行处理，这里只测目录树。
+// 结构跟 docTwoChaptersWithSection 类似但块数不同："章+两块+一节+一块"：
+// [章1(0,collapsed?), 正文A(1), 正文B(2), 第一节(3), 正文C(4), 章2(5)]。
+function docChapterWithBlocksAndSection(chap1Collapsed = false) {
+  return {
+    type: 'doc',
+    content: [
+      {
+        type: 'card',
+        attrs: { cardId: 'chap1' },
+        content: [{ type: 'paragraph', attrs: { style: 'chapter', collapsed: chap1Collapsed }, content: [{ type: 'text', text: '第一章' }] }],
+      },
+      { type: 'card', attrs: { cardId: 'cardA' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '正文A' }] }] },
+      { type: 'card', attrs: { cardId: 'cardB' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '正文B' }] }] },
+      { type: 'card', attrs: { cardId: 'h11' }, content: [{ type: 'paragraph', attrs: { style: 'h1' }, content: [{ type: 'text', text: '第一节' }] }] },
+      { type: 'card', attrs: { cardId: 'cardC' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '正文C' }] }] },
+      {
+        type: 'card',
+        attrs: { cardId: 'chap2' },
+        content: [{ type: 'paragraph', attrs: { style: 'chapter' }, content: [{ type: 'text', text: '第二章' }] }],
+      },
+    ],
+  }
+}
+
+describe('LeftNav 目录折叠三角（Phase 13 Task 2）', () => {
+  it('有后代的标题行显示折叠三角（未折叠时是 ▾）', () => {
+    useBookStore.getState().updateDoc(docChapterWithBlocksAndSection())
+    const { container } = render(<LeftNav />)
+    const chap1Row = container.querySelector('[data-outline-row-index="0"]') as HTMLElement
+    const triangle = within(chap1Row).getByLabelText('折叠')
+    expect(triangle.textContent).toBe('▾')
+  })
+
+  it('点标题行的三角调 editorBridge.toggleCollapsed(cardIndex)，且不触发行的点击滚动/拖拽', async () => {
+    useBookStore.getState().updateDoc(docChapterWithBlocksAndSection())
+    const openDocSpy = vi.spyOn(useBookStore.getState(), 'openDoc')
+    const { container } = render(<LeftNav />)
+    const chap1Row = container.querySelector('[data-outline-row-index="0"]') as HTMLElement
+    const triangle = within(chap1Row).getByLabelText('折叠')
+    await userEvent.click(triangle)
+    expect(toggleCollapsed).toHaveBeenCalledTimes(1)
+    expect(toggleCollapsed).toHaveBeenCalledWith(0)
+    // 点三角不应该冒泡触发整行的点击滚动（openDoc 是 handleRowClick 第一步）
+    expect(openDocSpy).not.toHaveBeenCalled()
+    expect(moveCardTo).not.toHaveBeenCalled()
+    expect(moveSection).not.toHaveBeenCalled()
+    openDocSpy.mockRestore()
+  })
+
+  it('标题 collapsed=true 时，目录不渲染其后代行（块+子节），标题本身仍在，后面同级章照常渲染', () => {
+    useBookStore.getState().updateDoc(docChapterWithBlocksAndSection(true))
+    render(<LeftNav />)
+    expect(screen.getByText('第一章')).toBeTruthy()
+    expect(screen.queryByText('正文A')).toBeNull()
+    expect(screen.queryByText('正文B')).toBeNull()
+    expect(screen.queryByText('第一节')).toBeNull()
+    expect(screen.queryByText('正文C')).toBeNull()
+    expect(screen.getByText('第二章')).toBeTruthy()
+  })
+
+  it('标题 collapsed=true 时三角显示 ▸', () => {
+    useBookStore.getState().updateDoc(docChapterWithBlocksAndSection(true))
+    const { container } = render(<LeftNav />)
+    const chap1Row = container.querySelector('[data-outline-row-index="0"]') as HTMLElement
+    const triangle = within(chap1Row).getByLabelText('展开')
+    expect(triangle.textContent).toBe('▸')
+  })
+
+  it('没有后代的标题行（如空章）不显示可点的折叠三角', () => {
+    const doc = {
+      type: 'doc',
+      content: [
+        { type: 'card', attrs: { cardId: 'chapOnly' }, content: [{ type: 'paragraph', attrs: { style: 'chapter' }, content: [{ type: 'text', text: '孤章' }] }] },
+      ],
+    }
+    useBookStore.getState().updateDoc(doc)
+    const { container } = render(<LeftNav />)
+    const row = container.querySelector('[data-outline-row-index="0"]') as HTMLElement
+    expect(within(row).queryByLabelText('折叠')).toBeNull()
+    expect(within(row).queryByLabelText('展开')).toBeNull()
+  })
+
+  it('块行没有折叠三角', () => {
+    useBookStore.getState().updateDoc(docChapterWithBlocksAndSection())
+    const { container } = render(<LeftNav />)
+    const blockRow = container.querySelector('[data-outline-row-index="1"]') as HTMLElement
+    expect(within(blockRow).queryByLabelText('折叠')).toBeNull()
+    expect(within(blockRow).queryByLabelText('展开')).toBeNull()
+  })
+
+  it('详细视图里同样支持折叠三角与隐藏后代', async () => {
+    useBookStore.getState().updateDoc(docChapterWithBlocksAndSection())
+    render(<LeftNav />)
+    await userEvent.click(screen.getByText('详细'))
+    const chap1Row = screen.getByText('第一章').closest('.outline-card') as HTMLElement
+    const triangle = within(chap1Row).getByLabelText('折叠')
+    await userEvent.click(triangle)
+    expect(toggleCollapsed).toHaveBeenCalledWith(0)
   })
 })

@@ -69,6 +69,7 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
    .outline-row-text 是行内 span，天然只包住文字本身的宽度（不像整行的块级
    div 会撑满栏宽）——hover 便签的定位就是量这个 span 的 rect，见 LeftNav.tsx
    的 openHover。 */
+.outline-heading { display:flex; align-items:center; gap:4px; }
 .outline-heading.outline-level-1 { font-weight:600; }
 .outline-heading.outline-level-2 { padding-left:20px; font-size:.95em; font-weight:500; }
 .outline-heading.outline-level-3 { padding-left:34px; font-size:.9em; font-weight:400; }
@@ -80,7 +81,19 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
   display:inline-block; max-width:100%; overflow:hidden; text-overflow:ellipsis;
   white-space:nowrap; vertical-align:top;
 }
+.outline-heading .outline-row-text { flex:1; min-width:0; }
 .outline-row-text.faint { opacity:.55; font-style:italic; }
+/* 目录标题行的折叠三角（Phase 13 Task 2）：跟 box-chevron 同一套尺寸感，独立
+   热区（<button>），不参与目录拖拽（拖拽 pointerdown 处理器排除 button）、点击
+   自己 stopPropagation，不冒泡到行的 click-to-scroll。没有后代的标题（比如空
+   章）用一个不可点的占位 span 保持同宽，文字不会因为有没有三角而错位对不齐。 */
+.outline-collapse-triangle {
+  flex:none; width:14px; height:14px; padding:0; margin:0; border:none; background:none;
+  color:var(--muted); font-size:.8em; line-height:14px; text-align:center; cursor:pointer;
+  border-radius:3px;
+}
+.outline-collapse-triangle:hover { color:var(--ink); background:rgba(120,158,196,.16); }
+.outline-collapse-triangle-empty { flex:none; width:14px; height:14px; }
 .outline-hint { padding:6px 8px; color:var(--muted); opacity:.6; font-size:12px; }
 /* 目录内拖动重排（Phase 12 Task 3）：抓行上下拖，跟 RiverEditor 里 ⠿ 拖卡片同一套
    视觉——固定定位的 ghost 跟着指针走 + 落点线卡在两行之间；被拖的整段（标题行连它
@@ -134,7 +147,10 @@ html.outline-drag-active, html.outline-drag-active * { user-select:none !importa
 .outline-card-level-2 { margin-left:16px; }
 .outline-card-level-3 { margin-left:32px; }
 .outline-card-block .outline-card-title { font-weight:400; color:var(--muted); }
-.outline-card-title { padding:0 0 6px; color:var(--ink); font-weight:600; cursor:pointer; font-size:.95em; }
+.outline-card-title {
+  display:flex; align-items:center; gap:4px;
+  padding:0 0 6px; color:var(--ink); font-weight:600; cursor:pointer; font-size:.95em;
+}
 .outline-card-note { min-height:44px; }
 .page { padding:36px 0; display:flex; justify-content:center; position:relative; }
 .river-wrap { width: min(var(--reading-measure), 96%); }

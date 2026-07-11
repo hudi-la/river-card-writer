@@ -57,6 +57,10 @@ export type OutlineRow = {
   note: string
   preview: string
   cardIndex: number
+  // 标题的折叠态（Phase 13 Task 2）——只对 kind==='heading' 有意义，读自该标题
+  // 段落的 collapsed 属性（跟 schema.ts 的 toggleCollapsed/hiddenCardIndices 是
+  // 同一个属性）。block 行恒为 false，不参与折叠。
+  collapsed: boolean
 }
 
 const BLOCK_PREVIEW_LEN = 14
@@ -85,6 +89,7 @@ export function outlineTreeFromDoc(doc: any): OutlineRow[] {
         note: headingParagraph.attrs?.note || '',
         preview: '',
         cardIndex,
+        collapsed: !!headingParagraph.attrs?.collapsed,
       })
       currentHeadingLevel = level
     } else {
@@ -97,6 +102,7 @@ export function outlineTreeFromDoc(doc: any): OutlineRow[] {
         note: card?.attrs?.note || '',
         preview,
         cardIndex,
+        collapsed: false,
       })
     }
   }
@@ -244,6 +250,65 @@ function outlineSectionRange(rows: OutlineRow[], index: number): [number, number
   return [index, end]
 }
 
+// 折叠三角（Phase 13 Task 2）：一个标题行"有没有后代"决定三角是否可点——复用
+// outlineSectionRange（跟拖动重排同一份"整段"边界定义），[index+1, end) 非空
+// 就是有后代（块和/或子标题）。
+function outlineRowHasDescendants(rows: OutlineRow[], index: number): boolean {
+  if (rows[index].kind !== 'heading') return false
+  const [, end] = outlineSectionRange(rows, index)
+  return end > index + 1
+}
+
+// 渲染前把 rows 过滤成"可见行"：collapsed 的标题行跳过它管辖的整段后代（块 +
+// 子标题，含嵌套——外层折叠时子节自然落在同一个 sectionRange 里，不用特殊处理
+// 嵌套）。保留每行在完整 rows 数组里的原始下标（=cardIndex），拖拽/note/滚动
+// 逻辑都靠这个下标定位，过滤不能打乱它。
+function visibleOutlineRows(rows: OutlineRow[]): { row: OutlineRow; index: number }[] {
+  const visible: { row: OutlineRow; index: number }[] = []
+  let skipUntil = 0
+  for (let i = 0; i < rows.length; i++) {
+    if (i < skipUntil) continue
+    const row = rows[i]
+    visible.push({ row, index: i })
+    if (row.kind === 'heading' && row.collapsed) {
+      const [, end] = outlineSectionRange(rows, i)
+      if (end > skipUntil) skipUntil = end
+    }
+  }
+  return visible
+}
+
+// 折叠三角本体：没有后代时渲染一个不可点的占位（保持文字对齐），有后代时渲染
+// 真三角——▾ 展开 / ▸ 折叠，点击必须 stopPropagation+preventDefault，不然会
+// 冒泡触发行的 onClick（click-to-scroll）；它是个 <button>，天然落在目录拖拽
+// pointerdown 处理器的 `target.closest('textarea, button, ...')` 排除名单里，
+// 不会被当成拖拽起点。
+function OutlineCollapseTriangle({
+  row,
+  hasDescendants,
+  onToggle,
+}: {
+  row: OutlineRow
+  hasDescendants: boolean
+  onToggle: () => void
+}) {
+  if (!hasDescendants) return <span className="outline-collapse-triangle outline-collapse-triangle-empty" aria-hidden="true" />
+  return (
+    <button
+      type="button"
+      className="outline-collapse-triangle"
+      aria-label={row.collapsed ? '展开' : '折叠'}
+      onClick={(e) => {
+        e.stopPropagation()
+        e.preventDefault()
+        onToggle()
+      }}
+    >
+      {row.collapsed ? '▸' : '▾'}
+    </button>
+  )
+}
+
 // 排除掉被拖这一段的所有行元素，按文档顺序返回——跟 RiverEditor 的 otherCards
 // 是同一个套路。
 function otherOutlineRowEls(railEl: HTMLElement, sectionStart: number, sectionEnd: number): HTMLElement[] {
@@ -302,8 +367,14 @@ export function LeftNav() {
   const addChapter = useEditorBridge((s) => s.addChapter)
   const bridgeMoveCardTo = useEditorBridge((s) => s.moveCardTo)
   const bridgeMoveSection = useEditorBridge((s) => s.moveSection)
+  const bridgeToggleCollapsed = useEditorBridge((s) => s.toggleCollapsed)
 
   const rows = outlineTreeFromDoc(book?.doc)
+  // 折叠态过滤（Phase 13 Task 2）：collapsed 的标题行不渲染它管辖的后代行——
+  // visibleOutlineRows 保留每行在完整 rows 里的原始下标（=cardIndex），下面渲染
+  // 时继续拿它当 data-outline-row-index / headingIndices 的键，跟拖拽逻辑用的
+  // 是同一份下标体系，过滤只影响"渲染谁"，不影响下标含义。
+  const visibleRows = visibleOutlineRows(rows)
   // 拖拽事件里要读"当下"的 rows（算落点、算被拖行的段范围），但 rows 每次渲染
   // 都重新算、引用不稳定——effect 不能把它放进依赖数组（会导致拖拽中途因为别处
   // 触发的重渲染而被重挂载、拖拽态被打断，比如 hover 便签的 state 变化）。用 ref
@@ -580,7 +651,7 @@ export function LeftNav() {
       ) : (
         <>
           {outlineView === 'detail'
-            ? rows.map((row, i) => (
+            ? visibleRows.map(({ row, index: i }) => (
                 <div
                   key={row.cardIndex}
                   className={outlineCardClassName(row)}
@@ -588,7 +659,14 @@ export function LeftNav() {
                   data-outline-kind={row.kind}
                 >
                   <div className="outline-card-title" onClick={() => handleRowClick(row, headingIndices[i])}>
-                    {row.kind === 'heading' ? row.text || '（无标题）' : row.preview || '（空块）'}
+                    {row.kind === 'heading' && (
+                      <OutlineCollapseTriangle
+                        row={row}
+                        hasDescendants={outlineRowHasDescendants(rows, i)}
+                        onToggle={() => bridgeToggleCollapsed(row.cardIndex)}
+                      />
+                    )}
+                    <span>{row.kind === 'heading' ? row.text || '（无标题）' : row.preview || '（空块）'}</span>
                   </div>
                   <NoteField
                     className="outline-card-note"
@@ -599,7 +677,7 @@ export function LeftNav() {
                   />
                 </div>
               ))
-            : rows.map((row, i) => {
+            : visibleRows.map(({ row, index: i }) => {
                 const label = outlineRowLabel(row)
                 return (
                   <div
@@ -611,6 +689,13 @@ export function LeftNav() {
                     onMouseLeave={scheduleCloseHover}
                   >
                     <div className={outlineRowClassName(row)} onClick={() => handleRowClick(row, headingIndices[i])}>
+                      {row.kind === 'heading' && (
+                        <OutlineCollapseTriangle
+                          row={row}
+                          hasDescendants={outlineRowHasDescendants(rows, i)}
+                          onToggle={() => bridgeToggleCollapsed(row.cardIndex)}
+                        />
+                      )}
                       <span className={'outline-row-text' + (label.faint ? ' faint' : '')}>{label.text}</span>
                     </div>
                   </div>
