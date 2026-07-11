@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { LeftNav, outlineFromDoc } from './LeftNav'
 import { useBookStore, UNIVERSAL_BOX_ID } from '../state/bookStore'
@@ -130,6 +130,92 @@ describe('LeftNav', () => {
     await userEvent.click(screen.getByText('通用盒子'))
     const row = screen.getByText('通用盒子').closest('[data-box-id]')
     expect(row?.className).toContain('on')
+  })
+})
+
+function cardJSON(cardId: string, text: string) {
+  return { type: 'card', attrs: { cardId }, content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] }
+}
+
+describe('LeftNav 盒子内容展示', () => {
+  it('盒子下默认展开，列出各卡片的一行文字预览', () => {
+    const box = useBookStore.getState().addBox('素材盒')
+    useBookStore.getState().parkCard(box.id, cardJSON('c1', '第一张卡的内容'))
+    useBookStore.getState().parkCard(box.id, cardJSON('c2', '第二张卡的内容'))
+    render(<LeftNav />)
+    expect(screen.getByText('第一张卡的内容')).toBeTruthy()
+    expect(screen.getByText('第二张卡的内容')).toBeTruthy()
+  })
+
+  it('空卡显示淡色占位「（空卡）」', () => {
+    const box = useBookStore.getState().addBox('素材盒')
+    useBookStore.getState().parkCard(box.id, { type: 'card', attrs: { cardId: 'empty' }, content: [{ type: 'paragraph', content: [] }] })
+    render(<LeftNav />)
+    expect(screen.getByText('（空卡）')).toBeTruthy()
+  })
+
+  it('长文本预览截断到约 30 字并带省略号', () => {
+    const box = useBookStore.getState().addBox('素材盒')
+    const longText = '这是一段很长很长很长很长很长很长很长很长很长很长很长很长很长很长的卡片正文内容'
+    useBookStore.getState().parkCard(box.id, cardJSON('c1', longText))
+    render(<LeftNav />)
+    const preview = longText.slice(0, 30) + '…'
+    expect(screen.getByText(preview)).toBeTruthy()
+    expect(screen.queryByText(longText)).toBeNull()
+  })
+
+  it('点击折叠箭头后卡片预览消失，再点一次恢复展开', async () => {
+    const box = useBookStore.getState().addBox('素材盒')
+    useBookStore.getState().parkCard(box.id, cardJSON('c1', '第一张卡的内容'))
+    render(<LeftNav />)
+    expect(screen.getByText('第一张卡的内容')).toBeTruthy()
+    const row = screen.getByText('素材盒').closest('[data-box-id]') as HTMLElement
+    await userEvent.click(within(row).getByLabelText('折叠'))
+    expect(screen.queryByText('第一张卡的内容')).toBeNull()
+    await userEvent.click(within(row).getByLabelText('展开'))
+    expect(screen.getByText('第一张卡的内容')).toBeTruthy()
+  })
+
+  it('折叠/展开不影响点击盒名打开该盒子（viewKind/activeBoxId 照常更新）', async () => {
+    const box = useBookStore.getState().addBox('素材盒')
+    useBookStore.getState().parkCard(box.id, cardJSON('c1', '第一张卡的内容'))
+    render(<LeftNav />)
+    const row = screen.getByText('素材盒').closest('[data-box-id]') as HTMLElement
+    await userEvent.click(within(row).getByLabelText('折叠'))
+    await userEvent.click(screen.getByText('素材盒'))
+    expect(useBookStore.getState().viewKind).toBe('box')
+    expect(useBookStore.getState().activeBoxId).toBe(box.id)
+  })
+
+  it('点某卡片的 ⤵ 调用 store.carry(boxId, cardId)', async () => {
+    const box = useBookStore.getState().addBox('素材盒')
+    useBookStore.getState().parkCard(box.id, cardJSON('c1', '第一张卡的内容'))
+    const carrySpy = vi.spyOn(useBookStore.getState(), 'carry')
+    render(<LeftNav />)
+    await userEvent.click(screen.getByTitle('插入正文'))
+    expect(carrySpy).toHaveBeenCalledWith(box.id, 'c1')
+    carrySpy.mockRestore()
+  })
+
+  it('通用盒子的卡片也在其下列出，点 ⤵ 调用 carry(UNIVERSAL_BOX_ID, cardId)', async () => {
+    useBookStore.getState().parkCard(UNIVERSAL_BOX_ID, cardJSON('u1', '通用盒子里的卡'))
+    const carrySpy = vi.spyOn(useBookStore.getState(), 'carry')
+    render(<LeftNav />)
+    expect(screen.getByText('通用盒子里的卡')).toBeTruthy()
+    await userEvent.click(screen.getByTitle('插入正文'))
+    expect(carrySpy).toHaveBeenCalledWith(UNIVERSAL_BOX_ID, 'u1')
+    carrySpy.mockRestore()
+  })
+
+  it('空盒子（无卡片）不渲染卡片列表，但箭头仍可点击', async () => {
+    const box = useBookStore.getState().addBox('空盒子')
+    render(<LeftNav />)
+    expect(document.querySelector('.box-card-list')).toBeNull()
+    const row = screen.getByText('空盒子').closest('[data-box-id]') as HTMLElement
+    expect(row.getAttribute('data-box-id')).toBe(box.id)
+    await userEvent.click(within(row).getByLabelText('折叠'))
+    // 折叠后仍无卡片列表，不报错
+    expect(document.querySelector('.box-card-list')).toBeNull()
   })
 })
 

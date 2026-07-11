@@ -1,8 +1,9 @@
 import { useRef, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { useBookStore, UNIVERSAL_BOX_ID } from '../state/bookStore'
+import { useBookStore, UNIVERSAL_BOX_ID, type Box } from '../state/bookStore'
 import { usePrefsStore } from '../state/prefsStore'
 import { useEditorBridge } from '../state/editorBridge'
+import { cardText } from './BoxView'
 
 // 大纲项：从 book.doc 里所有 style==='chapter'（章，level 1）/'h1'（节，level 2）的
 // 段落派生出来。index 是该标题在"所有章/节标题"里的序号（不分级别），点击大纲项时
@@ -11,6 +12,16 @@ export type OutlineEntry = { level: 1 | 2; text: string; index: number; note: st
 
 function paragraphText(paragraph: any): string {
   return (paragraph?.content || []).map((n: any) => n?.text || '').join('')
+}
+
+const BOX_CARD_PREVIEW_LEN = 30
+
+// 盒子卡片在侧栏里只给一行预览：cardText() 复用 BoxView 的抽取逻辑（多段落用
+// \n 拼接），这里再压成单行并截断，空卡（没有任何文字）给个淡色占位而不是空白。
+function boxCardPreview(card: any): { text: string; empty: boolean } {
+  const raw = cardText(card).replace(/\s+/g, ' ').trim()
+  if (!raw) return { text: '（空卡）', empty: true }
+  return { text: raw.length > BOX_CARD_PREVIEW_LEN ? raw.slice(0, BOX_CARD_PREVIEW_LEN) + '…' : raw, empty: false }
 }
 
 // 纯函数，便于单测：不碰 DOM/store，只读 doc 的 JSON 形状（doc.content 是 card
@@ -106,11 +117,13 @@ function computePopoverPos(rect: DOMRect) {
 
 export function LeftNav() {
   const book = useBookStore((s) => s.activeBook())
+  const universalBox = useBookStore((s) => s.library.universalBox)
   const viewKind = useBookStore((s) => s.viewKind)
   const activeBoxId = useBookStore((s) => s.activeBoxId)
   const openDoc = useBookStore((s) => s.openDoc)
   const openBox = useBookStore((s) => s.openBox)
   const addBox = useBookStore((s) => s.addBox)
+  const carry = useBookStore((s) => s.carry)
   const outlineView = usePrefsStore((s) => s.prefs.outlineView)
   const setOutlineView = usePrefsStore((s) => s.setOutlineView)
   const setHeadingNote = useEditorBridge((s) => s.setHeadingNote)
@@ -120,6 +133,18 @@ export function LeftNav() {
 
   const [hover, setHover] = useState<{ entry: OutlineEntry; left: number; top: number } | null>(null)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 盒子的卡片列表默认展开——集合里存的是"已折叠"的盒子 id，不在集合里 == 展开。
+  // 这样新增的盒子（本书新建的/首次渲染的通用盒子）不用额外初始化就是展开态。
+  const [collapsedBoxIds, setCollapsedBoxIds] = useState<Set<string>>(new Set())
+  const toggleBoxCollapsed = (boxId: string) => {
+    setCollapsedBoxIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(boxId)) next.delete(boxId)
+      else next.add(boxId)
+      return next
+    })
+  }
 
   // 进条目才重算位置（贴着它);进浮层本身只是取消关闭定时器，位置不变——这样
   // 鼠标从条目挪进浮层的路上便签不会跳动。
@@ -237,14 +262,15 @@ export function LeftNav() {
 
       <p className="rlabel nav-group">盒子</p>
       {(book?.boxes ?? []).map((b) => (
-        <div
+        <BoxRow
           key={b.id}
-          data-box-id={b.id}
-          className={'chap' + (b.id === activeBoxId && viewKind === 'box' ? ' on' : '')}
-          onClick={() => openBox(b.id)}
-        >
-          {b.name}
-        </div>
+          box={b}
+          active={b.id === activeBoxId && viewKind === 'box'}
+          collapsed={collapsedBoxIds.has(b.id)}
+          onOpen={() => openBox(b.id)}
+          onToggleCollapsed={() => toggleBoxCollapsed(b.id)}
+          onCarryCard={(cardId) => carry(b.id, cardId)}
+        />
       ))}
       <div
         className="add"
@@ -258,13 +284,92 @@ export function LeftNav() {
       {/* 通用盒子不属于本书，跟本书的盒子隔一条浅分隔线，并带一个共享图标——
           提示这是跨所有书共享的同一个盒子，而不是本书的第 N 个盒子。 */}
       <div className="universal-box-divider" />
-      <div
-        data-box-id={UNIVERSAL_BOX_ID}
-        className={'chap universal-box' + (UNIVERSAL_BOX_ID === activeBoxId && viewKind === 'box' ? ' on' : '')}
-        onClick={() => openBox(UNIVERSAL_BOX_ID)}
-      >
-        <span className="universal-box-icon" aria-hidden="true">⟡</span> 通用盒子
-      </div>
+      <BoxRow
+        box={universalBox}
+        active={UNIVERSAL_BOX_ID === activeBoxId && viewKind === 'box'}
+        collapsed={collapsedBoxIds.has(UNIVERSAL_BOX_ID)}
+        onOpen={() => openBox(UNIVERSAL_BOX_ID)}
+        onToggleCollapsed={() => toggleBoxCollapsed(UNIVERSAL_BOX_ID)}
+        onCarryCard={(cardId) => carry(UNIVERSAL_BOX_ID, cardId)}
+        icon="⟡"
+        extraClassName="universal-box"
+      />
     </nav>
+  )
+}
+
+// 一个盒子在侧栏里的一行：盒名（点它开该盒子的完整 BoxView）+ 一个折叠箭头
+// （单独点它才切换是否展开卡片列表，跟"打开盒子"分开，不会互相打架）+ 展开时
+// 缩进列出该盒子的卡片预览。整行（含卡片列表）都在同一个 [data-box-id] 元素
+// 内——拖卡到盒子时用 elementFromPoint().closest('[data-box-id]') 找落点
+// （见 RiverEditor.tsx），落在卡片预览行上也照样能命中这个盒子。
+function BoxRow({
+  box,
+  active,
+  collapsed,
+  onOpen,
+  onToggleCollapsed,
+  onCarryCard,
+  icon,
+  extraClassName,
+}: {
+  box: Box
+  active: boolean
+  collapsed: boolean
+  onOpen: () => void
+  onToggleCollapsed: () => void
+  onCarryCard: (cardId: string) => void
+  icon?: string
+  extraClassName?: string
+}) {
+  const cards = box.cards ?? []
+  return (
+    <div
+      data-box-id={box.id}
+      className={'chap box-row' + (extraClassName ? ' ' + extraClassName : '') + (active ? ' on' : '')}
+    >
+      <div className="box-row-header" onClick={onOpen}>
+        <span
+          className="box-chevron"
+          aria-label={collapsed ? '展开' : '折叠'}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleCollapsed()
+          }}
+        >
+          {collapsed ? '▸' : '▾'}
+        </span>
+        {icon && (
+          <span className="universal-box-icon" aria-hidden="true">
+            {icon}
+          </span>
+        )}
+        <span className="box-name">{box.name}</span>
+      </div>
+      {!collapsed && cards.length > 0 && (
+        <div className="box-card-list">
+          {cards.map((card, i) => {
+            const cardId = card?.attrs?.cardId ?? String(i)
+            const preview = boxCardPreview(card)
+            return (
+              <div key={cardId} className="box-card-item">
+                <span className={'box-card-text' + (preview.empty ? ' empty' : '')}>{preview.text}</span>
+                <button
+                  type="button"
+                  className="box-card-carry"
+                  title="插入正文"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onCarryCard(cardId)
+                  }}
+                >
+                  ⤵
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }

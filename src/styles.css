@@ -32,6 +32,26 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 .rail .nav-group:not(:first-child) { margin-top:20px; }
 .chap { padding:6px 8px; border-radius:5px; color:var(--muted); cursor:pointer; }
 .chap.on { color:var(--ink); font-weight:600; background:rgba(120,158,196,.12); }
+/* 盒子行现在是"表头（可点开盒子/可点箭头折叠）+ 缩进卡片列表"的容器，整行
+   （含卡片列表）都带 data-box-id，拖卡放到卡片预览上也能落进这个盒子。表头
+   自己才是可点区域，卡片列表不继承手型光标。 */
+.box-row { cursor:default; }
+.box-row-header { display:flex; align-items:center; gap:6px; cursor:pointer; }
+.box-chevron { flex:none; width:1em; color:var(--muted); font-size:.85em; text-align:center; }
+.box-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.box-card-list { margin:2px 0 4px 21px; display:flex; flex-direction:column; gap:1px; }
+.box-card-item {
+  display:flex; align-items:center; gap:6px; padding:3px 6px; border-radius:4px;
+  color:var(--muted); font-size:12px;
+}
+.box-card-item:hover { background:rgba(120,158,196,.08); }
+.box-card-text { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.box-card-text.empty { opacity:.55; font-style:italic; }
+.box-card-carry {
+  flex:none; border:none; background:none; color:var(--muted); cursor:pointer;
+  font-size:11px; padding:1px 3px; border-radius:3px; opacity:.7;
+}
+.box-card-carry:hover { color:var(--ink); opacity:1; background:rgba(120,158,196,.16); }
 /* 拖一张卡悬停在盒子条目上时的落点反馈——之前完全没有，用户没法确认自己真的
    悬停在这条窄窄的盒子行上，松手常常偏出去几像素就悄悄掉回重排。颜色跟
    note-popover 的 focus 描边同一套（--thread 兜底 --hair 那个蓝灰）。 */
@@ -44,7 +64,6 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 /* 通用盒子在盒子组末尾：一条浅分隔线 + 共享图标，跟本书的盒子区分开——它不是
    本书的第 N 个盒子，是跨所有书共享的同一个实例。 */
 .universal-box-divider { height:1px; background:var(--faint); margin:10px 4px; }
-.chap.universal-box { display:flex; align-items:center; gap:6px; }
 .universal-box-icon { color:var(--muted); font-size:.9em; }
 .outline-item.outline-h2 { padding-left:20px; font-size:.95em; }
 .outline-hint { padding:6px 8px; color:var(--muted); opacity:.6; font-size:12px; }

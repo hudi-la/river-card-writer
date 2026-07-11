@@ -1,6 +1,7 @@
 import { useBookStore } from '../state/bookStore'
 
-function cardText(cardJSON: any): string {
+// 导出给 LeftNav 复用（盒子卡片一行预览），避免两处各写一份文本抽取逻辑。
+export function cardText(cardJSON: any): string {
   const paragraphs = Array.isArray(cardJSON?.content) ? cardJSON.content : []
   return paragraphs
     .map((p: any) => {
