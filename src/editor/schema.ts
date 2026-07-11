@@ -111,6 +111,7 @@ declare module '@tiptap/core' {
       appendCard: () => ReturnType
       addChapterHeading: () => ReturnType
       setCardColor: (color: string | null) => ReturnType
+      setCardNote: (cardIndex: number, note: string) => ReturnType
       removeCard: () => ReturnType
       insertCardJSONAfter: (cardJSON: any, pos: number) => ReturnType
     }
@@ -220,6 +221,14 @@ export const Card = Node.create({
         default: null,
         parseHTML: (el) => (el as HTMLElement).getAttribute('data-color'),
         renderHTML: (attrs) => (attrs.color ? { 'data-color': attrs.color } : {}),
+      },
+      // 卡片的梗概/说明——跟标题段落的 note 一样是纯元数据，不进正文渲染，
+      // 只用来在大纲树的"块"行里给一句说明。没有 note 的老卡解析出来是默认
+      // 空串，完全向后兼容。
+      note: {
+        default: '',
+        parseHTML: (el) => (el as HTMLElement).getAttribute('data-card-note') || '',
+        renderHTML: (attrs) => (attrs.note ? { 'data-card-note': attrs.note } : {}),
       },
     }
   },
@@ -354,6 +363,27 @@ export const Card = Node.create({
           for (let d = $from.depth; d > 0; d--) if ($from.node(d).type.name === 'card') { cardDepth = d; break }
           if (cardDepth === -1) return false
           if (dispatch) dispatch(state.tr.setNodeAttribute($from.before(cardDepth), 'color', color))
+          return true
+        },
+      setCardNote:
+        (cardIndex: number, note: string) =>
+        ({ state, dispatch }) => {
+          // 定位 doc.content 第 cardIndex 个 card——直接按 doc 顶层 child 序号数，
+          // 跟 outlineTreeFromDoc 的 cardIndex 编号规则一致（不依赖光标位置）。
+          const doc = state.doc
+          if (cardIndex < 0 || cardIndex >= doc.childCount) return false
+          let targetPos = -1
+          let offset = 0
+          for (let i = 0; i < doc.childCount; i++) {
+            const child = doc.child(i)
+            if (i === cardIndex) {
+              targetPos = offset
+              break
+            }
+            offset += child.nodeSize
+          }
+          if (targetPos === -1) return false
+          if (dispatch) dispatch(state.tr.setNodeAttribute(targetPos, 'note', note))
           return true
         },
       removeCard:

@@ -46,6 +46,63 @@ export function outlineFromDoc(doc: any): OutlineEntry[] {
   return entries
 }
 
+// 大纲树（Phase 12）：把 outlineFromDoc 的"只列标题"换成"每张卡一行"——标题卡
+// 是 heading 行，其它卡是 block 行，挂在它前面最近一个标题下面（缩进 = 标题
+// 层级 + 1；标题层级最深是 h2=3，块再深一层封顶在 3，不会越界）。cardIndex 是
+// doc.content 里的顶层卡序号，setCardNote 按同样的序号定位卡片。
+export type OutlineRow = {
+  level: 1 | 2 | 3
+  kind: 'heading' | 'block'
+  text: string
+  note: string
+  preview: string
+  cardIndex: number
+}
+
+const BLOCK_PREVIEW_LEN = 14
+
+function headingLevel(style: string): 1 | 2 | 3 {
+  return style === 'chapter' ? 1 : style === 'h1' ? 2 : 3
+}
+
+export function outlineTreeFromDoc(doc: any): OutlineRow[] {
+  const rows: OutlineRow[] = []
+  let currentHeadingLevel = 0 // 0 = 还没遇到任何标题
+  const cards = doc?.content || []
+  for (let cardIndex = 0; cardIndex < cards.length; cardIndex++) {
+    const card = cards[cardIndex]
+    const paragraphs = card?.content || []
+    const headingParagraph = paragraphs.find((p: any) => {
+      const style = p?.attrs?.style
+      return style === 'chapter' || style === 'h1' || style === 'h2'
+    })
+    if (headingParagraph) {
+      const level = headingLevel(headingParagraph.attrs.style)
+      rows.push({
+        level,
+        kind: 'heading',
+        text: paragraphText(headingParagraph),
+        note: headingParagraph.attrs?.note || '',
+        preview: '',
+        cardIndex,
+      })
+      currentHeadingLevel = level
+    } else {
+      const text = cardText(card)
+      const preview = text ? (text.length > BLOCK_PREVIEW_LEN ? text.slice(0, BLOCK_PREVIEW_LEN) : text) : ''
+      rows.push({
+        level: Math.min(currentHeadingLevel + 1, 3) as 1 | 2 | 3,
+        kind: 'block',
+        text,
+        note: card?.attrs?.note || '',
+        preview,
+        cardIndex,
+      })
+    }
+  }
+  return rows
+}
+
 // RiverEditor（Task 1）把每个段落渲染成 p[data-style=...]，顺序与 doc 里一致——
 // 用组合选择器一次查，浏览器按文档顺序返回，第 index 个就是目标标题。
 function scrollToOutlineIndex(index: number) {
