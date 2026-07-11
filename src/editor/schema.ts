@@ -3,6 +3,7 @@ import Document from '@tiptap/extension-document'
 import Paragraph from '@tiptap/extension-paragraph'
 import Text from '@tiptap/extension-text'
 import Placeholder from '@tiptap/extension-placeholder'
+import { UndoRedo } from '@tiptap/extensions'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import { EditorState, Plugin, Transaction, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -676,4 +677,10 @@ export const baseExtensions = [
     includeChildren: true,
     showOnlyCurrent: false,
   }),
+  // 撤销/重做（Cmd+Z / Cmd+Shift+Z / Cmd+Y）。TipTap v3 把经典的 History 扩展
+  // 换成了 @tiptap/extensions 里的 UndoRedo（同一套 ProseMirror history 插件，
+  // 换了个名字）。它记录的是普通 ProseMirror 事务，所以 splitCard/mergeCardBackward/
+  // moveCardTo/setParagraphStyle/setCardColor 等自定义命令（全部经 state.tr 派发）
+  // 天然一起被记录、一起被撤销，不需要额外接线。
+  UndoRedo,
 ]

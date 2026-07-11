@@ -70,7 +70,7 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
    div 会撑满栏宽）——hover 便签的定位就是量这个 span 的 rect，见 LeftNav.tsx
    的 openHover。 */
 .outline-heading { display:flex; align-items:center; gap:4px; }
-.outline-heading.outline-level-1 { font-weight:600; }
+.outline-heading.outline-level-1 { font-weight:700; font-size:1.08em; }
 .outline-heading.outline-level-2 { padding-left:20px; font-size:.95em; font-weight:500; }
 .outline-heading.outline-level-3 { padding-left:34px; font-size:.9em; font-weight:400; }
 .outline-block { font-size:.85em; color:var(--muted); }
@@ -213,8 +213,8 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 .river .card[data-collapsed] { opacity: .7; }
 .river .card-body { font-family: var(--reading-font); font-size: var(--reading-size); }
 .river .card-body p { margin: 0; line-height: 1.95; text-indent: 2em; }
-.river .card-body p[data-style="chapter"] { font-size: 1.4em; font-weight: 700; text-indent: 0; margin: .6em 0 .4em; line-height: 1.4; }
-.river .card-body p[data-style="h1"] { font-size: 1.25em; font-weight: 700; text-indent: 0; margin: .4em 0; line-height: 1.5; }
+.river .card-body p[data-style="chapter"] { font-size: 1.9em; font-weight: 700; text-indent: 0; margin: .6em 0 .4em; line-height: 1.3; }
+.river .card-body p[data-style="h1"] { font-size: 1.2em; font-weight: 700; text-indent: 0; margin: .4em 0; line-height: 1.5; }
 .river .card-body p[data-style="h2"] { font-size: 1.1em; font-weight: 600; text-indent: 0; margin: .4em 0; line-height: 1.5; }
 .add-card { margin: 14px 0 0 40px; border: 1px dashed var(--faint); background: none; color: var(--muted); border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
 .add-card:hover { color: var(--ink); border-color: var(--hair); }
