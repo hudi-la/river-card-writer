@@ -82,6 +82,24 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 }
 .outline-row-text.faint { opacity:.55; font-style:italic; }
 .outline-hint { padding:6px 8px; color:var(--muted); opacity:.6; font-size:12px; }
+/* 目录内拖动重排（Phase 12 Task 3）：抓行上下拖，跟 RiverEditor 里 ⠿ 拖卡片同一套
+   视觉——固定定位的 ghost 跟着指针走 + 落点线卡在两行之间；被拖的整段（标题行连它
+   管辖的块/子节）淡出提示"正在被拖走"。 */
+.outline-item-wrap, .outline-card { cursor:grab; }
+.outline-item-wrap.outline-row-dragging, .outline-card.outline-row-dragging { opacity:.35; }
+html.outline-drag-active, html.outline-drag-active * { user-select:none !important; -webkit-user-select:none !important; }
+.outline-drag-ghost {
+  position:fixed; top:0; left:0; z-index:50; pointer-events:none;
+  max-width:240px; padding:6px 10px; border-radius:6px;
+  background:var(--paper); border:1px solid var(--hair); box-shadow:0 6px 20px rgba(0,0,0,.14);
+  font-size:12px; line-height:1.5; color:var(--ink);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.outline-drop-indicator {
+  position:fixed; z-index:49; pointer-events:none;
+  height:2px; border-radius:1px; background:var(--thread, #7fa3c4);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--thread, #7fa3c4) 20%, transparent);
+}
 .chap-edit { width:100%; border:1px solid var(--hair); border-radius:4px; background:var(--paper); color:var(--ink); font:inherit; padding:4px 6px; }
 
 .outline-view-toggle { display:flex; gap:4px; margin-bottom:10px; }

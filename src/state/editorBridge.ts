@@ -10,6 +10,12 @@ type EditorBridgeState = {
   setHeadingNote: (headingIndex: number, note: string) => void
   setCardNote: (cardIndex: number, note: string) => void
   addChapter: () => void
+  // 大纲树拖动重排（Phase 12 Task 3）用的两个命令包装。两者对外都是同一种
+  // "targetIndex 是原 doc.content 下标，插到当前排在这里的卡之前"的绝对语义
+  // （跟 moveSection 命令本身一致，见 schema.ts 的注释），LeftNav 算落点时不用
+  // 关心 moveCardTo 命令内部其实是 splice 语义——换算在这里做一次就够。
+  moveCardTo: (cardIndex: number, targetIndex: number) => void
+  moveSection: (headingCardIndex: number, targetIndex: number) => void
 }
 
 export const useEditorBridge = create<EditorBridgeState>((set, get) => ({
@@ -33,5 +39,26 @@ export const useEditorBridge = create<EditorBridgeState>((set, get) => ({
     const editor = get().editor
     if (!editor) return
     editor.chain().focus().addChapterHeading().run()
+  },
+  // cardIndex 是被拖那张块卡在 doc.content 里的下标（== outlineTreeFromDoc 的
+  // cardIndex，两者对同一份 doc 永远一一对应）。moveCardTo 命令本身收 cardId +
+  // splice 下标（先摘掉这张卡、再在剩下那串卡里数下标），这里把外部的"绝对
+  // 下标"语义转换成命令要的 splice 下标：目标排在被摘卡之后的话，摘掉一张后
+  // 整体前移一位，要减一。
+  moveCardTo: (cardIndex, targetIndex) => {
+    const editor = get().editor
+    if (!editor) return
+    const doc = editor.state.doc
+    if (cardIndex < 0 || cardIndex >= doc.childCount) return
+    const cardId = doc.child(cardIndex).attrs.cardId
+    if (!cardId) return
+    const spliceIndex = targetIndex > cardIndex ? targetIndex - 1 : targetIndex
+    editor.commands.moveCardTo(cardId, spliceIndex)
+  },
+  // 整段（章/节）搬家——直接转发给 moveSection 命令，它本身就是"绝对下标"语义。
+  moveSection: (headingCardIndex, targetIndex) => {
+    const editor = get().editor
+    if (!editor) return
+    editor.commands.moveSection(headingCardIndex, targetIndex)
   },
 }))

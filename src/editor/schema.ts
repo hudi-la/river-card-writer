@@ -5,7 +5,7 @@ import Text from '@tiptap/extension-text'
 import Placeholder from '@tiptap/extension-placeholder'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import { EditorState, Plugin, Transaction, TextSelection } from '@tiptap/pm/state'
-import type { Node as PMNode } from '@tiptap/pm/model'
+import { Fragment, type Node as PMNode } from '@tiptap/pm/model'
 import { nanoid } from 'nanoid'
 import { CardView } from './CardView'
 import { Emphasis, Refer } from './marks'
@@ -112,6 +112,7 @@ declare module '@tiptap/core' {
       moveCardUp: () => ReturnType
       moveCardDown: () => ReturnType
       moveCardTo: (cardId: string, targetIndex: number) => ReturnType
+      moveSection: (headingCardIndex: number, targetIndex: number) => ReturnType
       insertCardAfter: () => ReturnType
       appendCard: () => ReturnType
       addChapterHeading: () => ReturnType
@@ -207,6 +208,96 @@ function moveCardToIndex(state: EditorState, dispatch: ((tr: Transaction) => voi
     tr.insert(insertPos === null ? tr.doc.content.size : insertPos, node)
     dispatch(tr.scrollIntoView())
   }
+  return true
+}
+
+// 这张卡是不是一张"标题卡"——第一个带 chapter/h1/h2 style 的段落决定它的层级
+// （1=chapter，2=h1，3=h2），跟 outlineTreeFromDoc 的 headingLevel 规则一致。
+// 不是标题卡（纯正文块）返回 null。
+function cardHeadingLevel(card: PMNode): 1 | 2 | 3 | null {
+  let level: 1 | 2 | 3 | null = null
+  card.forEach((paragraph) => {
+    if (level !== null) return
+    if (paragraph.type.name !== 'paragraph') return
+    const style = paragraph.attrs.style
+    if (style === 'chapter') level = 1
+    else if (style === 'h1') level = 2
+    else if (style === 'h2') level = 3
+  })
+  return level
+}
+
+// 把 headingCardIndex 指定的标题卡「整段」——它自己 + 其后直到下一张 level ≤ 它
+// 的标题卡之前的所有卡（含中间夹着的更深层子节/正文块）——搬到 targetIndex。
+// targetIndex 语义跟 moveCardTo 不同：这里是「原 doc.content 里的下标，插到当前
+// 排在这个下标的卡之前」（targetIndex===doc.childCount 表示插到末尾），而不是
+// moveCardTo 那种「先摘掉、再在剩下那串里数下标」的 splice 语义——多卡搬家时
+// splice 语义没法从外部一次算准（摘掉几张要看整段多长），干脆让命令自己认
+// "原下标"更简单，也正好跟 LeftNav 大纲行的下标（对应 outlineTreeFromDoc 的
+// cardIndex）直接对上，调用方不用做换算。
+function moveSectionToIndex(
+  state: EditorState,
+  dispatch: ((tr: Transaction) => void) | undefined,
+  headingCardIndex: number,
+  targetIndex: number,
+): boolean {
+  const doc = state.doc
+  if (headingCardIndex < 0 || headingCardIndex >= doc.childCount) return false
+  const level = cardHeadingLevel(doc.child(headingCardIndex))
+  if (level === null) return false // 不是标题卡，没有"整段"可搬
+
+  const startIndex = headingCardIndex
+  let endIndex = doc.childCount
+  for (let i = startIndex + 1; i < doc.childCount; i++) {
+    const l = cardHeadingLevel(doc.child(i))
+    if (l !== null && l <= level) {
+      endIndex = i
+      break
+    }
+  }
+  if (startIndex === 0 && endIndex === doc.childCount) {
+    // 整段就是整份文档——没有别的卡可供参照重排，天然是 no-op。也避开下面
+    // delete 整个 doc 到 0 张卡时，ProseMirror 会自动塞一张空卡补齐 schema
+    // "card+"（至少一张）的下限，导致原内容 + 一张多余空卡都留在文档里的坑。
+    return true
+  }
+  const clampedTarget = Math.max(0, Math.min(targetIndex, doc.childCount))
+  if (!dispatch) return true
+
+  // 收集要搬的节点，以及这一段在当前 doc 里的起止字符位置。
+  const nodes: PMNode[] = []
+  let startPos = -1
+  let endPos = -1
+  let offset = 0
+  for (let i = 0; i < doc.childCount; i++) {
+    const child = doc.child(i)
+    if (i === startIndex) startPos = offset
+    if (i >= startIndex && i < endIndex) nodes.push(child)
+    offset += child.nodeSize
+    if (i === endIndex - 1) endPos = offset
+  }
+  if (startPos === -1 || endPos === -1) return false
+
+  const tr = state.tr
+  tr.delete(startPos, endPos)
+
+  // 数一下原 doc 里排在 clampedTarget 之前、且不属于被搬走这一段的卡有几张——
+  // 这就是搬走整段之后，在剩下那串卡里应该插入的下标（跟 moveCardTo 的 splice
+  // 语义等价，只是这里"摘掉"的是一整段而不是一张卡）。
+  let insertIdx = 0
+  for (let i = 0; i < doc.childCount; i++) {
+    if (i >= startIndex && i < endIndex) continue
+    if (i < clampedTarget) insertIdx++
+  }
+  let insertPos: number | null = null
+  let idx = 0
+  tr.doc.forEach((_node, off) => {
+    if (idx === insertIdx && insertPos === null) insertPos = off
+    idx++
+  })
+  const insertAt = insertPos === null ? tr.doc.content.size : insertPos
+  tr.insert(insertAt, Fragment.fromArray(nodes))
+  dispatch(tr.scrollIntoView())
   return true
 }
 
@@ -315,6 +406,9 @@ export const Card = Node.create({
       moveCardTo:
         (cardId: string, targetIndex: number) =>
         ({ state, dispatch }) => moveCardToIndex(state, dispatch, cardId, targetIndex),
+      moveSection:
+        (headingCardIndex: number, targetIndex: number) =>
+        ({ state, dispatch }) => moveSectionToIndex(state, dispatch, headingCardIndex, targetIndex),
       insertCardAfter:
         () =>
         ({ state, dispatch }) => {

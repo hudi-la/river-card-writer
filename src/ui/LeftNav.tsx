@@ -204,6 +204,88 @@ function computePopoverPos(rect: DOMRect) {
   return { left, top }
 }
 
+// ---- 目录内拖动重排（Phase 12 Task 3）----
+// 跟 RiverEditor 里 ⠿ 拖卡片同一套命令式骨架（阈值判定点击/拖拽、固定定位的
+// ghost + 落点线、多事件收尾幂等），换成对着大纲行操作：抓一行上下拖，松手把
+// 对应的卡（块行）或整段（标题行，连它管辖的正文块/子节一起）挪到新位置。
+
+const OUTLINE_DRAG_MOVE_THRESHOLD_PX = 4
+const OUTLINE_DRAG_ACTIVE_CLASS = 'outline-drag-active'
+
+type OutlineDragState = {
+  startIndex: number // 被抓那一行的 cardIndex——rows 数组下标本身就是 cardIndex（见下方 rowsRef 注释）
+  kind: 'heading' | 'block'
+  sectionStart: number
+  sectionEnd: number // 不含
+  sourceEls: HTMLElement[]
+  ghostEl: HTMLElement
+  indicatorEl: HTMLElement
+  startX: number
+  startY: number
+  moved: boolean
+  pointerId: number
+  pendingTargetIndex: number | null
+}
+
+// 标题行拖的是"整段"：自己 + 后面直到下一个 level ≤ 自己的标题行之前的所有行
+// （含中间夹着的更深层子节/正文块）。跟 schema.ts 里 moveSection 命令的范围
+// 判定逻辑完全对应——outlineTreeFromDoc 本来就是一张卡一行，rows[i].cardIndex
+// 恒等于 i，rows 数组顺序 = doc.content 顺序。
+function outlineSectionRange(rows: OutlineRow[], index: number): [number, number] {
+  const row = rows[index]
+  if (row.kind !== 'heading') return [index, index + 1]
+  let end = rows.length
+  for (let i = index + 1; i < rows.length; i++) {
+    if (rows[i].kind === 'heading' && rows[i].level <= row.level) {
+      end = i
+      break
+    }
+  }
+  return [index, end]
+}
+
+// 排除掉被拖这一段的所有行元素，按文档顺序返回——跟 RiverEditor 的 otherCards
+// 是同一个套路。
+function otherOutlineRowEls(railEl: HTMLElement, sectionStart: number, sectionEnd: number): HTMLElement[] {
+  return Array.from(railEl.querySelectorAll<HTMLElement>('[data-outline-row-index]')).filter((el) => {
+    const i = Number(el.dataset.outlineRowIndex)
+    return i < sectionStart || i >= sectionEnd
+  })
+}
+
+// 算出落点：目标下标是"插到原 doc 里当前排在这里的那一行之前"（跟 moveSection/
+// editorBridge.moveCardTo 统一的绝对下标语义，见 editorBridge.ts 的注释），落点线
+// 的像素位置一起算出来，一次遍历两件事都拿到，不重复扫。
+function outlineDropAt(
+  els: HTMLElement[],
+  clientY: number,
+  totalRows: number,
+): { targetIndex: number; rect: { top: number; left: number; width: number } | null } {
+  if (els.length === 0) return { targetIndex: totalRows, rect: null }
+  let pos = els.length
+  for (let i = 0; i < els.length; i++) {
+    const rect = els[i].getBoundingClientRect()
+    if (clientY < rect.top + rect.height / 2) {
+      pos = i
+      break
+    }
+  }
+  const targetIndex = pos >= els.length ? totalRows : Number(els[pos].dataset.outlineRowIndex)
+  let rect: { top: number; left: number; width: number }
+  if (pos <= 0) {
+    const r = els[0].getBoundingClientRect()
+    rect = { top: r.top, left: r.left, width: r.width }
+  } else if (pos >= els.length) {
+    const r = els[els.length - 1].getBoundingClientRect()
+    rect = { top: r.bottom, left: r.left, width: r.width }
+  } else {
+    const prev = els[pos - 1].getBoundingClientRect()
+    const next = els[pos].getBoundingClientRect()
+    rect = { top: (prev.bottom + next.top) / 2, left: next.left, width: next.width }
+  }
+  return { targetIndex, rect }
+}
+
 export function LeftNav() {
   const book = useBookStore((s) => s.activeBook())
   const universalBox = useBookStore((s) => s.library.universalBox)
@@ -218,8 +300,16 @@ export function LeftNav() {
   const setHeadingNote = useEditorBridge((s) => s.setHeadingNote)
   const setCardNote = useEditorBridge((s) => s.setCardNote)
   const addChapter = useEditorBridge((s) => s.addChapter)
+  const bridgeMoveCardTo = useEditorBridge((s) => s.moveCardTo)
+  const bridgeMoveSection = useEditorBridge((s) => s.moveSection)
 
   const rows = outlineTreeFromDoc(book?.doc)
+  // 拖拽事件里要读"当下"的 rows（算落点、算被拖行的段范围），但 rows 每次渲染
+  // 都重新算、引用不稳定——effect 不能把它放进依赖数组（会导致拖拽中途因为别处
+  // 触发的重渲染而被重挂载、拖拽态被打断，比如 hover 便签的 state 变化）。用 ref
+  // 兜底：每次渲染都把最新 rows 写进去，effect 内部读 ref，不订阅它的变化。
+  const rowsRef = useRef(rows)
+  rowsRef.current = rows
   // 每个 heading 行在"所有 heading 行"里的序号（chapter/h1/h2 都算，跟
   // setHeadingNote 的计数规则一致，见 schema.ts 里的注释）；block 行没有意义，
   // 占位 -1 不会被用到。空文档默认还有一张空的正文卡（EMPTY_DOC），rows 不为
@@ -298,8 +388,179 @@ export function LeftNav() {
     else setCardNote(row.cardIndex, value)
   }
 
+  const railRef = useRef<HTMLElement | null>(null)
+  const outlineDragRef = useRef<OutlineDragState | null>(null)
+  // 拖拽真的发生过（越过阈值）之后，紧跟着的那次原生 click 要被吞掉——不然
+  // 松手落定之余，click-to-scroll 还会跟着跑一次，把视图滚去被拖动前的旧位置。
+  const suppressClickRef = useRef(false)
+
+  // 目录行的拖动重排：跟 RiverEditor 里 ⠿ 拖卡片同一套命令式骨架，落点算在
+  // "目录里另一行之间"而不是正文卡片之间；松手时块行走 editorBridge.moveCardTo，
+  // 标题行走 editorBridge.moveSection（带走它整段）。
+  useEffect(() => {
+    const railEl = railRef.current
+    if (!railEl) return
+
+    const cleanupVisuals = (drag: OutlineDragState) => {
+      drag.ghostEl.remove()
+      drag.indicatorEl.remove()
+      drag.sourceEls.forEach((el) => el.classList.remove('outline-row-dragging'))
+      document.documentElement.classList.remove(OUTLINE_DRAG_ACTIVE_CLASS)
+      try {
+        railEl.releasePointerCapture(drag.pointerId)
+      } catch {
+        // 指针早已释放时会抛，忽略即可
+      }
+    }
+
+    // 落地收尾——dragRef 立刻置空做幂等闸门，pointerup/pointercancel/
+    // lostpointercapture 无论哪个先到都只执行一次（跟 RiverEditor 的 finishDrag
+    // 是同一个理由：WebKit 下 pointer capture 之后 pointerup 有时不冒泡到 window）。
+    const finishDrag = () => {
+      const drag = outlineDragRef.current
+      if (!drag) return
+      outlineDragRef.current = null
+      if (drag.moved && drag.pendingTargetIndex !== null) {
+        if (drag.kind === 'heading') bridgeMoveSection(drag.startIndex, drag.pendingTargetIndex)
+        else bridgeMoveCardTo(drag.startIndex, drag.pendingTargetIndex)
+        suppressClickRef.current = true
+      }
+      cleanupVisuals(drag)
+    }
+
+    const abortDrag = () => {
+      const drag = outlineDragRef.current
+      if (!drag) return
+      outlineDragRef.current = null
+      cleanupVisuals(drag)
+    }
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0) return
+      const target = e.target as HTMLElement
+      // note 文本框/按钮/盒子行/"＋新章节"都不参与目录行拖拽。
+      if (target.closest('textarea, button, [data-box-id], .add')) return
+      const rowEl = target.closest<HTMLElement>('[data-outline-row-index]')
+      if (!rowEl) return
+      const index = Number(rowEl.dataset.outlineRowIndex)
+      const rows = rowsRef.current
+      const row = rows[index]
+      if (!row) return
+
+      const [sectionStart, sectionEnd] = outlineSectionRange(rows, index)
+      const sourceEls = Array.from(railEl.querySelectorAll<HTMLElement>('[data-outline-row-index]')).filter((el) => {
+        const i = Number(el.dataset.outlineRowIndex)
+        return i >= sectionStart && i < sectionEnd
+      })
+
+      const ghost = document.createElement('div')
+      ghost.className = 'outline-drag-ghost'
+      ghost.textContent = outlineRowLabel(row).text
+      ghost.style.display = 'none'
+      document.body.appendChild(ghost)
+
+      const indicator = document.createElement('div')
+      indicator.className = 'outline-drop-indicator'
+      indicator.style.display = 'none'
+      document.body.appendChild(indicator)
+
+      outlineDragRef.current = {
+        startIndex: index,
+        kind: row.kind,
+        sectionStart,
+        sectionEnd,
+        sourceEls,
+        ghostEl: ghost,
+        indicatorEl: indicator,
+        startX: e.clientX,
+        startY: e.clientY,
+        moved: false,
+        pointerId: e.pointerId,
+        pendingTargetIndex: null,
+      }
+      try {
+        railEl.setPointerCapture(e.pointerId)
+      } catch {
+        // 极少数环境不支持 setPointerCapture，忽略即可
+      }
+    }
+
+    const onDragStart = (e: DragEvent) => {
+      if (outlineDragRef.current) e.preventDefault()
+    }
+    const onSelectStart = (e: Event) => {
+      if (outlineDragRef.current) e.preventDefault()
+    }
+
+    // 拖拽真的越过阈值之后，紧跟的那次 click 要被吞掉，不让 handleRowClick 再
+    // 跑一次把视图滚到旧位置。用捕获阶段拦在 .rail 这一层——比 React 合成事件
+    // 的冒泡阶段更早一步，stopPropagation 之后事件压根传不到行元素的 onClick。
+    const onClickCapture = (e: MouseEvent) => {
+      if (!suppressClickRef.current) return
+      suppressClickRef.current = false
+      e.stopPropagation()
+      e.preventDefault()
+    }
+
+    const onPointerMove = (e: PointerEvent) => {
+      const drag = outlineDragRef.current
+      if (!drag) return
+      if (!drag.moved) {
+        const dx = e.clientX - drag.startX
+        const dy = e.clientY - drag.startY
+        if (Math.hypot(dx, dy) < OUTLINE_DRAG_MOVE_THRESHOLD_PX) return
+        drag.moved = true
+        drag.ghostEl.style.display = 'block'
+        drag.sourceEls.forEach((el) => el.classList.add('outline-row-dragging'))
+        document.documentElement.classList.add(OUTLINE_DRAG_ACTIVE_CLASS)
+        setHover(null) // 拖起来之后 hover 便签没意义，关掉避免视觉打架
+      }
+      drag.ghostEl.style.transform = `translate(${e.clientX + 12}px, ${e.clientY + 12}px)`
+
+      const rows = rowsRef.current
+      const others = otherOutlineRowEls(railEl, drag.sectionStart, drag.sectionEnd)
+      const { targetIndex, rect } = outlineDropAt(others, e.clientY, rows.length)
+      drag.pendingTargetIndex = targetIndex
+      if (rect) {
+        drag.indicatorEl.style.display = 'block'
+        drag.indicatorEl.style.top = `${rect.top}px`
+        drag.indicatorEl.style.left = `${rect.left}px`
+        drag.indicatorEl.style.width = `${rect.width}px`
+      } else {
+        drag.indicatorEl.style.display = 'none'
+      }
+    }
+
+    railEl.addEventListener('pointerdown', onPointerDown)
+    railEl.addEventListener('click', onClickCapture, true)
+    window.addEventListener('pointermove', onPointerMove)
+    railEl.addEventListener('pointerup', finishDrag)
+    railEl.addEventListener('pointercancel', finishDrag)
+    railEl.addEventListener('lostpointercapture', finishDrag)
+    window.addEventListener('pointerup', finishDrag)
+    window.addEventListener('pointercancel', finishDrag)
+    window.addEventListener('lostpointercapture', finishDrag)
+    document.addEventListener('dragstart', onDragStart, true)
+    document.addEventListener('selectstart', onSelectStart, true)
+    return () => {
+      railEl.removeEventListener('pointerdown', onPointerDown)
+      railEl.removeEventListener('click', onClickCapture, true)
+      window.removeEventListener('pointermove', onPointerMove)
+      railEl.removeEventListener('pointerup', finishDrag)
+      railEl.removeEventListener('pointercancel', finishDrag)
+      railEl.removeEventListener('lostpointercapture', finishDrag)
+      window.removeEventListener('pointerup', finishDrag)
+      window.removeEventListener('pointercancel', finishDrag)
+      window.removeEventListener('lostpointercapture', finishDrag)
+      document.removeEventListener('dragstart', onDragStart, true)
+      document.removeEventListener('selectstart', onSelectStart, true)
+      abortDrag()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bridgeMoveCardTo, bridgeMoveSection, setHover])
+
   return (
-    <nav className="rail" onScroll={closeHoverForScroll}>
+    <nav className="rail" ref={(el) => { railRef.current = el }} onScroll={closeHoverForScroll}>
       <p className="rlabel nav-group">目录</p>
       <div className="outline-view-toggle">
         <button type="button" className={outlineView === 'brief' ? 'on' : ''} onClick={() => setOutlineView('brief')}>
@@ -320,7 +581,12 @@ export function LeftNav() {
         <>
           {outlineView === 'detail'
             ? rows.map((row, i) => (
-                <div key={row.cardIndex} className={outlineCardClassName(row)}>
+                <div
+                  key={row.cardIndex}
+                  className={outlineCardClassName(row)}
+                  data-outline-row-index={i}
+                  data-outline-kind={row.kind}
+                >
                   <div className="outline-card-title" onClick={() => handleRowClick(row, headingIndices[i])}>
                     {row.kind === 'heading' ? row.text || '（无标题）' : row.preview || '（空块）'}
                   </div>
@@ -339,6 +605,8 @@ export function LeftNav() {
                   <div
                     key={row.cardIndex}
                     className="outline-item-wrap"
+                    data-outline-row-index={i}
+                    data-outline-kind={row.kind}
                     onMouseEnter={(e) => openHover(row, headingIndices[i], e.currentTarget)}
                     onMouseLeave={scheduleCloseHover}
                   >

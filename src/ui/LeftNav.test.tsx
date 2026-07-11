@@ -10,9 +10,11 @@ import { usePrefsStore } from '../state/prefsStore'
 const setHeadingNote = vi.fn()
 const setCardNote = vi.fn()
 const addChapter = vi.fn()
+const moveCardTo = vi.fn()
+const moveSection = vi.fn()
 vi.mock('../state/editorBridge', () => ({
   useEditorBridge: (selector: (s: any) => any) =>
-    selector({ editor: {}, setEditor: vi.fn(), setHeadingNote, setCardNote, addChapter }),
+    selector({ editor: {}, setEditor: vi.fn(), setHeadingNote, setCardNote, addChapter, moveCardTo, moveSection }),
 }))
 
 function docWithHeadings() {
@@ -47,6 +49,8 @@ beforeEach(() => {
   setHeadingNote.mockClear()
   setCardNote.mockClear()
   addChapter.mockClear()
+  moveCardTo.mockClear()
+  moveSection.mockClear()
   useBookStore.getState().__resetForTest()
   useBookStore.getState().openBook(useBookStore.getState().library.books[0].id)
   usePrefsStore.getState().__resetForTest()
@@ -361,5 +365,83 @@ describe('LeftNav 大纲树：标题行 + 块行（Phase 12 Task 2）', () => {
     expect(cards[2].scrollIntoView).toHaveBeenCalled()
     river.remove()
     cards.forEach((c) => c.remove())
+  })
+})
+
+// Phase 12 Task 3：目录内拖动重排。doc 结构跟 moveSection.test.ts 的六卡用例
+// 对应：[章1(0), 卡A(1), 节1.1(2), 卡B(3), 章2(4), 卡C(5)]。rows 数组下标本来
+// 就等于 cardIndex（outlineTreeFromDoc 一张卡一行），拖拽逻辑直接复用这个下标。
+function docTwoChaptersWithSection() {
+  return {
+    type: 'doc',
+    content: [
+      { type: 'card', attrs: { cardId: 'chap1' }, content: [{ type: 'paragraph', attrs: { style: 'chapter' }, content: [{ type: 'text', text: '第一章' }] }] },
+      { type: 'card', attrs: { cardId: 'cardA' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '正文A' }] }] },
+      { type: 'card', attrs: { cardId: 'h11' }, content: [{ type: 'paragraph', attrs: { style: 'h1' }, content: [{ type: 'text', text: '第一节' }] }] },
+      { type: 'card', attrs: { cardId: 'cardB' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '正文B' }] }] },
+      { type: 'card', attrs: { cardId: 'chap2' }, content: [{ type: 'paragraph', attrs: { style: 'chapter' }, content: [{ type: 'text', text: '第二章' }] }] },
+      { type: 'card', attrs: { cardId: 'cardC' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '正文C' }] }] },
+    ],
+  }
+}
+
+// jsdom 没有真实布局，getBoundingClientRect 默认全 0——按行下标铺出等高
+// （30px）的假矩形，落点计算（中点比较）才有意义。
+function stubOutlineRowRects(container: HTMLElement) {
+  container.querySelectorAll<HTMLElement>('[data-outline-row-index]').forEach((el) => {
+    const i = Number(el.dataset.outlineRowIndex)
+    el.getBoundingClientRect = () =>
+      ({ top: i * 30, bottom: i * 30 + 30, height: 30, left: 0, right: 150, width: 150, x: 0, y: i * 30, toJSON() {} }) as DOMRect
+  })
+}
+
+function dragRow(row: HTMLElement, fromY: number, toY: number) {
+  row.dispatchEvent(new PointerEvent('pointerdown', { clientX: 5, clientY: fromY, pointerId: 1, button: 0, bubbles: true }))
+  window.dispatchEvent(new PointerEvent('pointermove', { clientX: 5, clientY: toY, pointerId: 1, bubbles: true }))
+  window.dispatchEvent(new PointerEvent('pointerup', { clientX: 5, clientY: toY, pointerId: 1, bubbles: true }))
+}
+
+describe('LeftNav 目录内拖动重排（Phase 12 Task 3）', () => {
+  it('拖动块行到目录末尾——调 editorBridge.moveCardTo(cardIndex, targetIndex)', () => {
+    useBookStore.getState().updateDoc(docTwoChaptersWithSection())
+    const { container } = render(<LeftNav />)
+    stubOutlineRowRects(container)
+    const cardARow = container.querySelector('[data-outline-row-index="1"]') as HTMLElement
+    dragRow(cardARow, 45, 500) // 45 = 卡A 自己那行中点附近，500 远在所有行下方
+    expect(moveCardTo).toHaveBeenCalledTimes(1)
+    expect(moveCardTo).toHaveBeenCalledWith(1, 6)
+    expect(moveSection).not.toHaveBeenCalled()
+  })
+
+  it('拖动节行（h1）到目录最前——调 editorBridge.moveSection(headingCardIndex, targetIndex)，只带走它自己管辖的块', () => {
+    useBookStore.getState().updateDoc(docTwoChaptersWithSection())
+    const { container } = render(<LeftNav />)
+    stubOutlineRowRects(container)
+    const h11Row = container.querySelector('[data-outline-row-index="2"]') as HTMLElement
+    dragRow(h11Row, 75, -50) // -50 落在第 0 行中点之上
+    expect(moveSection).toHaveBeenCalledTimes(1)
+    expect(moveSection).toHaveBeenCalledWith(2, 0)
+    expect(moveCardTo).not.toHaveBeenCalled()
+  })
+
+  it('拖动章行（chapter）到目录末尾——章带着它整段（自己+正文块+子节）一起移动', () => {
+    useBookStore.getState().updateDoc(docTwoChaptersWithSection())
+    const { container } = render(<LeftNav />)
+    stubOutlineRowRects(container)
+    const chap1Row = container.querySelector('[data-outline-row-index="0"]') as HTMLElement
+    dragRow(chap1Row, 15, 500)
+    expect(moveSection).toHaveBeenCalledTimes(1)
+    expect(moveSection).toHaveBeenCalledWith(0, 6)
+    expect(moveCardTo).not.toHaveBeenCalled()
+  })
+
+  it('位移没越过阈值——当成一次点击，不触发任何拖拽命令，click-to-scroll 照常', () => {
+    useBookStore.getState().updateDoc(docTwoChaptersWithSection())
+    const { container } = render(<LeftNav />)
+    stubOutlineRowRects(container)
+    const cardARow = container.querySelector('[data-outline-row-index="1"]') as HTMLElement
+    dragRow(cardARow, 45, 46) // 位移 1px，远小于阈值
+    expect(moveCardTo).not.toHaveBeenCalled()
+    expect(moveSection).not.toHaveBeenCalled()
   })
 })
