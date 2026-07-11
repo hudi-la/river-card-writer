@@ -8,6 +8,9 @@ declare module '@tiptap/core' {
     refer: {
       toggleRefer: () => ReturnType
     }
+    strike: {
+      toggleStrike: () => ReturnType
+    }
   }
 }
 
@@ -42,6 +45,27 @@ export const Refer = Mark.create({
   addCommands() {
     return {
       toggleRefer:
+        () =>
+        ({ commands }) =>
+          commands.toggleMark(this.name),
+    }
+  },
+})
+
+// 删除线：中划掉选中文字（不是真的删除内容——纯视觉标记，跟 emphasis/refer
+// 同类的行内 mark，渲染成 <s class="strike">，浏览器对 <s> 天然是
+// text-decoration:line-through，styles.css 里再显式补一条兜底。
+export const Strike = Mark.create({
+  name: 'strike',
+  parseHTML() {
+    return [{ tag: 's.strike' }]
+  },
+  renderHTML() {
+    return ['s', { class: 'strike' }, 0]
+  },
+  addCommands() {
+    return {
+      toggleStrike:
         () =>
         ({ commands }) =>
           commands.toggleMark(this.name),

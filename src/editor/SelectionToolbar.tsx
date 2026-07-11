@@ -27,6 +27,7 @@ export function SelectionToolbar({ editor }: { editor: Editor }) {
       style: BLOCK_STYLES.find(({ style }) => editor.isActive('paragraph', { style }))?.style ?? null,
       emphasis: editor.isActive('emphasis'),
       refer: editor.isActive('refer'),
+      strike: editor.isActive('strike'),
     }),
   })
 
@@ -75,6 +76,17 @@ export function SelectionToolbar({ editor }: { editor: Editor }) {
           }}
         >
           refer
+        </button>
+        <button
+          type="button"
+          className={active.strike ? 'on' : undefined}
+          style={{ textDecoration: 'line-through' }}
+          onMouseDown={(e) => {
+            keepSelection(e)
+            editor.chain().focus().toggleStrike().run()
+          }}
+        >
+          删除
         </button>
       </div>
       <div className="sel-group sel-colors">

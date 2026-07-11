@@ -221,6 +221,7 @@ const OUTLINE_DRAG_ACTIVE_CLASS = 'outline-drag-active'
 type OutlineDragState = {
   startIndex: number // 被抓那一行的 cardIndex——rows 数组下标本身就是 cardIndex（见下方 rowsRef 注释）
   kind: 'heading' | 'block'
+  headingIndex: number // 只在 kind==='heading' 时有意义，供未越阈值时的定位滚动用
   sectionStart: number
   sectionEnd: number // 不含
   sourceEls: HTMLElement[]
@@ -231,6 +232,19 @@ type OutlineDragState = {
   moved: boolean
   pointerId: number
   pendingTargetIndex: number | null
+}
+
+// 复刻 LeftNav 渲染时 headingIndices 数组的算法（该标题在"所有 heading 行"里
+// 的序号，chapter/h1/h2 都算，index 本身也可能是块行——块行不参与计数，返回值
+// 无意义）。拖拽 effect 里没法直接读渲染时闭包住的 headingIndices（会跟没用
+// rowsRef 兜底的普通变量一样有 stale 风险），干脆拿当下最新的 rows 重新数一遍，
+// 保证跟 scrollToOutlineIndex/handleRowClick 用的下标定义一致。
+function headingIndexAt(rows: OutlineRow[], index: number): number {
+  let counter = -1
+  for (let i = 0; i <= index; i++) {
+    if (rows[i].kind === 'heading') counter++
+  }
+  return counter
 }
 
 // 标题行拖的是"整段"：自己 + 后面直到下一个 level ≤ 自己的标题行之前的所有行
@@ -487,7 +501,17 @@ export function LeftNav() {
     // 落地收尾——dragRef 立刻置空做幂等闸门，pointerup/pointercancel/
     // lostpointercapture 无论哪个先到都只执行一次（跟 RiverEditor 的 finishDrag
     // 是同一个理由：WebKit 下 pointer capture 之后 pointerup 有时不冒泡到 window）。
-    const finishDrag = () => {
+    //
+    // 定位滚动（Phase 14 回归修复）：pointerdown 时 setPointerCapture 之后，
+    // Chromium 会把随后的原生 click 事件重定向到 capture 的元素（.rail），行
+    // 元素自己的 onClick 因此再也收不到事件，点击定位就此失效。改法：不再依赖
+    // click，松手这一刻（isPointerUp===true，即真正的 pointerup，不是
+    // pointercancel/lostpointercapture 那种异常终止）如果全程没越过拖拽阈值
+    // （drag.moved===false），就直接在这里跑一遍跟旧 handleRowClick 一样的
+    // 滚动逻辑——block 行滚到 cardIndex 对应的卡，heading 行滚到 headingIndex
+    // 对应的标题段落。行上的 onClick 仍然保留作为兜底（不支持 pointer capture
+    // 重定向的浏览器/环境下它会正常触发；两边都触发也只是多滚一次，无副作用）。
+    const finishDrag = (isPointerUp: boolean) => {
       const drag = outlineDragRef.current
       if (!drag) return
       outlineDragRef.current = null
@@ -495,6 +519,17 @@ export function LeftNav() {
         if (drag.kind === 'heading') bridgeMoveSection(drag.startIndex, drag.pendingTargetIndex)
         else bridgeMoveCardTo(drag.startIndex, drag.pendingTargetIndex)
         suppressClickRef.current = true
+      } else if (isPointerUp && !drag.moved) {
+        openDoc()
+        const cardIndex = drag.startIndex
+        const headingIndex = drag.headingIndex
+        const kind = drag.kind
+        // RiverEditor 挂载延迟同 handleRowClick：可能刚从盒子视图切回正文，等
+        // 这次 state 更新渲染完再滚动。
+        setTimeout(() => {
+          if (kind === 'heading') scrollToOutlineIndex(headingIndex)
+          else scrollToCardIndex(cardIndex)
+        }, 0)
       }
       cleanupVisuals(drag)
     }
@@ -538,6 +573,7 @@ export function LeftNav() {
       outlineDragRef.current = {
         startIndex: index,
         kind: row.kind,
+        headingIndex: headingIndexAt(rows, index),
         sectionStart,
         sectionEnd,
         sourceEls,
@@ -602,27 +638,33 @@ export function LeftNav() {
       }
     }
 
+    // pointerup 是真正的松手（可能是点击也可能是拖拽落地）；pointercancel/
+    // lostpointercapture 是异常终止（比如被浏览器手势打断），不代表用户点击，
+    // 不该触发定位滚动——三者都要收尾清理，但只有 pointerup 传 true。
+    const onPointerUp = () => finishDrag(true)
+    const onPointerCancelOrLost = () => finishDrag(false)
+
     railEl.addEventListener('pointerdown', onPointerDown)
     railEl.addEventListener('click', onClickCapture, true)
     window.addEventListener('pointermove', onPointerMove)
-    railEl.addEventListener('pointerup', finishDrag)
-    railEl.addEventListener('pointercancel', finishDrag)
-    railEl.addEventListener('lostpointercapture', finishDrag)
-    window.addEventListener('pointerup', finishDrag)
-    window.addEventListener('pointercancel', finishDrag)
-    window.addEventListener('lostpointercapture', finishDrag)
+    railEl.addEventListener('pointerup', onPointerUp)
+    railEl.addEventListener('pointercancel', onPointerCancelOrLost)
+    railEl.addEventListener('lostpointercapture', onPointerCancelOrLost)
+    window.addEventListener('pointerup', onPointerUp)
+    window.addEventListener('pointercancel', onPointerCancelOrLost)
+    window.addEventListener('lostpointercapture', onPointerCancelOrLost)
     document.addEventListener('dragstart', onDragStart, true)
     document.addEventListener('selectstart', onSelectStart, true)
     return () => {
       railEl.removeEventListener('pointerdown', onPointerDown)
       railEl.removeEventListener('click', onClickCapture, true)
       window.removeEventListener('pointermove', onPointerMove)
-      railEl.removeEventListener('pointerup', finishDrag)
-      railEl.removeEventListener('pointercancel', finishDrag)
-      railEl.removeEventListener('lostpointercapture', finishDrag)
-      window.removeEventListener('pointerup', finishDrag)
-      window.removeEventListener('pointercancel', finishDrag)
-      window.removeEventListener('lostpointercapture', finishDrag)
+      railEl.removeEventListener('pointerup', onPointerUp)
+      railEl.removeEventListener('pointercancel', onPointerCancelOrLost)
+      railEl.removeEventListener('lostpointercapture', onPointerCancelOrLost)
+      window.removeEventListener('pointerup', onPointerUp)
+      window.removeEventListener('pointercancel', onPointerCancelOrLost)
+      window.removeEventListener('lostpointercapture', onPointerCancelOrLost)
       document.removeEventListener('dragstart', onDragStart, true)
       document.removeEventListener('selectstart', onSelectStart, true)
       abortDrag()

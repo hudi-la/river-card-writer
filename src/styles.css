@@ -219,6 +219,9 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 .add-card { margin: 14px 0 0 40px; border: 1px dashed var(--faint); background: none; color: var(--muted); border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
 .add-card:hover { color: var(--ink); border-color: var(--hair); }
 .river p.is-empty::before { content: attr(data-placeholder); color: var(--muted); opacity: .5; float: left; height: 0; pointer-events: none; }
+/* 删除线 mark（<s class="strike">）——浏览器对 <s> 默认就是 line-through，这里
+   显式声明一遍兜底，不依赖浏览器默认样式表。 */
+.river s.strike { text-decoration: line-through; }
 
 .selection-toolbar {
   display: flex; align-items: center; gap: 10px; z-index: 30;

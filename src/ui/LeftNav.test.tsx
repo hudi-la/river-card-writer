@@ -412,6 +412,83 @@ function dragRow(row: HTMLElement, fromY: number, toY: number) {
   window.dispatchEvent(new PointerEvent('pointerup', { clientX: 5, clientY: toY, pointerId: 1, bubbles: true }))
 }
 
+// 回归测试：Phase 12 加了拖动重排后，行上的 pointerdown 会 setPointerCapture，
+// Chromium 下这会把随后的原生 click 事件重定向，导致行的 onClick（定位滚动）
+// 再也不触发。真正的定位逻辑改成挂在 pointerup（未越过拖拽阈值时）——这里只
+// 派发 pointerdown+pointerup，完全不派发 click 事件，专门验证滚动不依赖 click。
+describe('LeftNav 目录点击定位不依赖 click 事件（Phase 14 回归修复）', () => {
+  it('块行：未越过阈值的 pointerdown→pointerup 也能滚动到对应正文块', async () => {
+    useBookStore.getState().updateDoc(docWithChapterAndBlocks())
+    const { container } = render(<LeftNav />)
+    stubOutlineRowRects(container)
+    const cards = [0, 1, 2].map(() => {
+      const el = document.createElement('section')
+      el.className = 'card'
+      document.body.appendChild(el)
+      el.scrollIntoView = vi.fn()
+      return el
+    })
+    const river = document.createElement('div')
+    river.className = 'river'
+    cards.forEach((c) => river.appendChild(c))
+    document.body.appendChild(river)
+
+    const blockRow = container.querySelector('[data-outline-row-index="2"]') as HTMLElement
+    blockRow.dispatchEvent(new PointerEvent('pointerdown', { clientX: 5, clientY: 75, pointerId: 1, button: 0, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: 5, clientY: 75, pointerId: 1, bubbles: true }))
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(cards[2].scrollIntoView).toHaveBeenCalled()
+    river.remove()
+    cards.forEach((c) => c.remove())
+  })
+
+  it('标题行：未越过阈值的 pointerdown→pointerup 也能滚动到对应标题', async () => {
+    useBookStore.getState().updateDoc(docWithChapterAndBlocks())
+    const { container } = render(<LeftNav />)
+    stubOutlineRowRects(container)
+    const heading = document.createElement('p')
+    heading.setAttribute('data-style', 'chapter')
+    heading.scrollIntoView = vi.fn()
+    const river = document.createElement('div')
+    river.className = 'river'
+    river.appendChild(heading)
+    document.body.appendChild(river)
+
+    const headingRow = container.querySelector('[data-outline-row-index="0"]') as HTMLElement
+    headingRow.dispatchEvent(new PointerEvent('pointerdown', { clientX: 5, clientY: 15, pointerId: 1, button: 0, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: 5, clientY: 15, pointerId: 1, bubbles: true }))
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(heading.scrollIntoView).toHaveBeenCalled()
+    river.remove()
+  })
+
+  it('真的越过阈值的拖拽不触发滚动（只触发 moveCardTo/moveSection）', () => {
+    useBookStore.getState().updateDoc(docTwoChaptersWithSection())
+    const { container } = render(<LeftNav />)
+    stubOutlineRowRects(container)
+    const cards = [0].map(() => {
+      const el = document.createElement('section')
+      el.className = 'card'
+      document.body.appendChild(el)
+      el.scrollIntoView = vi.fn()
+      return el
+    })
+    const river = document.createElement('div')
+    river.className = 'river'
+    cards.forEach((c) => river.appendChild(c))
+    document.body.appendChild(river)
+
+    const cardARow = container.querySelector('[data-outline-row-index="1"]') as HTMLElement
+    dragRow(cardARow, 45, 500)
+    expect(moveCardTo).toHaveBeenCalledWith(1, 6)
+    expect(cards[0].scrollIntoView).not.toHaveBeenCalled()
+    river.remove()
+    cards.forEach((c) => c.remove())
+  })
+})
+
 describe('LeftNav 目录内拖动重排（Phase 12 Task 3）', () => {
   it('拖动块行到目录末尾——调 editorBridge.moveCardTo(cardIndex, targetIndex)', () => {
     useBookStore.getState().updateDoc(docTwoChaptersWithSection())

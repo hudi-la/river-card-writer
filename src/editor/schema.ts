@@ -9,7 +9,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { Fragment, type Node as PMNode } from '@tiptap/pm/model'
 import { nanoid } from 'nanoid'
 import { CardView } from './CardView'
-import { Emphasis, Refer } from './marks'
+import { Emphasis, Refer, Strike } from './marks'
 
 export const CardDocument = Document.extend({ content: 'card+' })
 
@@ -664,6 +664,7 @@ export const baseExtensions = [
   Text,
   Emphasis,
   Refer,
+  Strike,
   assignCardIds,
   collapseDecorations,
   // card 的 content 是 paragraph（非顶层 doc 直接子节点），Placeholder 默认只在 doc 第一层

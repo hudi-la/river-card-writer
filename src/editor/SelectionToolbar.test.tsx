@@ -86,6 +86,26 @@ describe('SelectionToolbar', () => {
     expect(marks.map((m: any) => m.type)).toContain('refer')
   })
 
+  it('点"删除"调用 toggleStrike，选中文字带上 strike mark', () => {
+    editor = makeEditor()
+    selectRange(editor, 2, 7)
+    mount(editor)
+
+    fireEvent.mouseDown(screen.getByText('删除'))
+
+    const marks = editor.getJSON().content![0].content![0].content?.[0]?.marks ?? []
+    expect(marks.map((m: any) => m.type)).toContain('strike')
+  })
+
+  it('"删除"按钮在选区已带 strike mark 时高亮（on class）', () => {
+    editor = makeEditor()
+    selectRange(editor, 2, 7)
+    editor.commands.toggleStrike()
+    mount(editor)
+
+    expect(screen.getByText('删除').className).toContain('on')
+  })
+
   it('点某个色块调用 setCardColor(hex)，作用于选区所在的整张卡', () => {
     editor = makeEditor()
     selectRange(editor, 2, 7)

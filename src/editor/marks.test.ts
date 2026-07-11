@@ -51,4 +51,25 @@ describe('emphasis / refer marks', () => {
     expect(marks).toContain('refer')
     e.destroy()
   })
+
+  it('toggleStrike 给选中文字加上 strike mark，再 toggle 去掉', () => {
+    const e = oneCard()
+    e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, 2, 7)))
+    e.commands.toggleStrike()
+    expect(marksOfFirstTextNode(e)).toContain('strike')
+    e.commands.toggleStrike()
+    expect(marksOfFirstTextNode(e)).not.toContain('strike')
+    e.destroy()
+  })
+
+  it('strike 可以和 emphasis/refer 叠加在同一段文字上', () => {
+    const e = oneCard()
+    e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, 2, 7)))
+    e.commands.toggleEmphasis()
+    e.commands.toggleStrike()
+    const marks = marksOfFirstTextNode(e)
+    expect(marks).toContain('emphasis')
+    expect(marks).toContain('strike')
+    e.destroy()
+  })
 })
