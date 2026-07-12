@@ -27,33 +27,64 @@ export function bookToRow(book: Book, ownerId: string, position: number): CwBook
   }
 }
 
-// cw_universal 表行形状：owner uuid（PK，=auth.uid()）, data jsonb({id,name,cards}), updated_at。
-// 每个用户至多一行——通用盒子是库级单例，不像 books 那样按 id 一条条对应。
+// cw_universal 表行形状：owner uuid（PK，=auth.uid()）, data jsonb, updated_at。
+// 每个用户至多一行——通用盒子是库级单例*表*（一行），但 Phase 14 起一行里可以装
+// 多个具名通用盒子，data 存的是 Box[] 数组。为了兼容 Phase 14 之前写入的老行
+// （data 是单个 {id,name,cards} 对象，不是数组），data 的类型放宽成"数组或老单
+// 对象"两种形状都收——rowToUniversal 负责把老形状包成单元素数组读出来。
 export type CwUniversalRow = {
   owner: string
-  data: { id: string; name: string; cards: any[] }
+  data: Array<{ id: string; name: string; cards: any[] }> | { id: string; name: string; cards: any[] }
   updated_at: string
 }
 
-export function rowToUniversal(row: CwUniversalRow): Box {
-  return { id: row.data.id, name: row.data.name, cards: row.data.cards ?? [] }
+export function rowToUniversal(row: CwUniversalRow): Box[] {
+  const raw = row.data
+  if (Array.isArray(raw)) {
+    return raw
+      .filter((b) => b && typeof b === 'object' && typeof b.id === 'string' && typeof b.name === 'string')
+      .map((b) => ({ id: b.id, name: b.name, cards: Array.isArray(b.cards) ? b.cards : [] }))
+  }
+  // 老格式：单个 box 对象，不是数组——包成单元素数组，原样保留 id/name/cards。
+  if (raw && typeof raw === 'object') {
+    return [{ id: raw.id, name: raw.name, cards: Array.isArray(raw.cards) ? raw.cards : [] }]
+  }
+  return []
 }
 
-export function universalToRow(universalBox: Box, ownerId: string): CwUniversalRow {
+export function universalToRow(universalBoxes: Box[], ownerId: string): CwUniversalRow {
   return {
     owner: ownerId,
-    data: { id: universalBox.id, name: universalBox.name, cards: universalBox.cards },
+    data: universalBoxes.map((b) => ({ id: b.id, name: b.name, cards: b.cards })),
     updated_at: new Date().toISOString(),
   }
 }
 
-// 非破坏性合并：union，按 attrs.cardId 去重。本地卡永远全部保留（同 id 时本地版本
-// 优先，不被云端覆盖）；只把云端有、本地没有的卡追加进来。空云端絶不会删掉本地
-// 任何一张卡——这就是通用盒子 CRITICAL DATA-SAFETY 规则在 sync 层的落点。
+// 非破坏性合并（卡片层）：union，按 attrs.cardId 去重。本地卡永远全部保留（同 id 时
+// 本地版本优先，不被云端覆盖）；只把云端有、本地没有的卡追加进来。空云端絶不会删掉
+// 本地任何一张卡——这就是通用盒子 CRITICAL DATA-SAFETY 规则在 sync 层的落点。
 // 复用 backup.ts 的 mergeUniversalCards——跟"从备份文件导入"用的是同一条已测试过的
 // 去重合并逻辑，云同步和本地导入没必要各写一份。
 export function mergeUniversal(localCards: any[], cloudCards: any[]): any[] {
   return mergeUniversalCards(localCards, cloudCards)
+}
+
+// 非破坏性合并（盒子层）：按 box id union——本地有的盒子保留（同 id 时用上面的
+// mergeUniversal 按 cardId union 合并两边的卡，本地卡永远保留、云端独有的卡追加）；
+// 云端有而本地没有的盒子（比如在另一台设备上新建的通用盒子）整个追加进来。空云端
+// 不会删掉本地任何一个盒子或任何一张卡。
+export function mergeUniversalBoxes(localBoxes: Box[], cloudBoxes: Box[]): Box[] {
+  const cloudById = new Map(cloudBoxes.map((b) => [b.id, b]))
+  const merged: Box[] = localBoxes.map((lb) => {
+    const cb = cloudById.get(lb.id)
+    if (cb) cloudById.delete(lb.id)
+    if (!cb) return lb
+    return { ...lb, cards: mergeUniversal(lb.cards, cb.cards) }
+  })
+  for (const cb of cloudById.values()) {
+    merged.push({ id: cb.id, name: cb.name, cards: cb.cards })
+  }
+  return merged
 }
 
 // 本地 nanoid 不是合法 uuid，首次上传前换成 uuid。优先用运行时的 crypto.randomUUID
@@ -121,8 +152,8 @@ export type StartSyncOptions = {
 const TABLE = 'cw_books'
 const UNIVERSAL_TABLE = 'cw_universal'
 
-function emptyUniversalBox(): Box {
-  return { id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [] }
+function defaultUniversalBoxes(): Box[] {
+  return [{ id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [] }]
 }
 
 export function startSync(
@@ -142,9 +173,9 @@ export function startSync(
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
   const pendingUpserts = new Map<string, Book>()
   const pendingDeletes = new Set<string>()
-  // 通用盒子是库级单例，跟按 id 增量追踪的 books 不一样——只需记"最新一份要传的
-  // universalBox"，防抖窗口内多次改动自然合并成一次 upsert。
-  let pendingUniversalUpsert: Box | null = null
+  // 通用盒子是库级单行，跟按 id 增量追踪的 books 不一样——只需记"最新一份要传的
+  // universalBoxes 数组"，防抖窗口内多次改动自然合并成一次 upsert。
+  let pendingUniversalUpsert: Box[] | null = null
   let unsubscribeStore: (() => void) | null = null
 
   function setLibraryLocally(library: Library) {
@@ -215,8 +246,8 @@ export function startSync(
         dirty = true
       }
 
-      if (state.library.universalBox !== prevState.library.universalBox) {
-        pendingUniversalUpsert = state.library.universalBox
+      if (state.library.universalBoxes !== prevState.library.universalBoxes) {
+        pendingUniversalUpsert = state.library.universalBoxes
         dirty = true
       }
 
@@ -244,24 +275,26 @@ export function startSync(
     }
   }
 
-  // 通用盒子：至多一行/用户。云有行 → 跟本地做非破坏性 union 合并（mergeUniversal，
-  // 本地卡永远保留），合并结果写回本地 store；云没有行，或合并后比云端原有的多
-  // （本地有云端还不知道的卡）→ 把合并结果 upsert 回云端，让云端也追上本地。
-  // 全程不存在"用云覆盖本地"这条路径——即使云端行存在但本地更全，也只增不减。
+  // 通用盒子：至多一行/用户，一行里装 Box[]（多个具名通用盒子）。云有行 → 跟本地
+  // 按"每个 box 按 id、cards 按 cardId"做非破坏性 union 合并（mergeUniversalBoxes，
+  // 本地盒子/本地卡永远保留），合并结果写回本地 store；云没有行，或合并后跟云端原有
+  // 的不一致（本地有云端还不知道的盒子/卡）→ 把合并结果 upsert 回云端，让云端也追上
+  // 本地。全程不存在"用云覆盖本地"这条路径——即使云端行存在但本地更全，也只增不减。
   async function initUniversal() {
     const { data } = await cl.from(UNIVERSAL_TABLE).select('*')
     if (stopped) return
     const cloudRow = ((data ?? [])[0] ?? null) as CwUniversalRow | null
-    const localBox = store.getState().library.universalBox ?? emptyUniversalBox()
-    const cloudCards = cloudRow ? rowToUniversal(cloudRow).cards : []
-    const mergedCards = mergeUniversal(localBox.cards, cloudCards)
-    const mergedBox: Box = { ...localBox, cards: mergedCards }
+    const localBoxes = store.getState().library.universalBoxes ?? defaultUniversalBoxes()
+    const cloudBoxes = cloudRow ? rowToUniversal(cloudRow) : []
+    const mergedBoxes = mergeUniversalBoxes(localBoxes, cloudBoxes)
 
-    if (mergedCards.length !== localBox.cards.length) {
-      setLibraryLocally({ ...store.getState().library, universalBox: mergedBox })
+    const localSerialized = JSON.stringify(localBoxes)
+    const mergedSerialized = JSON.stringify(mergedBoxes)
+    if (mergedSerialized !== localSerialized) {
+      setLibraryLocally({ ...store.getState().library, universalBoxes: mergedBoxes })
     }
-    if (!cloudRow || mergedCards.length !== cloudCards.length) {
-      await cl.from(UNIVERSAL_TABLE).upsert(universalToRow(mergedBox, owner))
+    if (!cloudRow || mergedSerialized !== JSON.stringify(cloudBoxes)) {
+      await cl.from(UNIVERSAL_TABLE).upsert(universalToRow(mergedBoxes, owner))
     }
   }
 

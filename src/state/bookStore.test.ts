@@ -153,28 +153,58 @@ describe('bookStore — 当前书代理', () => {
   })
 })
 
-describe('bookStore — 库级通用盒子', () => {
-  it('初始 library.universalBox 是空的默认通用盒子', () => {
+describe('bookStore — 库级通用盒子（多个、可命名）', () => {
+  it('初始 library.universalBoxes 只有一个默认的空通用盒子', () => {
     const s = useBookStore.getState()
-    expect(s.library.universalBox).toEqual({ id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [] })
+    expect(s.library.universalBoxes).toEqual([{ id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [] }])
   })
 
-  it('parkCard(UNIVERSAL_BOX_ID, card) 进 library.universalBox，不进任何一本书', () => {
+  it('addUniversalBox 新增一个具名通用盒子，+1，持久化', () => {
+    const before = useBookStore.getState().library.universalBoxes.length
+    const box = useBookStore.getState().addUniversalBox('灵感')
+    expect(box.name).toBe('灵感')
+    expect(box.cards).toEqual([])
+    expect(useBookStore.getState().library.universalBoxes).toHaveLength(before + 1)
+    const raw = JSON.parse(localStorage.getItem('card-writer:library')!)
+    expect(raw.universalBoxes.some((b: any) => b.id === box.id && b.name === '灵感')).toBe(true)
+  })
+
+  it('renameUniversalBox 改名并持久化，其余盒子不受影响', () => {
+    const box = useBookStore.getState().addUniversalBox('旧名')
+    useBookStore.getState().renameUniversalBox(box.id, '新名')
+    const s = useBookStore.getState()
+    expect(s.library.universalBoxes.find((b) => b.id === box.id)?.name).toBe('新名')
+    expect(s.library.universalBoxes.find((b) => b.id === UNIVERSAL_BOX_ID)?.name).toBe('通用盒子')
+    const raw = JSON.parse(localStorage.getItem('card-writer:library')!)
+    expect(raw.universalBoxes.find((b: any) => b.id === box.id).name).toBe('新名')
+  })
+
+  it('deleteUniversalBox 删除指定盒子，其余保留', () => {
+    const box = useBookStore.getState().addUniversalBox('临时')
+    useBookStore.getState().deleteUniversalBox(box.id)
+    const s = useBookStore.getState()
+    expect(s.library.universalBoxes.find((b) => b.id === box.id)).toBeUndefined()
+    expect(s.library.universalBoxes.find((b) => b.id === UNIVERSAL_BOX_ID)).toBeDefined()
+  })
+
+  it('parkCard(id, card) 按 id 命中对应的通用盒子，不进任何一本书，也不进另一个通用盒子', () => {
     const bookA = useBookStore.getState().addBook('A')
     useBookStore.getState().openBook(bookA.id)
+    const inspiration = useBookStore.getState().addUniversalBox('灵感')
+
     const cardJSON = { type: 'card', attrs: { cardId: 'u1' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] }
-    useBookStore.getState().parkCard(UNIVERSAL_BOX_ID, cardJSON)
+    useBookStore.getState().parkCard(inspiration.id, cardJSON)
 
     const s = useBookStore.getState()
-    expect(s.library.universalBox.cards).toEqual([cardJSON])
+    expect(s.getBox(inspiration.id)!.cards).toEqual([cardJSON])
+    expect(s.getBox(UNIVERSAL_BOX_ID)!.cards).toEqual([])
     expect(s.activeBook()!.boxes).toEqual([])
-    expect(s.getBox(UNIVERSAL_BOX_ID)!.cards).toEqual([cardJSON])
 
     const raw = JSON.parse(localStorage.getItem('card-writer:library')!)
-    expect(raw.universalBox.cards).toEqual([cardJSON])
+    expect(raw.universalBoxes.find((b: any) => b.id === inspiration.id).cards).toEqual([cardJSON])
   })
 
-  it('跨书：openBook(A) 后 park 进通用盒子，再 openBook(B)，getBox(UNIVERSAL_BOX_ID) 仍含该卡（全局共享同一实例）', () => {
+  it('跨书：openBook(A) 后 park 进某个通用盒子，再 openBook(B)，getBox(该 id) 仍含该卡（全局共享同一实例）', () => {
     const bookA = useBookStore.getState().addBook('A')
     const bookB = useBookStore.getState().addBook('B')
 
@@ -188,16 +218,20 @@ describe('bookStore — 库级通用盒子', () => {
     expect(s.activeBook()!.boxes).toEqual([])
   })
 
-  it('takeCardFromBox(UNIVERSAL_BOX_ID, cardId) 从通用盒子取出并移除', () => {
+  it('takeCardFromBox(id, cardId) 从对应通用盒子取出并移除，其余通用盒子不受影响', () => {
+    const inspiration = useBookStore.getState().addUniversalBox('灵感')
     const cardJSON = { type: 'card', attrs: { cardId: 'u3' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'take' }] }] }
-    useBookStore.getState().parkCard(UNIVERSAL_BOX_ID, cardJSON)
+    useBookStore.getState().parkCard(inspiration.id, cardJSON)
+    const otherCard = { type: 'card', attrs: { cardId: 'u3b' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'other' }] }] }
+    useBookStore.getState().parkCard(UNIVERSAL_BOX_ID, otherCard)
 
-    const taken = useBookStore.getState().takeCardFromBox(UNIVERSAL_BOX_ID, 'u3')
+    const taken = useBookStore.getState().takeCardFromBox(inspiration.id, 'u3')
     expect(taken).toEqual(cardJSON)
-    expect(useBookStore.getState().library.universalBox.cards).toEqual([])
+    expect(useBookStore.getState().getBox(inspiration.id)!.cards).toEqual([])
+    expect(useBookStore.getState().getBox(UNIVERSAL_BOX_ID)!.cards).toEqual([otherCard])
   })
 
-  it('carry/dropCarried 支持通用盒子 id：装载后经 takeCardFromBox 落定，通用盒子少一张', () => {
+  it('carry/dropCarried 支持通用盒子 id：装载后经 takeCardFromBox 落定，该通用盒子少一张', () => {
     const cardJSON = { type: 'card', attrs: { cardId: 'u4' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'carry' }] }] }
     useBookStore.getState().parkCard(UNIVERSAL_BOX_ID, cardJSON)
 
@@ -209,7 +243,7 @@ describe('bookStore — 库级通用盒子', () => {
 
     expect(taken).toEqual(cardJSON)
     expect(useBookStore.getState().carried).toBeNull()
-    expect(useBookStore.getState().library.universalBox.cards).toEqual([])
+    expect(useBookStore.getState().getBox(UNIVERSAL_BOX_ID)!.cards).toEqual([])
   })
 
   it('openUniversalBox 切换 shell 为 universal；goToShelf 能从 universal 回到 shelf', () => {
@@ -220,7 +254,7 @@ describe('bookStore — 库级通用盒子', () => {
     expect(useBookStore.getState().shell).toBe('shelf')
   })
 
-  it('书内 openBox(UNIVERSAL_BOX_ID) 照常进入 box 视图，getBox 解析到通用盒子', () => {
+  it('书内 openBox(UNIVERSAL_BOX_ID) 照常进入 box 视图，getBox 解析到默认通用盒子', () => {
     const book = useBookStore.getState().addBook('A')
     useBookStore.getState().openBook(book.id)
     useBookStore.getState().openBox(UNIVERSAL_BOX_ID)
@@ -228,10 +262,10 @@ describe('bookStore — 库级通用盒子', () => {
     const s = useBookStore.getState()
     expect(s.viewKind).toBe('box')
     expect(s.activeBoxId).toBe(UNIVERSAL_BOX_ID)
-    expect(s.getBox(s.activeBoxId)).toBe(s.library.universalBox)
+    expect(s.getBox(s.activeBoxId)).toBe(s.library.universalBoxes.find((b) => b.id === UNIVERSAL_BOX_ID))
   })
 
-  it('importUniversalCards：非破坏性地按 cardId 去重合并进 universalBox，并持久化', () => {
+  it('importUniversalCards：非破坏性地按 cardId 去重合并进默认通用盒子（id=UNIVERSAL_BOX_ID），并持久化', () => {
     const existing = { type: 'card', attrs: { cardId: 'kept' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '已有' }] }] }
     useBookStore.getState().parkCard(UNIVERSAL_BOX_ID, existing)
 
@@ -240,21 +274,22 @@ describe('bookStore — 库级通用盒子', () => {
     useBookStore.getState().importUniversalCards([fresh, dup])
 
     const s = useBookStore.getState()
-    expect(s.library.universalBox.cards).toHaveLength(2)
-    expect(s.library.universalBox.cards).toContainEqual(existing)
-    expect(s.library.universalBox.cards).toContainEqual(fresh)
+    const defaultBox = s.library.universalBoxes.find((b) => b.id === UNIVERSAL_BOX_ID)!
+    expect(defaultBox.cards).toHaveLength(2)
+    expect(defaultBox.cards).toContainEqual(existing)
+    expect(defaultBox.cards).toContainEqual(fresh)
     // 撞车的导入卡被丢弃，现有那张原样保留（内容没被覆盖）
-    expect(s.library.universalBox.cards.filter((c) => c.attrs.cardId === 'kept')).toEqual([existing])
+    expect(defaultBox.cards.filter((c) => c.attrs.cardId === 'kept')).toEqual([existing])
 
     const raw = JSON.parse(localStorage.getItem('card-writer:library')!)
-    expect(raw.universalBox.cards).toHaveLength(2)
+    expect(raw.universalBoxes.find((b: any) => b.id === UNIVERSAL_BOX_ID).cards).toHaveLength(2)
   })
 
   it('importUniversalCards：重复导入同一批卡不会堆出重复', () => {
     const card = { type: 'card', attrs: { cardId: 'once' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '一次' }] }] }
     useBookStore.getState().importUniversalCards([card])
     useBookStore.getState().importUniversalCards([card])
-    expect(useBookStore.getState().library.universalBox.cards).toHaveLength(1)
+    expect(useBookStore.getState().getBox(UNIVERSAL_BOX_ID)!.cards).toHaveLength(1)
   })
 })
 
@@ -305,7 +340,7 @@ describe('bookStore — 迁移 & normalizeLibrary', () => {
     expect(lib.activeBookId).toBeNull()
   })
 
-  it('normalizeLibrary 对无 universalBox 的老库补默认，且 books 原样保留（byte-identical，一律不动）', () => {
+  it('normalizeLibrary 对既无 universalBoxes 也无老 universalBox 的库补一个默认通用盒子，且 books 原样保留（byte-identical，一律不动）', () => {
     const oldLib = {
       books: [
         { id: 'b1', title: '书一', doc: { type: 'doc', content: [{ type: 'card', attrs: { cardId: 'x' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '正文' }] }] }] }, boxes: [{ id: 'bx1', name: '素材', cards: [{ type: 'card', attrs: { cardId: 'y' }, content: [] }] }] },
@@ -317,17 +352,55 @@ describe('bookStore — 迁移 & normalizeLibrary', () => {
 
     const lib = normalizeLibrary(oldLib)
 
-    expect(lib.universalBox).toEqual({ id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [] })
+    expect(lib.universalBoxes).toEqual([{ id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [] }])
     expect(lib.books).toEqual(beforeSnapshot)
     expect(lib.activeBookId).toBe('b1')
     // 传入的原始对象本身也没被 mutate。
     expect(oldLib.books).toEqual(beforeSnapshot)
   })
 
-  it('normalizeLibrary 已有合法 universalBox 时原样保留（不重建、不清空已有卡）', () => {
-    const existingBox = { id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [{ type: 'card', attrs: { cardId: 'kept' }, content: [] }] }
-    const lib = normalizeLibrary({ books: [], activeBookId: null, universalBox: existingBox })
-    expect(lib.universalBox).toEqual(existingBox)
+  it('normalizeLibrary 迁移：老格式的单个 universalBox（带卡）→ universalBoxes 数组，原盒子和卡片一张不丢（DATA-SAFETY）', () => {
+    const oldSingleBox = {
+      id: UNIVERSAL_BOX_ID,
+      name: '通用盒子',
+      cards: [
+        { type: 'card', attrs: { cardId: 'kept-1' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '老卡一' }] }] },
+        { type: 'card', attrs: { cardId: 'kept-2' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '老卡二' }] }] },
+      ],
+    }
+    const beforeSnapshot = JSON.parse(JSON.stringify(oldSingleBox))
+    const oldLib = { books: [], activeBookId: null, universalBox: oldSingleBox }
+
+    const lib = normalizeLibrary(oldLib)
+
+    expect(lib.universalBoxes).toHaveLength(1)
+    expect(lib.universalBoxes[0]).toEqual(beforeSnapshot)
+    expect(lib.universalBoxes[0].cards).toHaveLength(2)
+    // 传入的原始对象本身也没被 mutate。
+    expect(oldSingleBox).toEqual(beforeSnapshot)
+  })
+
+  it('normalizeLibrary 迁移：老格式的单个 universalBox 即使 id/name 是自定义的，也原样保留（不强改成默认 id/name）', () => {
+    const customBox = { id: 'custom-old-id', name: '我的旧通用盒', cards: [{ type: 'card', attrs: { cardId: 'x' }, content: [] }] }
+    const lib = normalizeLibrary({ books: [], activeBookId: null, universalBox: customBox })
+    expect(lib.universalBoxes).toEqual([customBox])
+  })
+
+  it('normalizeLibrary 已有合法 universalBoxes 数组时原样保留（不重建、不清空已有盒子/卡，同名不同 id 的多个盒子都保留）', () => {
+    const existingBoxes = [
+      { id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [{ type: 'card', attrs: { cardId: 'kept' }, content: [] }] },
+      { id: 'custom-2', name: '灵感', cards: [] },
+    ]
+    const lib = normalizeLibrary({ books: [], activeBookId: null, universalBoxes: existingBoxes })
+    expect(lib.universalBoxes).toEqual(existingBoxes)
+    expect(lib.universalBoxes).toHaveLength(2)
+  })
+
+  it('normalizeLibrary：同时存在老 universalBox 和新 universalBoxes 时，以 universalBoxes 为准（已迁移过，不重复迁移）', () => {
+    const existingBoxes = [{ id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [] }]
+    const staleOldBox = { id: UNIVERSAL_BOX_ID, name: '过期的老字段', cards: [{ type: 'card', attrs: { cardId: 'stale' }, content: [] }] }
+    const lib = normalizeLibrary({ books: [], activeBookId: null, universalBoxes: existingBoxes, universalBox: staleOldBox })
+    expect(lib.universalBoxes).toEqual(existingBoxes)
   })
 
   it('normalizeBook 新格式（有 doc）：原样返回，补 boxes', () => {

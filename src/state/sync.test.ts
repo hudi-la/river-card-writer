@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { rowToBook, bookToRow, firstSyncPlan, startSync, rowToUniversal, universalToRow, mergeUniversal } from './sync'
+import { rowToBook, bookToRow, firstSyncPlan, startSync, rowToUniversal, universalToRow, mergeUniversal, mergeUniversalBoxes } from './sync'
 import type { CwBookRow, CwUniversalRow, SyncSupabaseClient, SyncableBookStore } from './sync'
 import { EMPTY_DOC, UNIVERSAL_BOX_ID } from './bookStore'
 import type { Book, Box, Library } from './bookStore'
@@ -14,8 +14,8 @@ function cardWithId(cardId: string, text = '卡'): any {
   return { type: 'card', attrs: { cardId }, content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] }
 }
 
-function makeUniversalBox(cards: any[] = []): Box {
-  return { id: UNIVERSAL_BOX_ID, name: '通用盒子', cards }
+function makeUniversalBox(cards: any[] = [], id = UNIVERSAL_BOX_ID, name = '通用盒子'): Box {
+  return { id, name, cards }
 }
 
 async function flushAsync(times = 6) {
@@ -43,7 +43,7 @@ function makeMockClient(rows: CwBookRow[] = [], universalRows: CwUniversalRow[] 
 
 // 最小 zustand-like fake store：满足 SyncableBookStore（getState/subscribe），
 // 外加两个测试专用的 helper：_setBooksDirectly 模拟"用户在本地又改了书"，
-// _setUniversalDirectly 模拟"用户在本地又改了通用盒子"（只换 universalBox，
+// _setUniversalDirectly 模拟"用户在本地又改了通用盒子"（只换 universalBoxes，
 // books/activeBookId 原样保留，跟真实 store 里两者互不影响的语义一致）。
 function makeFakeStore(initialLibrary: Library) {
   let library = initialLibrary
@@ -51,7 +51,7 @@ function makeFakeStore(initialLibrary: Library) {
 
   const store: SyncableBookStore & {
     _setBooksDirectly: (books: Book[], activeBookId?: string | null) => void
-    _setUniversalDirectly: (universalBox: Box) => void
+    _setUniversalDirectly: (universalBoxes: Box[]) => void
   } = {
     getState: () => ({
       library,
@@ -70,9 +70,9 @@ function makeFakeStore(initialLibrary: Library) {
       library = { ...library, books, activeBookId }
       listeners.forEach((l) => l({ library }, prev))
     },
-    _setUniversalDirectly: (universalBox) => {
+    _setUniversalDirectly: (universalBoxes) => {
       const prev = { library }
-      library = { ...library, universalBox }
+      library = { ...library, universalBoxes }
       listeners.forEach((l) => l({ library }, prev))
     },
   }
@@ -91,17 +91,24 @@ describe('rowToBook / bookToRow', () => {
 })
 
 describe('universalToRow / rowToUniversal', () => {
-  it('往返相等：universalBox -> row -> universalBox', () => {
-    const box = makeUniversalBox([cardWithId('c1'), cardWithId('c2')])
-    const row = universalToRow(box, 'owner-1')
+  it('往返相等：universalBoxes(数组) -> row -> universalBoxes', () => {
+    const boxes = [makeUniversalBox([cardWithId('c1'), cardWithId('c2')]), makeUniversalBox([], 'box-2', '灵感')]
+    const row = universalToRow(boxes, 'owner-1')
     expect(row.owner).toBe('owner-1')
-    expect(row.data.id).toBe(UNIVERSAL_BOX_ID)
-    expect(row.data.cards).toEqual(box.cards)
-    expect(rowToUniversal(row)).toEqual(box)
+    expect(Array.isArray(row.data)).toBe(true)
+    expect((row.data as any[])[0].id).toBe(UNIVERSAL_BOX_ID)
+    expect((row.data as any[])[0].cards).toEqual(boxes[0].cards)
+    expect(rowToUniversal(row)).toEqual(boxes)
+  })
+
+  it('老格式行（data 是单个 box 对象，不是数组）→ rowToUniversal 包成单元素数组读出', () => {
+    const oldRow: CwUniversalRow = { owner: 'owner-1', data: { id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [cardWithId('legacy')] }, updated_at: new Date().toISOString() }
+    const boxes = rowToUniversal(oldRow)
+    expect(boxes).toEqual([{ id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [cardWithId('legacy')] }])
   })
 })
 
-describe('mergeUniversal（非破坏性合并：union，按 cardId 去重）', () => {
+describe('mergeUniversal（非破坏性合并：union，按 cardId 去重——单个盒子内部的卡片层合并）', () => {
   it('保留全部本地卡，追加云端有而本地没有的卡；同 id 时本地版本优先', () => {
     const local = [cardWithId('a'), cardWithId('b')]
     const cloud = [cardWithId('b', '云端版b'), cardWithId('c')]
@@ -122,6 +129,41 @@ describe('mergeUniversal（非破坏性合并：union，按 cardId 去重）', (
 
   it('两边都空 -> 空', () => {
     expect(mergeUniversal([], [])).toEqual([])
+  })
+})
+
+describe('mergeUniversalBoxes（非破坏性合并：按 box id union，每个 box 内部再按 cardId union）', () => {
+  it('同 id 的盒子：卡片按 cardId union（本地版本优先），盒子本身不因合并而消失', () => {
+    const local = [makeUniversalBox([cardWithId('a'), cardWithId('b')], UNIVERSAL_BOX_ID, '通用盒子')]
+    const cloud = [makeUniversalBox([cardWithId('b', '云端版b'), cardWithId('c')], UNIVERSAL_BOX_ID, '通用盒子')]
+    const merged = mergeUniversalBoxes(local, cloud)
+    expect(merged).toHaveLength(1)
+    expect(merged[0].cards.map((c) => c.attrs.cardId)).toEqual(['a', 'b', 'c'])
+    expect(merged[0].cards.find((c) => c.attrs.cardId === 'b')?.content[0].content[0].text).toBe('卡')
+  })
+
+  it('云端有本地没有的盒子（另一台设备新建的通用盒子）→ 整个追加进结果', () => {
+    const local = [makeUniversalBox([cardWithId('a')], UNIVERSAL_BOX_ID, '通用盒子')]
+    const cloud = [
+      makeUniversalBox([cardWithId('a')], UNIVERSAL_BOX_ID, '通用盒子'),
+      makeUniversalBox([cardWithId('x')], 'cloud-only', '云端专属'),
+    ]
+    const merged = mergeUniversalBoxes(local, cloud)
+    expect(merged).toHaveLength(2)
+    expect(merged.find((b) => b.id === 'cloud-only')).toEqual(cloud[1])
+  })
+
+  it('本地有云端没有的盒子 → 保留（不因云端不知道就被丢弃）', () => {
+    const local = [
+      makeUniversalBox([cardWithId('a')], UNIVERSAL_BOX_ID, '通用盒子'),
+      makeUniversalBox([cardWithId('local-card')], 'local-only', '本地专属'),
+    ]
+    const merged = mergeUniversalBoxes(local, [])
+    expect(merged).toEqual(local)
+  })
+
+  it('两边都空 -> 空数组', () => {
+    expect(mergeUniversalBoxes([], [])).toEqual([])
   })
 })
 
@@ -158,7 +200,7 @@ describe('firstSyncPlan', () => {
 
 describe('startSync', () => {
   it('client 为 null 或 ownerId 缺失 → 不启动，返回空操作 stop 函数', () => {
-    const store = makeFakeStore({ books: [], activeBookId: null })
+    const store = makeFakeStore({ books: [], activeBookId: null, universalBoxes: [] })
     const stop1 = startSync(store, null, 'owner-1')
     const stop2 = startSync(store, makeMockClient().client, undefined)
     expect(typeof stop1).toBe('function')
@@ -169,7 +211,7 @@ describe('startSync', () => {
 
   it('首登迁移：云空 + 本地有书 → 本地 id 换 uuid 并回填 + upsert 上传到云', async () => {
     const localBook = makeBook('local-nanoid-1', '本地书')
-    const store = makeFakeStore({ books: [localBook], activeBookId: 'local-nanoid-1' })
+    const store = makeFakeStore({ books: [localBook], activeBookId: 'local-nanoid-1', universalBoxes: [] })
     const { client, upsertMock } = makeMockClient([])
 
     const stop = startSync(store, client, 'owner-1')
@@ -194,7 +236,7 @@ describe('startSync', () => {
   it('云端已有数据 → 下载覆盖本地库（本地当缓存），不上传', async () => {
     const cloudBook = makeBook('uuid-cloud', '云端书')
     const row = bookToRow(cloudBook, 'owner-1', 0)
-    const store = makeFakeStore({ books: [makeBook('local-stale', '本地旧书')], activeBookId: null })
+    const store = makeFakeStore({ books: [makeBook('local-stale', '本地旧书')], activeBookId: null, universalBoxes: [] })
     const { client, upsertMock } = makeMockClient([row])
 
     const stop = startSync(store, client, 'owner-1')
@@ -207,7 +249,7 @@ describe('startSync', () => {
   })
 
   it('初始同步完成后，本地再次改动 → 防抖后 upsert 一次', async () => {
-    const store = makeFakeStore({ books: [], activeBookId: null })
+    const store = makeFakeStore({ books: [], activeBookId: null, universalBoxes: [] })
     const { client, upsertMock } = makeMockClient([])
 
     const stop = startSync(store, client, 'owner-1', { debounceMs: 10 })
@@ -228,7 +270,7 @@ describe('startSync', () => {
 
   it('删除本地书 → 防抖后对该 id 调用 delete().eq()', async () => {
     const existing = makeBook('uuid-del', '待删书')
-    const store = makeFakeStore({ books: [existing], activeBookId: null })
+    const store = makeFakeStore({ books: [existing], activeBookId: null, universalBoxes: [] })
     const { client, deleteEqMock } = makeMockClient([bookToRow(existing, 'owner-1', 0)])
 
     const stop = startSync(store, client, 'owner-1', { debounceMs: 10 })
@@ -243,7 +285,7 @@ describe('startSync', () => {
   })
 
   it('stop() 之后不再响应本地改动', async () => {
-    const store = makeFakeStore({ books: [], activeBookId: null })
+    const store = makeFakeStore({ books: [], activeBookId: null, universalBoxes: [] })
     const { client, upsertMock } = makeMockClient([])
 
     const stop = startSync(store, client, 'owner-1', { debounceMs: 10 })
@@ -258,76 +300,113 @@ describe('startSync', () => {
   })
 })
 
-describe('startSync：通用盒子（cw_universal）', () => {
-  it('云端没有该用户的行 → 把本地通用盒子上传（upsert），本地内容不变', async () => {
-    const localUniversal = makeUniversalBox([cardWithId('a')])
-    const store = makeFakeStore({ books: [], activeBookId: null, universalBox: localUniversal })
+describe('startSync：通用盒子（cw_universal，Phase 14 起一行装 Box[]）', () => {
+  it('云端没有该用户的行 → 把本地通用盒子（全部）上传（upsert），本地内容不变', async () => {
+    const localUniversal = [makeUniversalBox([cardWithId('a')])]
+    const store = makeFakeStore({ books: [], activeBookId: null, universalBoxes: localUniversal })
     const { client, universalUpsertMock } = makeMockClient([], [])
 
     const stop = startSync(store, client, 'owner-1')
     await flushAsync()
 
-    expect(store.getState().library.universalBox).toEqual(localUniversal)
+    expect(store.getState().library.universalBoxes).toEqual(localUniversal)
     expect(universalUpsertMock).toHaveBeenCalledTimes(1)
     const row = universalUpsertMock.mock.calls[0][0] as CwUniversalRow
     expect(row.owner).toBe('owner-1')
-    expect(row.data.cards).toEqual(localUniversal.cards)
+    expect((row.data as any[])[0].cards).toEqual(localUniversal[0].cards)
 
     stop()
   })
 
-  it('云端有本地没有的卡 → 合并后（本地∪云端）落到本地 store，本地原有卡一张不少', async () => {
-    const localUniversal = makeUniversalBox([cardWithId('a')])
-    const store = makeFakeStore({ books: [], activeBookId: null, universalBox: localUniversal })
-    const cloudRow = universalToRow(makeUniversalBox([cardWithId('a', '云端版a'), cardWithId('b')]), 'owner-1')
+  it('云端有本地没有的卡（同一个盒子）→ 合并后（本地∪云端）落到本地 store，本地原有卡一张不少', async () => {
+    const localUniversal = [makeUniversalBox([cardWithId('a')])]
+    const store = makeFakeStore({ books: [], activeBookId: null, universalBoxes: localUniversal })
+    const cloudRow = universalToRow([makeUniversalBox([cardWithId('a', '云端版a'), cardWithId('b')])], 'owner-1')
     const { client } = makeMockClient([], [cloudRow])
 
     const stop = startSync(store, client, 'owner-1')
     await flushAsync()
 
-    const merged = store.getState().library.universalBox
-    expect(merged.cards.map((c: any) => c.attrs.cardId)).toEqual(['a', 'b'])
+    const merged = store.getState().library.universalBoxes
+    expect(merged).toHaveLength(1)
+    expect(merged[0].cards.map((c: any) => c.attrs.cardId)).toEqual(['a', 'b'])
     // 本地的 a 版本没被云端同 id 卡覆盖——非破坏性合并
-    expect(merged.cards.find((c: any) => c.attrs.cardId === 'a')?.content[0].content[0].text).toBe('卡')
+    expect(merged[0].cards.find((c: any) => c.attrs.cardId === 'a')?.content[0].content[0].text).toBe('卡')
+
+    stop()
+  })
+
+  it('云端有本地没有的盒子 → 合并后本地多出那个盒子，本地原有盒子/卡一个不少', async () => {
+    const localUniversal = [makeUniversalBox([cardWithId('a')], UNIVERSAL_BOX_ID, '通用盒子')]
+    const store = makeFakeStore({ books: [], activeBookId: null, universalBoxes: localUniversal })
+    const cloudRow = universalToRow(
+      [makeUniversalBox([cardWithId('a')], UNIVERSAL_BOX_ID, '通用盒子'), makeUniversalBox([cardWithId('x')], 'cloud-box', '云端新盒子')],
+      'owner-1'
+    )
+    const { client } = makeMockClient([], [cloudRow])
+
+    const stop = startSync(store, client, 'owner-1')
+    await flushAsync()
+
+    const merged = store.getState().library.universalBoxes
+    expect(merged).toHaveLength(2)
+    expect(merged.find((b) => b.id === UNIVERSAL_BOX_ID)?.cards.map((c: any) => c.attrs.cardId)).toEqual(['a'])
+    expect(merged.find((b) => b.id === 'cloud-box')?.name).toBe('云端新盒子')
+
+    stop()
+  })
+
+  it('云端行是老格式（data 是单个 box 对象）→ 读入时包成数组再合并，不崩', async () => {
+    const localUniversal = [makeUniversalBox([cardWithId('a')])]
+    const store = makeFakeStore({ books: [], activeBookId: null, universalBoxes: localUniversal })
+    const legacyRow: CwUniversalRow = { owner: 'owner-1', data: { id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [cardWithId('a'), cardWithId('legacy')] }, updated_at: new Date().toISOString() }
+    const { client } = makeMockClient([], [legacyRow])
+
+    const stop = startSync(store, client, 'owner-1')
+    await flushAsync()
+
+    const merged = store.getState().library.universalBoxes
+    expect(merged).toHaveLength(1)
+    expect(merged[0].cards.map((c: any) => c.attrs.cardId).sort()).toEqual(['a', 'legacy'])
 
     stop()
   })
 
   it('云端为空、本地也为空 → 不崩，不产生垃圾 upsert 之外的异常', async () => {
-    const store = makeFakeStore({ books: [], activeBookId: null, universalBox: makeUniversalBox([]) })
+    const store = makeFakeStore({ books: [], activeBookId: null, universalBoxes: [makeUniversalBox([])] })
     const { client } = makeMockClient([], [])
 
     const stop = startSync(store, client, 'owner-1')
     await flushAsync()
 
-    expect(store.getState().library.universalBox.cards).toEqual([])
+    expect(store.getState().library.universalBoxes).toEqual([makeUniversalBox([])])
     stop()
   })
 
   it('初始同步完成后，本地通用盒子再变 → 防抖后 upsert 一次到 cw_universal', async () => {
-    const store = makeFakeStore({ books: [], activeBookId: null, universalBox: makeUniversalBox([]) })
+    const store = makeFakeStore({ books: [], activeBookId: null, universalBoxes: [makeUniversalBox([])] })
     const { client, universalUpsertMock } = makeMockClient([], [])
 
     const stop = startSync(store, client, 'owner-1', { debounceMs: 10 })
     await flushAsync()
     universalUpsertMock.mockClear()
 
-    const nextUniversal = makeUniversalBox([cardWithId('new-card')])
+    const nextUniversal = [makeUniversalBox([cardWithId('new-card')])]
     store._setUniversalDirectly(nextUniversal)
     await new Promise((resolve) => setTimeout(resolve, 40))
 
     expect(universalUpsertMock).toHaveBeenCalledTimes(1)
     const row = universalUpsertMock.mock.calls[0][0] as CwUniversalRow
-    expect(row.data.cards).toEqual(nextUniversal.cards)
+    expect((row.data as any[])[0].cards).toEqual(nextUniversal[0].cards)
 
     stop()
   })
 
   it('未登录（client 为 null）→ 不启动通用盒子同步，纯本地不崩', async () => {
-    const store = makeFakeStore({ books: [], activeBookId: null, universalBox: makeUniversalBox([cardWithId('a')]) })
+    const store = makeFakeStore({ books: [], activeBookId: null, universalBoxes: [makeUniversalBox([cardWithId('a')])] })
     const stop = startSync(store, null, 'owner-1')
     await flushAsync()
-    expect(store.getState().library.universalBox.cards.map((c: any) => c.attrs.cardId)).toEqual(['a'])
+    expect(store.getState().library.universalBoxes[0].cards.map((c: any) => c.attrs.cardId)).toEqual(['a'])
     stop()
   })
 })

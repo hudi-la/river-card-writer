@@ -8,17 +8,29 @@ const LIBRARY_KEY = 'card-writer:library'
 
 export type Box = { id: string; name: string; cards: any[] }
 export type Book = { id: string; title: string; doc: any; boxes: Box[] }
-export type Library = { books: Book[]; activeBookId: string | null; universalBox: Box }
+export type Library = { books: Book[]; activeBookId: string | null; universalBoxes: Box[] }
 
-// 库级通用盒子：不属于任何一本书，跨所有书共享同一个实例。
+// 库级通用盒子：不属于任何一本书，跨所有书共享同一份实例。Phase 14 起支持
+// 多个、可命名的通用盒子（library.universalBoxes: Box[]）。UNIVERSAL_BOX_ID
+// 保留作为"默认那个通用盒子"的 id——老数据里唯一的那个通用盒子、以及全新库
+// 里自动创建的第一个通用盒子，都用这个 id，这样旧的 UNIVERSAL_BOX_ID 引用
+// （比如书内那个"通用盒子"入口）迁移后依然命中同一个盒子。
 export const UNIVERSAL_BOX_ID = '__universal__'
 
 function defaultUniversalBox(): Box {
   return { id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [] }
 }
 
+function defaultUniversalBoxes(): Box[] {
+  return [defaultUniversalBox()]
+}
+
 function isValidBox(b: any): b is Box {
   return !!b && typeof b === 'object' && typeof b.id === 'string' && typeof b.name === 'string' && Array.isArray(b.cards)
+}
+
+function isValidBoxArray(arr: any): arr is Box[] {
+  return Array.isArray(arr) && arr.every(isValidBox)
 }
 
 type BookState = {
@@ -39,12 +51,20 @@ type BookState = {
   setLibrary: (library: Library) => void
   // 备份导入：只增不减地把 books 并进当前 library 并持久化（合并逻辑见 backup.ts）。
   importBooks: (books: Book[]) => void
-  // 通用盒子备份导入：按 cardId 去重地把 cards 并进当前 universalBox 并持久化
-  // （合并逻辑见 backup.ts 的 mergeUniversalCards）——只增不减，重复导入不产生重复卡。
+  // 通用盒子备份导入：按 cardId 去重地把 cards 并进"默认那个"通用盒子（id 为
+  // UNIVERSAL_BOX_ID，找不到就并进第一个）并持久化（合并逻辑见 backup.ts 的
+  // mergeUniversalCards）——只增不减，重复导入不产生重复卡。
   importUniversalCards: (cards: any[]) => void
   updateDoc: (doc: object) => void
   openDoc: () => void
   addBox: (name: string) => Box | undefined
+  // 新增一个具名通用盒子（库级，跨所有书共享），返回新盒子。
+  addUniversalBox: (name: string) => Box
+  // 重命名指定 id 的通用盒子；id 不存在时 no-op。
+  renameUniversalBox: (id: string, name: string) => void
+  // 删除指定 id 的通用盒子；id 不存在时 no-op。允许删到只剩 0 个（跟 deleteBook 对
+  // books 的语义一致，不强行兜底一个默认盒子）。
+  deleteUniversalBox: (id: string) => void
   openBox: (id: string) => void
   parkCard: (boxId: string, cardJSON: any) => void
   takeCardFromBox: (boxId: string, cardId: string) => any | undefined
@@ -91,9 +111,19 @@ export function normalizeBook(raw: any): Book {
 export function normalizeLibrary(raw: any): Library {
   const books: Book[] = Array.isArray(raw?.books) ? raw.books.map(normalizeBook) : []
   const activeBookId = typeof raw?.activeBookId === 'string' ? raw.activeBookId : null
-  // 只在缺失/不合法时补默认；已有则原样保留（不重建实例、不动 books）。
-  const universalBox = isValidBox(raw?.universalBox) ? raw.universalBox : defaultUniversalBox()
-  return { books, activeBookId, universalBox }
+  // 迁移优先级（一律不丢老盒子/老卡）：
+  //   1. 已有合法 universalBoxes 数组 → 原样保留（不重建实例、不动里面的 box/cards）。
+  //   2. 老格式的单个 universalBox → 包成单元素数组，原盒子/卡片实例原样保留。
+  //   3. 都没有 → 一个全新的默认通用盒子。
+  let universalBoxes: Box[]
+  if (isValidBoxArray(raw?.universalBoxes)) {
+    universalBoxes = raw.universalBoxes
+  } else if (isValidBox(raw?.universalBox)) {
+    universalBoxes = [raw.universalBox]
+  } else {
+    universalBoxes = defaultUniversalBoxes()
+  }
+  return { books, activeBookId, universalBoxes }
 }
 
 function loadOldSingleBookAsLibrary(): Library | undefined {
@@ -103,7 +133,7 @@ function loadOldSingleBookAsLibrary(): Library | undefined {
     const b = JSON.parse(raw)
     const looksLikeBook = b && (b.doc || (Array.isArray(b.chapters) && b.chapters.length > 0 && b.chapters[0]?.id))
     if (!looksLikeBook) return undefined
-    return { books: [normalizeBook(b)], activeBookId: null, universalBox: defaultUniversalBox() }
+    return { books: [normalizeBook(b)], activeBookId: null, universalBoxes: defaultUniversalBoxes() }
   } catch {
     return undefined
   }
@@ -121,7 +151,7 @@ export function load(): Library {
   const migrated = loadOldSingleBookAsLibrary()
   if (migrated) return migrated
 
-  return { books: [freshBook()], activeBookId: null, universalBox: defaultUniversalBox() }
+  return { books: [freshBook()], activeBookId: null, universalBoxes: defaultUniversalBoxes() }
 }
 
 function persist(library: Library) {
@@ -178,24 +208,30 @@ export const useBookStore = create<BookState>((set, get) => {
       set(wasActive ? { library, shell: 'shelf', viewKind: 'doc', activeBoxId: null, carried: null } : { library })
     },
 
-    // sync/import 传入的 library 可能是旧算法拼出来的、不知道 universalBox 这个字段
+    // sync/import 传入的 library 可能是旧算法拼出来的、不知道 universalBoxes 这个字段
     // （比如 cw_books 首登下载/上传回填）。缺失/不合法时兜底沿用当前内存里的
-    // universalBox，而不是丢掉它——通用盒子是本地专属字段，云同步暂不覆盖它。
+    // universalBoxes，而不是丢掉它——通用盒子是本地专属字段，cw_books 同步暂不覆盖它
+    // （cw_universal 同步走的是 setLibrary 之外的合并路径，见 sync.ts）。
     setLibrary: (library) => {
-      const merged = { ...library, universalBox: isValidBox((library as any).universalBox) ? (library as any).universalBox : get().library.universalBox }
+      const incoming = (library as any).universalBoxes
+      const merged = { ...library, universalBoxes: isValidBoxArray(incoming) ? incoming : get().library.universalBoxes }
       persist(merged)
       set({ library: merged })
     },
     importBooks: (books) => {
       const merged = mergeImported(get().library, books)
-      const library = { ...merged, universalBox: get().library.universalBox }
+      const library = { ...merged, universalBoxes: get().library.universalBoxes }
       persist(library)
       set({ library })
     },
     importUniversalCards: (cards) => {
       const cur = get().library
-      const mergedCards = mergeUniversalCards(cur.universalBox.cards, cards)
-      const library = { ...cur, universalBox: { ...cur.universalBox, cards: mergedCards } }
+      if (cur.universalBoxes.length === 0) return
+      const targetIdx = Math.max(0, cur.universalBoxes.findIndex((b) => b.id === UNIVERSAL_BOX_ID))
+      const universalBoxes = cur.universalBoxes.map((b, i) =>
+        i === targetIdx ? { ...b, cards: mergeUniversalCards(b.cards, cards) } : b
+      )
+      const library = { ...cur, universalBoxes }
       persist(library)
       set({ library })
     },
@@ -207,11 +243,30 @@ export const useBookStore = create<BookState>((set, get) => {
       const box: Box = { id: nanoid(), name, cards: [] }
       return withActiveBook((book) => ({ book: { ...book, boxes: [...book.boxes, box] }, result: box }))
     },
+    addUniversalBox: (name) => {
+      const box: Box = { id: nanoid(), name, cards: [] }
+      const library = { ...get().library, universalBoxes: [...get().library.universalBoxes, box] }
+      persist(library)
+      set({ library })
+      return box
+    },
+    renameUniversalBox: (id, name) => {
+      const library = { ...get().library, universalBoxes: get().library.universalBoxes.map((b) => (b.id === id ? { ...b, name } : b)) }
+      persist(library)
+      set({ library })
+    },
+    deleteUniversalBox: (id) => {
+      const library = { ...get().library, universalBoxes: get().library.universalBoxes.filter((b) => b.id !== id) }
+      persist(library)
+      set({ library })
+    },
     openBox: (id) => set({ viewKind: 'box', activeBoxId: id }),
     parkCard: (boxId, cardJSON) => {
-      if (boxId === UNIVERSAL_BOX_ID) {
-        const cur = get().library
-        const library = { ...cur, universalBox: { ...cur.universalBox, cards: [...cur.universalBox.cards, cardJSON] } }
+      const cur = get().library
+      const uniIdx = cur.universalBoxes.findIndex((b) => b.id === boxId)
+      if (uniIdx !== -1) {
+        const universalBoxes = cur.universalBoxes.map((b, i) => (i === uniIdx ? { ...b, cards: [...b.cards, cardJSON] } : b))
+        const library = { ...cur, universalBoxes }
         persist(library)
         set({ library })
         return
@@ -222,11 +277,14 @@ export const useBookStore = create<BookState>((set, get) => {
       }))
     },
     takeCardFromBox: (boxId, cardId) => {
-      if (boxId === UNIVERSAL_BOX_ID) {
-        const cur = get().library
-        const card = cur.universalBox.cards.find((c) => c?.attrs?.cardId === cardId)
+      const cur = get().library
+      const uniIdx = cur.universalBoxes.findIndex((b) => b.id === boxId)
+      if (uniIdx !== -1) {
+        const box = cur.universalBoxes[uniIdx]
+        const card = box.cards.find((c) => c?.attrs?.cardId === cardId)
         if (!card) return undefined
-        const library = { ...cur, universalBox: { ...cur.universalBox, cards: cur.universalBox.cards.filter((c) => c !== card) } }
+        const universalBoxes = cur.universalBoxes.map((b, i) => (i === uniIdx ? { ...b, cards: b.cards.filter((c) => c !== card) } : b))
+        const library = { ...cur, universalBoxes }
         persist(library)
         set({ library })
         return card
@@ -243,7 +301,8 @@ export const useBookStore = create<BookState>((set, get) => {
     },
     getBox: (id) => {
       if (!id) return undefined
-      if (id === UNIVERSAL_BOX_ID) return get().library.universalBox
+      const uni = get().library.universalBoxes.find((b) => b.id === id)
+      if (uni) return uni
       return get().activeBook()?.boxes.find((b) => b.id === id)
     },
     carry: (boxId, cardId) => {
@@ -259,7 +318,7 @@ export const useBookStore = create<BookState>((set, get) => {
     dropCarried: () => set({ carried: null }),
     __resetForTest: () => {
       const book = freshBook()
-      const library: Library = { books: [book], activeBookId: null, universalBox: defaultUniversalBox() }
+      const library: Library = { books: [book], activeBookId: null, universalBoxes: defaultUniversalBoxes() }
       persist(library)
       set({ library, shell: 'shelf', viewKind: 'doc', activeBoxId: null, carried: null })
     },
