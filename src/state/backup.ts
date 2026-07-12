@@ -20,7 +20,7 @@ export function exportLibrary(library: Library, exportedAt: string = new Date().
     version: BACKUP_VERSION,
     exportedAt,
     books: library.books,
-    universalBox: library.universalBox,
+    universalBoxes: library.universalBoxes,
   }
   return JSON.stringify(payload, null, 2)
 }
@@ -55,7 +55,11 @@ function looksLikeBox(b: any): b is Box {
   return b && typeof b === 'object' && typeof b.id === 'string' && typeof b.name === 'string' && Array.isArray(b.cards)
 }
 
-export type ParseBackupResult = { ok: true; books: Book[]; universalBox?: Box } | { ok: false; error: string }
+function looksLikeBoxArray(arr: any): arr is Box[] {
+  return Array.isArray(arr) && arr.every(looksLikeBox)
+}
+
+export type ParseBackupResult = { ok: true; books: Book[]; universalBoxes?: Box[] } | { ok: false; error: string }
 
 // 永不抛出：所有失败路径都收敛成 {ok:false, error}，调用方（UI）不需要 try/catch。
 export function parseBackup(text: string): ParseBackupResult {
@@ -76,11 +80,16 @@ export function parseBackup(text: string): ParseBackupResult {
     return { ok: false, error: '备份文件里有书缺少必要字段（id/title/doc）' }
   }
 
-  // universalBox 是可选字段：老备份文件（Phase 11 之前导出的）没有它，缺失时
+  // universalBoxes 是可选字段：老备份文件（Phase 11 之前导出的）没有它，缺失时
   // 不算错——调用方按"未包含通用盒子"处理，绝不因为老文件缺一个新字段就整体拒绝。
+  // Phase 14 起支持多个通用盒子（数组）；老格式（Phase 14 之前）只有单个
+  // universalBox 字段——识别到就包成单元素数组，老备份依然能正常导入，一张
+  // 卡都不丢（DATA-SAFETY）。两个字段都有时以新的 universalBoxes 为准。
   const result: ParseBackupResult = { ok: true, books: data.books as Book[] }
-  if (looksLikeBox(data.universalBox)) {
-    result.universalBox = data.universalBox as Box
+  if (looksLikeBoxArray(data.universalBoxes)) {
+    result.universalBoxes = data.universalBoxes as Box[]
+  } else if (looksLikeBox(data.universalBox)) {
+    result.universalBoxes = [data.universalBox as Box]
   }
   return result
 }
@@ -137,4 +146,20 @@ export function mergeUniversalCards(currentCards: any[], importedCards: any[]): 
     if (cardId != null) existingIds.add(cardId)
   }
   return [...currentCards, ...appended]
+}
+
+// 只增不减，专治"多个通用盒子"（Phase 14 Task 4）：按 id 匹配——current 里已有的
+// 盒子，用 mergeUniversalCards 按 cardId 去重合并 imported 那份同 id 盒子的卡
+// （不改盒子的 name，current 的名字优先，不被导入文件覆盖）；current 里没有的
+// 盒子（imported 独有的 id，比如从另一台设备带过来的新盒子）整只追加。current
+// 独有的盒子原样保留。不 mutate 任何传入数组。
+export function mergeUniversalBoxes(currentBoxes: Box[], importedBoxes: Box[]): Box[] {
+  const currentIds = new Set(currentBoxes.map((b) => b.id))
+  const merged = currentBoxes.map((b) => {
+    const imported = importedBoxes.find((ib) => ib.id === b.id)
+    if (!imported) return b
+    return { ...b, cards: mergeUniversalCards(b.cards, imported.cards) }
+  })
+  const newBoxes = importedBoxes.filter((ib) => !currentIds.has(ib.id))
+  return [...merged, ...newBoxes]
 }

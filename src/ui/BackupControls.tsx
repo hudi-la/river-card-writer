@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useBookStore } from '../state/bookStore'
-import { exportLibrary, parseBackup } from '../state/backup'
+import { exportLibrary, parseBackup, mergeUniversalBoxes } from '../state/backup'
 import { downloadTextFile, todayStamp } from './download'
 
 // 用户完全掌控的本地备份：导出全部书到一个 JSON 文件，导入时只增不减地并入书柜
@@ -9,7 +9,7 @@ import { downloadTextFile, todayStamp } from './download'
 export function BackupControls() {
   const library = useBookStore((s) => s.library)
   const importBooks = useBookStore((s) => s.importBooks)
-  const importUniversalCards = useBookStore((s) => s.importUniversalCards)
+  const setLibrary = useBookStore((s) => s.setLibrary)
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -32,10 +32,19 @@ export function BackupControls() {
       return
     }
     importBooks(result.books)
-    // 老备份文件（Phase 11 之前导出的）没有 universalBox 字段——result.universalBox
-    // 缺失时就跳过这一步，不当错误处理。
-    if (result.universalBox) importUniversalCards(result.universalBox.cards)
-    const suffix = result.universalBox ? `，通用盒子 ${result.universalBox.cards.length} 张卡已合并` : ''
+    // 老备份文件（Phase 11 之前导出的）没有 universalBoxes 字段——result.universalBoxes
+    // 缺失时就跳过这一步，不当错误处理。按 id 合并每个通用盒子、按 cardId 去重
+    // 合并卡片（见 backup.ts 的 mergeUniversalBoxes）——不属于 importBooks 的合并
+    // 范围，单独用 setLibrary 落一次盘（setLibrary 会原样采纳合法的
+    // universalBoxes 数组，见 bookStore.ts）。
+    let suffix = ''
+    if (result.universalBoxes) {
+      const cur = useBookStore.getState().library
+      const universalBoxes = mergeUniversalBoxes(cur.universalBoxes, result.universalBoxes)
+      setLibrary({ ...cur, universalBoxes })
+      const totalCards = result.universalBoxes.reduce((n, b) => n + b.cards.length, 0)
+      suffix = `，${result.universalBoxes.length} 个通用盒子共 ${totalCards} 张卡已合并`
+    }
     setMessage({ text: `导入了 ${result.books.length} 本书${suffix}` })
   }
 

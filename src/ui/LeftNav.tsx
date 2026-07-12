@@ -1,8 +1,8 @@
 import { useRef, useState, useEffect, type CSSProperties, type RefObject, type MutableRefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { useBookStore, UNIVERSAL_BOX_ID, type Box } from '../state/bookStore'
+import { useBookStore, type Box } from '../state/bookStore'
 import { useEditorBridge } from '../state/editorBridge'
-import { cardText } from './BoxView'
+import { cardText, UniversalBoxModal } from './BoxView'
 import { autoCardColor } from '../editor/schema'
 import { Modal } from './Modal'
 import { OutlineDetail } from './OutlineDetail'
@@ -647,7 +647,7 @@ export function useOutlineRowDrag({
 
 export function LeftNav() {
   const book = useBookStore((s) => s.activeBook())
-  const universalBox = useBookStore((s) => s.library.universalBox)
+  const universalBoxes = useBookStore((s) => s.library.universalBoxes)
   const viewKind = useBookStore((s) => s.viewKind)
   const activeBoxId = useBookStore((s) => s.activeBoxId)
   const openDoc = useBookStore((s) => s.openDoc)
@@ -767,6 +767,10 @@ export function LeftNav() {
   // Phase 14 Task 2：详细大纲搬进悬浮大窗——侧栏只留简略树 + 这一个按钮开窗。
   const [detailOpen, setDetailOpen] = useState(false)
 
+  // Phase 14 Task 4：书内点某个通用盒子也用悬浮大窗打开（不再走 openBox/viewKind
+  // 那条给"本书盒子"用的路）——readOnly=false，书内有当前 doc，插入按钮可用。
+  const [openUniversalBoxId, setOpenUniversalBoxId] = useState<string | null>(null)
+
   return (
     <>
     <nav className="rail" ref={(el) => { railRef.current = el }} onScroll={closeHoverForScroll}>
@@ -863,22 +867,28 @@ export function LeftNav() {
         ＋ 新盒子
       </div>
       {/* 通用盒子不属于本书，跟本书的盒子隔一条浅分隔线，并带一个共享图标——
-          提示这是跨所有书共享的同一个盒子，而不是本书的第 N 个盒子。 */}
+          提示这是跨所有书共享的同一个盒子，而不是本书的第 N 个盒子。Phase 14
+          起支持多个通用盒子，全部列出；点开的是悬浮大窗而不是 viewKind==='box'
+          那条只给本书盒子用的路（openUniversalBoxId 由此驱动 UniversalBoxModal）。 */}
       <div className="universal-box-divider" />
-      <BoxRow
-        box={universalBox}
-        active={UNIVERSAL_BOX_ID === activeBoxId && viewKind === 'box'}
-        collapsed={collapsedBoxIds.has(UNIVERSAL_BOX_ID)}
-        onOpen={() => openBox(UNIVERSAL_BOX_ID)}
-        onToggleCollapsed={() => toggleBoxCollapsed(UNIVERSAL_BOX_ID)}
-        onCarryCard={(cardId) => carry(UNIVERSAL_BOX_ID, cardId)}
-        icon="⟡"
-        extraClassName="universal-box"
-      />
+      {universalBoxes.map((box) => (
+        <BoxRow
+          key={box.id}
+          box={box}
+          active={box.id === openUniversalBoxId}
+          collapsed={collapsedBoxIds.has(box.id)}
+          onOpen={() => setOpenUniversalBoxId(box.id)}
+          onToggleCollapsed={() => toggleBoxCollapsed(box.id)}
+          onCarryCard={(cardId) => carry(box.id, cardId)}
+          icon="⟡"
+          extraClassName="universal-box"
+        />
+      ))}
     </nav>
     <Modal open={detailOpen} title="详细大纲" onClose={() => setDetailOpen(false)}>
       <OutlineDetail />
     </Modal>
+    <UniversalBoxModal boxId={openUniversalBoxId} onClose={() => setOpenUniversalBoxId(null)} />
     </>
   )
 }

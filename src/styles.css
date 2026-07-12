@@ -328,7 +328,7 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
   position: relative; aspect-ratio: 3 / 4; border-radius: 8px; border: 1px solid var(--hair);
   box-shadow: 0 6px 16px rgba(0,0,0,.08); overflow: hidden; transition: transform .15s ease, box-shadow .15s ease;
 }
-.book-cover::after {
+.book-cover:not(.shelf-add-cover)::after {
   content: ""; position: absolute; inset: 0; mix-blend-mode: overlay;
   background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.14) 0 1px, transparent 1px 6px);
 }
@@ -356,16 +356,36 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
   color: var(--muted); cursor: pointer; font-size: 13px;
 }
 .shelf-add:hover { color: var(--ink); border-color: var(--hair); }
+/* "＋ 新书"挪到书卡旁边（Phase 14 Task 4）：跟 .book-card 同尺寸网格格子，封面
+   换成虚线框 + 大大的"＋"，跟已有的书一眼区分开。 */
+.shelf-add-cover {
+  display: flex; align-items: center; justify-content: center; font-size: 34px; line-height: 1;
+  color: var(--muted); border-style: dashed; box-shadow: none; background: none;
+}
+.shelf-add-book:hover .shelf-add-cover { color: var(--ink); border-color: var(--hair); transform: translateY(-3px); }
+.shelf-add-label { text-align: center; color: var(--muted); }
+.shelf-add-book:hover .shelf-add-label { color: var(--ink); }
 /* 书柜里的通用盒子入口：跟"＋ 新书"分开一行，实线边框（不是虚线的"新建"手感）
-   带共享图标，暗示这是一个已经存在、跨所有书共享的容器，而不是新建动作。 */
+   带共享图标，暗示这是一个已经存在、跨所有书共享的容器，而不是新建动作。
+   Phase 14 起支持多个，列成一组 + 一个"＋ 新通用盒子"。 */
+.universal-box-section { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 18px; }
 .universal-box-entry {
-  display: flex; align-items: center; gap: 8px; margin-bottom: 18px; padding: 10px 16px;
+  display: flex; align-items: center; gap: 8px; padding: 10px 16px;
   border: 1px solid var(--hair); border-radius: 8px; background: rgba(120,158,196,.06);
   color: var(--ink); cursor: pointer; font-size: 13px; width: fit-content;
 }
 .universal-box-entry:hover { border-color: var(--muted); background: rgba(120,158,196,.12); }
 .universal-box-entry-name { font-weight: 600; }
 .universal-box-entry-count { color: var(--muted); font-size: 12px; }
+.universal-box-name-edit {
+  font: inherit; font-size: 13px; font-weight: 600; border: 1px solid var(--hair);
+  border-radius: 4px; padding: 2px 5px; background: var(--paper); color: var(--ink); width: 8em;
+}
+.universal-box-add {
+  display: inline-block; padding: 10px 16px; border: 1px dashed var(--faint); border-radius: 8px;
+  color: var(--muted); cursor: pointer; font-size: 13px;
+}
+.universal-box-add:hover { color: var(--ink); border-color: var(--hair); }
 .back-to-shelf {
   position: absolute; top: 12px; left: 24px; z-index: 6;
   border: 1px solid var(--faint); background: var(--paper); color: var(--muted);
@@ -386,9 +406,9 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 .tcard [data-box-action="insert"]:disabled { opacity:.4; cursor:default; }
 .tcard [data-box-action="insert"]:disabled:hover { color:var(--muted); border-color:var(--faint); }
 
-/* 从书柜全屏打开的通用盒子：没有目录栏，单列铺满，跟书内的两栏 .app 布局区分开。 */
-.app.universal-shell { grid-template-columns: 1fr; }
-.universal-box-screen-body { display: flex; flex-direction: column; width: min(680px, 90%); }
+/* 通用盒子悬浮大窗（Phase 14 Task 4）：Modal 内部 box-view 不需要再限宽居中，
+   跟着 modal-panel 走满宽即可；默认盒子额外带的 UniversalBoxControls 隔开一点。 */
+.modal-body .box-view { width: auto; }
 .universal-box-controls { margin-bottom: 18px; }
 
 .auth-loading { display:flex; align-items:center; justify-content:center; height:100vh; color:var(--muted); font-size:13px; }

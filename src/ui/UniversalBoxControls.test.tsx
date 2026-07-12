@@ -46,7 +46,7 @@ describe('UniversalBoxControls', () => {
     await userEvent.upload(input, file)
 
     await waitFor(() => expect(screen.getByText(/导入了 1 张卡/)).toBeTruthy())
-    const cards = useBookStore.getState().library.universalBox.cards
+    const cards = useBookStore.getState().library.universalBoxes.find((b) => b.id === UNIVERSAL_BOX_ID)!.cards
     expect(cards).toHaveLength(2)
     expect(cards.some((c) => c.attrs.cardId === 'kept')).toBe(true)
     expect(cards.some((c) => c.attrs.cardId === 'new1')).toBe(true)
@@ -62,7 +62,7 @@ describe('UniversalBoxControls', () => {
     await userEvent.upload(input, new File([backupJson], 'universal.json', { type: 'application/json' }))
     await waitFor(() => expect(screen.getByText(/导入了 1 张卡/)).toBeTruthy())
 
-    expect(useBookStore.getState().library.universalBox.cards).toHaveLength(1)
+    expect(useBookStore.getState().library.universalBoxes.find((b) => b.id === UNIVERSAL_BOX_ID)!.cards).toHaveLength(1)
   })
 
   it('导入损坏的文件：不改动通用盒子，显示错误提示', async () => {
@@ -74,7 +74,7 @@ describe('UniversalBoxControls', () => {
     await userEvent.upload(input, file)
 
     await waitFor(() => expect(screen.getByText(/导入失败/)).toBeTruthy())
-    const cards = useBookStore.getState().library.universalBox.cards
+    const cards = useBookStore.getState().library.universalBoxes.find((b) => b.id === UNIVERSAL_BOX_ID)!.cards
     expect(cards).toHaveLength(1)
     expect(cards[0].attrs.cardId).toBe('kept')
   })

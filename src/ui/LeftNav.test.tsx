@@ -134,20 +134,38 @@ describe('LeftNav', () => {
     expect(useBookStore.getState().activeBoxId).toBe(box.id)
   })
 
-  it('盒子组渲染出通用盒子项，点击后 openBox(UNIVERSAL_BOX_ID)', async () => {
+  it('盒子组渲染出通用盒子项，点击后打开该盒子的悬浮大窗（Modal），而不是 openBox/viewKind', async () => {
     render(<LeftNav />)
-    const row = screen.getByText('通用盒子')
-    expect(row.closest('[data-box-id]')?.getAttribute('data-box-id')).toBe(UNIVERSAL_BOX_ID)
-    await userEvent.click(row)
-    expect(useBookStore.getState().viewKind).toBe('box')
-    expect(useBookStore.getState().activeBoxId).toBe(UNIVERSAL_BOX_ID)
+    const row = screen.getByText('通用盒子').closest('[data-box-id]') as HTMLElement
+    expect(row.getAttribute('data-box-id')).toBe(UNIVERSAL_BOX_ID)
+    await userEvent.click(within(row).getByText('通用盒子'))
+    // 点击不改变 viewKind/activeBoxId——那条路是"本书盒子"专用的
+    expect(useBookStore.getState().viewKind).toBe('doc')
+    expect(useBookStore.getState().activeBoxId).toBeNull()
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.getAttribute('aria-label')).toBe('通用盒子')
   })
 
-  it('打开通用盒子后，该项被记为 active', async () => {
+  it('打开通用盒子后，该项被记为 active；关闭大窗后恢复', async () => {
     render(<LeftNav />)
-    await userEvent.click(screen.getByText('通用盒子'))
-    const row = screen.getByText('通用盒子').closest('[data-box-id]')
-    expect(row?.className).toContain('on')
+    const row = screen.getByText('通用盒子').closest('[data-box-id]') as HTMLElement
+    await userEvent.click(within(row).getByText('通用盒子'))
+    expect(row.className).toContain('on')
+    await userEvent.click(screen.getByLabelText('关闭'))
+    expect(row.className).not.toContain('on')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('多个通用盒子：书内侧栏列出全部，各自点击打开各自的大窗', async () => {
+    const inspiration = useBookStore.getState().addUniversalBox('灵感')
+    render(<LeftNav />)
+    expect(screen.getByText('通用盒子')).toBeTruthy()
+    expect(screen.getByText('灵感')).toBeTruthy()
+
+    const inspirationRow = screen.getByText('灵感').closest('[data-box-id]') as HTMLElement
+    expect(inspirationRow.getAttribute('data-box-id')).toBe(inspiration.id)
+    await userEvent.click(within(inspirationRow).getByText('灵感'))
+    expect(screen.getByRole('dialog').getAttribute('aria-label')).toBe('灵感')
   })
 })
 

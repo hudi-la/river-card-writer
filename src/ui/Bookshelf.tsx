@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { useBookStore, type Book } from '../state/bookStore'
+import { useBookStore, type Book, type Box } from '../state/bookStore'
 import { BackupControls } from './BackupControls'
 import { exportBook, sanitizeFilename } from '../state/backup'
 import { downloadTextFile, todayStamp } from './download'
+import { UniversalBoxModal } from './BoxView'
 
 // 纯函数：书 id 哈希出两三个低饱和柔色，拼一个 linear-gradient 当封面——不碰真实
 // 图片，呼应"纹理+三色渐变"的封面审美（具体纹理叠层在 CSS ::after 里统一加，不
@@ -87,50 +88,115 @@ function BookCard({ book }: { book: Book }) {
   )
 }
 
-// 书柜里的通用盒子入口：不是某本书的盒子，是跨所有书共享的同一个实例——放在
-// 书卡网格下方单独一行，带名字+张数，点击直接全屏打开（openUniversalBox）。
-// library.universalBox 用可选链兜底：一些老测试/合并路径拼的 library 字面量可能
-// 还没补上这个字段，读取时不该整页崩掉。
-function UniversalBoxEntry() {
-  const cardCount = useBookStore((s) => s.library.universalBox?.cards.length ?? 0)
-  const openUniversalBox = useBookStore((s) => s.openUniversalBox)
+// "＋ 新书" 挪到书卡旁边（Phase 14 Task 4 #7）：跟书卡同一个 `.shelf-grid`，同样
+// 的卡片尺寸/圆角封面手感，只是虚线边框 + 一个大大的"＋"，一眼能看出是新建
+// 而不是某本已有的书。永远排在第一格，书再多也不会被挤到看不见的地方。
+function ShelfAddBookTile() {
+  const addBook = useBookStore((s) => s.addBook)
+  const openBook = useBookStore((s) => s.openBook)
 
   return (
-    <div className="universal-box-entry" onClick={openUniversalBox}>
+    <div
+      className="book-card shelf-add-book"
+      onClick={() => {
+        const book = addBook()
+        openBook(book.id)
+      }}
+    >
+      <div className="book-cover shelf-add-cover" aria-hidden="true">＋</div>
+      <p className="book-title shelf-add-label">＋ 新书</p>
+    </div>
+  )
+}
+
+// 书柜里的一个通用盒子入口：跨所有书共享的同一个实例（不是某本书的盒子），带
+// 名字+张数。单击（点行背景/图标/张数，标题文字自己挡住单击冒泡）打开它的
+// 悬浮大窗；双击标题改名——跟 BookCard 的单击开书/双击改名是同一套手感。
+function UniversalBoxEntry({ box, onOpen }: { box: Box; onOpen: (id: string) => void }) {
+  const renameUniversalBox = useBookStore((s) => s.renameUniversalBox)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(box.name)
+
+  const commitRename = () => {
+    const name = draft.trim()
+    if (name && name !== box.name) renameUniversalBox(box.id, name)
+    setEditing(false)
+  }
+
+  return (
+    <div className="universal-box-entry" onClick={() => !editing && onOpen(box.id)}>
       <span className="universal-box-icon" aria-hidden="true">⟡</span>
-      <span className="universal-box-entry-name">通用盒子</span>
-      <span className="universal-box-entry-count">{cardCount} 张</span>
+      {editing ? (
+        <input
+          className="universal-box-name-edit"
+          value={draft}
+          autoFocus
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commitRename}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitRename()
+            if (e.key === 'Escape') {
+              setDraft(box.name)
+              setEditing(false)
+            }
+          }}
+        />
+      ) : (
+        <span
+          className="universal-box-entry-name"
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => {
+            e.stopPropagation()
+            setDraft(box.name)
+            setEditing(true)
+          }}
+        >
+          {box.name}
+        </span>
+      )}
+      <span className="universal-box-entry-count">{box.cards.length} 张</span>
+    </div>
+  )
+}
+
+// 所有通用盒子的入口列表 + "＋ 新通用盒子"。新盒子默认名"通用盒子"（跟老的
+// 默认盒子同名，用户可以立刻双击改名），加完不自动打开——留在书柜上让用户
+// 看清楚新盒子已经出现在列表里。
+function UniversalBoxSection({ onOpen }: { onOpen: (id: string) => void }) {
+  const universalBoxes = useBookStore((s) => s.library.universalBoxes)
+  const addUniversalBox = useBookStore((s) => s.addUniversalBox)
+
+  return (
+    <div className="universal-box-section">
+      {universalBoxes.map((box) => (
+        <UniversalBoxEntry key={box.id} box={box} onOpen={onOpen} />
+      ))}
+      <div className="universal-box-add" onClick={() => addUniversalBox('通用盒子')}>
+        ＋ 新通用盒子
+      </div>
     </div>
   )
 }
 
 export function Bookshelf() {
   const books = useBookStore((s) => s.library.books)
-  const addBook = useBookStore((s) => s.addBook)
-  const openBook = useBookStore((s) => s.openBook)
+  // 从书柜打开的通用盒子没有当前 doc（readOnly），Modal 本身跟 LeftNav 里书内
+  // 打开的是同一个 UniversalBoxModal 组件，只是各自管各自的"当前开着哪个"状态。
+  const [openUniversalBoxId, setOpenUniversalBoxId] = useState<string | null>(null)
 
   return (
     <div className="shelf">
       <BackupControls />
-      {books.length === 0 ? (
-        <p className="shelf-hint">书柜还是空的，点下面「＋ 新书」开始写第一本</p>
-      ) : (
-        <div className="shelf-grid">
-          {books.map((book) => (
-            <BookCard key={book.id} book={book} />
-          ))}
-        </div>
-      )}
-      <UniversalBoxEntry />
-      <div
-        className="shelf-add"
-        onClick={() => {
-          const book = addBook()
-          openBook(book.id)
-        }}
-      >
-        ＋ 新书
+      <div className="shelf-grid">
+        <ShelfAddBookTile />
+        {books.map((book) => (
+          <BookCard key={book.id} book={book} />
+        ))}
       </div>
+      {books.length === 0 && <p className="shelf-hint">书柜还是空的，点上面「＋ 新书」开始写第一本</p>}
+      <UniversalBoxSection onOpen={setOpenUniversalBoxId} />
+      <UniversalBoxModal boxId={openUniversalBoxId} onClose={() => setOpenUniversalBoxId(null)} readOnly />
     </div>
   )
 }
