@@ -192,6 +192,38 @@ export function mergeBooksPlan(localBooks: Book[], cloudRows: CwBookRow[]): Book
   return { merged, toUpload, idRemap }
 }
 
+// Cmd/Ctrl+S 手动强制保存用：不等防抖、不看"有没有脏改动"，直接把当前内存里
+// 的全部书 + 全部通用盒子一次性 upsert 回云端。跟 startSync 内部的增量 flush()
+// 是两条独立的路径——手动保存这条路径必须对"这本书这次没有被 subscribe 判定
+// 为 dirty"这种边缘情况免疫，用户按下 Cmd+S 时心智模型是"现在这一份，原样给我
+// 存上"，不是"帮我把还没同步的部分补上"。
+// 全程 try/catch 兜底，绝不向调用方抛出——调用方（Cmd+S 处理器）需要在任何情况
+// 下都能给出确定的成功/失败反馈，而不是被一个意外抛出打断。
+export type FlushResult = { ok: true } | { ok: false; error: string }
+
+export async function flushToCloud(
+  client: SyncSupabaseClient | null,
+  ownerId: string | null | undefined,
+  library: Library
+): Promise<FlushResult> {
+  if (!client || !ownerId) return { ok: false, error: '未登录，无法保存到云端' }
+  try {
+    const books = library.books
+    if (books.length > 0) {
+      const rows = books.map((b, i) => bookToRow(b, ownerId, i))
+      const { error } = await client.from(TABLE).upsert(rows)
+      if (error) return { ok: false, error: error.message }
+    }
+    const { error: universalError } = await client
+      .from(UNIVERSAL_TABLE)
+      .upsert(universalToRow(library.universalBoxes ?? [], ownerId))
+    if (universalError) return { ok: false, error: universalError.message }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
 // sync 只用到 supabase client 的这一小片接口，方便测试注入 mock；真实
 // SupabaseClient 结构上完全满足（PostgrestFilterBuilder 是 thenable）。
 // select/upsert 的行类型放宽成 any[]/any——同一个 client 类型现在要同时服务

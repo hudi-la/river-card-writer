@@ -6,6 +6,8 @@ import { startSync } from './state/sync'
 import { Bookshelf } from './ui/Bookshelf'
 import { Workspace } from './ui/Workspace'
 import { SignIn } from './ui/SignIn'
+import { Toast } from './ui/Toast'
+import { useSaveShortcut } from './ui/useSaveShortcut'
 
 export function App() {
   const shell = useBookStore((s) => s.shell)
@@ -25,16 +27,34 @@ export function App() {
     return stop
   }, [status, session?.user?.id])
 
+  // 全局 Cmd/Ctrl+S 强制保存：不管当前在哪个 shell/登录状态，都挂在最顶层，
+  // 保证任何屏幕上按下都有反应（包括登录门那一屏——至少本地快照永远能存）。
+  useSaveShortcut()
+
   if (cloudEnabled && status === 'loading') {
-    return <div className="auth-loading">加载中…</div>
+    return (
+      <>
+        <div className="auth-loading">加载中…</div>
+        <Toast />
+      </>
+    )
   }
   if (cloudEnabled && status === 'signed-out' && !localOnly) {
-    return <SignIn />
+    return (
+      <>
+        <SignIn />
+        <Toast />
+      </>
+    )
   }
 
   // Phase 14 起通用盒子不再有独立的全屏 shell——不管是从书柜还是从书内点开，
   // 都用悬浮的 Modal（见 Bookshelf/LeftNav 各自的 UniversalBoxModal），shell
   // 只剩 shelf/book 两种。
-  if (shell === 'shelf') return <Bookshelf />
-  return <Workspace />
+  return (
+    <>
+      {shell === 'shelf' ? <Bookshelf /> : <Workspace />}
+      <Toast />
+    </>
+  )
 }

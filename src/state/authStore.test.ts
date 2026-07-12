@@ -86,4 +86,17 @@ describe('authStore', () => {
     expect(store.getState().localOnly).toBe(true)
     expect(localStorage.getItem('card-writer:local-only')).toBe('1')
   })
+
+  it('requestSignIn：把 localOnly 翻回 false，但不碰持久化标记（Cmd+S 未登录 toast 的"点此登录"用）', () => {
+    const store = createAuthStore(null, false)
+    store.getState().continueLocalOnly()
+    expect(store.getState().localOnly).toBe(true)
+    expect(localStorage.getItem('card-writer:local-only')).toBe('1')
+
+    store.getState().requestSignIn()
+
+    expect(store.getState().localOnly).toBe(false)
+    // 持久化的标记原样保留——刷新页面后仍然遵循用户之前"先本地用"的选择。
+    expect(localStorage.getItem('card-writer:local-only')).toBe('1')
+  })
 })

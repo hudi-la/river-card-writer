@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { rowToBook, bookToRow, mergeBooksPlan, startSync, rowToUniversal, universalToRow, mergeUniversal, mergeUniversalBoxes } from './sync'
+import { rowToBook, bookToRow, mergeBooksPlan, startSync, rowToUniversal, universalToRow, mergeUniversal, mergeUniversalBoxes, flushToCloud } from './sync'
 import type { CwBookRow, CwUniversalRow, SyncSupabaseClient, SyncableBookStore } from './sync'
 import { EMPTY_DOC, UNIVERSAL_BOX_ID } from './bookStore'
 import type { Book, Box, Library } from './bookStore'
@@ -541,5 +541,79 @@ describe('startSync：通用盒子（cw_universal，Phase 14 起一行装 Box[]�
     await flushAsync()
     expect(store.getState().library.universalBoxes[0].cards.map((c: any) => c.attrs.cardId)).toEqual(['a'])
     stop()
+  })
+})
+
+describe('flushToCloud（Cmd+S 手动强制保存：不看脏标记，直接把全部书 + 全部通用盒子 upsert 回云端）', () => {
+  it('client 为 null → 返回 { ok:false }，不崩', async () => {
+    const res = await flushToCloud(null, 'owner-1', { books: [], activeBookId: null, universalBoxes: [] })
+    expect(res).toEqual({ ok: false, error: expect.any(String) })
+  })
+
+  it('ownerId 缺失 → 返回 { ok:false }，不崩', async () => {
+    const { client } = makeMockClient()
+    const res = await flushToCloud(client, undefined, { books: [], activeBookId: null, universalBoxes: [] })
+    expect(res).toEqual({ ok: false, error: expect.any(String) })
+  })
+
+  it('全部书 + 通用盒子一次性 upsert（不管有没有脏标记）', async () => {
+    const bookA = makeBook('uuid-a', 'A')
+    const bookB = makeBook('uuid-b', 'B')
+    const universal = [makeUniversalBox([cardWithId('u1')])]
+    const { client, upsertMock, universalUpsertMock } = makeMockClient()
+
+    const res = await flushToCloud(client, 'owner-1', { books: [bookA, bookB], activeBookId: 'uuid-a', universalBoxes: universal })
+
+    expect(res).toEqual({ ok: true })
+    expect(upsertMock).toHaveBeenCalledTimes(1)
+    const rows = upsertMock.mock.calls[0][0] as CwBookRow[]
+    expect(rows.map((r) => r.id).sort()).toEqual(['uuid-a', 'uuid-b'])
+    expect(rows.every((r) => r.owner === 'owner-1')).toBe(true)
+
+    expect(universalUpsertMock).toHaveBeenCalledTimes(1)
+    const uRow = universalUpsertMock.mock.calls[0][0] as CwUniversalRow
+    expect(uRow.owner).toBe('owner-1')
+    expect((uRow.data as any[])[0].cards).toEqual(universal[0].cards)
+  })
+
+  it('books 为空 → 跳过 cw_books upsert，但仍然 upsert cw_universal（哪怕通用盒子也是空数组）', async () => {
+    const { client, upsertMock, universalUpsertMock } = makeMockClient()
+    const res = await flushToCloud(client, 'owner-1', { books: [], activeBookId: null, universalBoxes: [] })
+    expect(res).toEqual({ ok: true })
+    expect(upsertMock).not.toHaveBeenCalled()
+    expect(universalUpsertMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('cw_books upsert 报错 → 返回 { ok:false, error }，不会接着尝试 cw_universal', async () => {
+    const upsertMock = vi.fn().mockResolvedValue({ error: { message: '写入失败' } })
+    const universalUpsertMock = vi.fn().mockResolvedValue({ error: null })
+    const client: SyncSupabaseClient = {
+      from: vi.fn((table: string) => {
+        if (table === 'cw_universal') return { select: vi.fn(), upsert: universalUpsertMock, delete: () => ({ eq: vi.fn() }) }
+        return { select: vi.fn(), upsert: upsertMock, delete: () => ({ eq: vi.fn() }) }
+      }),
+    }
+    const res = await flushToCloud(client, 'owner-1', { books: [makeBook('uuid-a')], activeBookId: null, universalBoxes: [] })
+    expect(res).toEqual({ ok: false, error: '写入失败' })
+    expect(universalUpsertMock).not.toHaveBeenCalled()
+  })
+
+  it('cw_universal upsert 报错 → 返回 { ok:false, error }', async () => {
+    const { client, universalUpsertMock } = makeMockClient()
+    universalUpsertMock.mockResolvedValueOnce({ error: { message: '通用盒子写入失败' } })
+    const res = await flushToCloud(client, 'owner-1', { books: [], activeBookId: null, universalBoxes: [] })
+    expect(res).toEqual({ ok: false, error: '通用盒子写入失败' })
+  })
+
+  it('client 抛异常（比如网络错误）→ 捕获住，返回 { ok:false, error }，绝不向外抛出', async () => {
+    const client: SyncSupabaseClient = {
+      from: vi.fn(() => ({
+        select: vi.fn(),
+        upsert: vi.fn().mockRejectedValue(new Error('network down')),
+        delete: () => ({ eq: vi.fn() }),
+      })),
+    }
+    const res = await flushToCloud(client, 'owner-1', { books: [makeBook('uuid-a')], activeBookId: null, universalBoxes: [] })
+    expect(res).toEqual({ ok: false, error: 'network down' })
   })
 })

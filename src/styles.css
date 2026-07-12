@@ -449,3 +449,25 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 .signin-error { color:#b5533c; font-size:12px; margin:8px 0 0; }
 .signin-local { display:block; width:100%; margin-top:16px; border:none; background:none; color:var(--muted); font-size:12px; cursor:pointer; text-decoration:underline; }
 .signin-local:hover { color:var(--ink); }
+
+/* Cmd/Ctrl+S 保存反馈：非阻塞、自动消失的一次性提示条，贴在视口底部居中。
+   z-index 盖过 Modal（2000）——保存提示哪怕在悬浮大窗打开时也不能被挡住。 */
+.toast {
+  position:fixed; left:50%; bottom:28px; transform:translateX(-50%); z-index:3000;
+  display:flex; align-items:center; gap:10px; max-width:min(480px, 92vw);
+  background:var(--ink); color:var(--paper); font-size:13px; line-height:1.5;
+  padding:10px 14px; border-radius:8px; box-shadow:0 8px 28px rgba(0,0,0,.28);
+}
+.toast-success { background:#3d6b46; }
+.toast-error { background:#8a3b2c; }
+.toast-text { flex:1; min-width:0; }
+.toast-action {
+  flex:none; border:1px solid rgba(252,250,246,.4); background:none; color:var(--paper);
+  font:inherit; font-size:12px; font-weight:600; padding:4px 9px; border-radius:5px; cursor:pointer;
+}
+.toast-action:hover { background:rgba(252,250,246,.14); }
+.toast-close {
+  flex:none; border:none; background:none; color:var(--paper); opacity:.7;
+  font-size:12px; line-height:1; cursor:pointer; padding:2px 4px;
+}
+.toast-close:hover { opacity:1; }

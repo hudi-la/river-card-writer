@@ -30,6 +30,10 @@ export type AuthState = {
   signInWithEmail: (email: string) => Promise<{ sent: boolean; error?: string }>
   signOut: () => Promise<void>
   continueLocalOnly: () => void
+  // Cmd+S 未登录时 toast 上"点此登录"用：只在内存里把 localOnly 翻回 false，
+  // 让 App 重新展示登录门（不动持久化的 localStorage 标记）——这样刷新页面后
+  // 仍然遵循用户之前"先本地用"的选择，这次只是应用户主动请求临时露出入口。
+  requestSignIn: () => void
   __resetForTest: () => void
 }
 
@@ -87,6 +91,8 @@ export function createAuthStore(client: AuthClient | null = defaultClient, enabl
       persistLocalOnly()
       set({ localOnly: true })
     },
+
+    requestSignIn: () => set({ localOnly: false }),
 
     __resetForTest: () => set({ session: null, status: 'loading', localOnly: false }),
   }))
