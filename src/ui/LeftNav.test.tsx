@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, within, waitFor } from '@testing-library/react'
+import { render, screen, within, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { LeftNav, outlineFromDoc } from './LeftNav'
 import { useBookStore, UNIVERSAL_BOX_ID } from '../state/bookStore'
@@ -467,18 +467,30 @@ function stubOutlineRowRects(container: HTMLElement) {
   })
 }
 
+// Phase 15 回归修复：拖拽现在只认行上的专用把手（[data-outline-drag-handle]）
+// 当起点，不再是整行——dragRow 因此从行元素里先找出把手，pointerdown 派发在
+// 把手上；pointermove/pointerup 仍然走 window（跟真实拖拽一致，見
+// useOutlineRowDrag 的事件绑定）。
+function dragHandleOf(row: HTMLElement): HTMLElement {
+  const handle = row.querySelector('[data-outline-drag-handle]') as HTMLElement
+  if (!handle) throw new Error('outline row 缺少拖拽把手 [data-outline-drag-handle]')
+  return handle
+}
+
 function dragRow(row: HTMLElement, fromY: number, toY: number) {
-  row.dispatchEvent(new PointerEvent('pointerdown', { clientX: 5, clientY: fromY, pointerId: 1, button: 0, bubbles: true }))
+  const handle = dragHandleOf(row)
+  handle.dispatchEvent(new PointerEvent('pointerdown', { clientX: 5, clientY: fromY, pointerId: 1, button: 0, bubbles: true }))
   window.dispatchEvent(new PointerEvent('pointermove', { clientX: 5, clientY: toY, pointerId: 1, bubbles: true }))
   window.dispatchEvent(new PointerEvent('pointerup', { clientX: 5, clientY: toY, pointerId: 1, bubbles: true }))
 }
 
-// 回归测试：Phase 12 加了拖动重排后，行上的 pointerdown 会 setPointerCapture，
-// Chromium 下这会把随后的原生 click 事件重定向，导致行的 onClick（定位滚动）
-// 再也不触发。真正的定位逻辑改成挂在 pointerup（未越过拖拽阈值时）——这里只
-// 派发 pointerdown+pointerup，完全不派发 click 事件，专门验证滚动不依赖 click。
-describe('LeftNav 目录点击定位不依赖 click 事件（Phase 14 回归修复）', () => {
-  it('块行：未越过阈值的 pointerdown→pointerup 也能滚动到对应正文块', async () => {
+// 回归测试（Phase 15）：拖拽改成只认专用把手当起点之后，行本身的 pointerdown
+// 不再 setPointerCapture，原生 click 不会被重定向——点击行（不经过把手）就应该
+// 直接靠 onClick 触发 click-to-scroll，不需要再靠"未越阈值的 pointerup"这个
+// 迂回路径。这里直接派发一次 click，模拟真实浏览器的鼠标单击（down+up 没有
+// 移动时浏览器会自动补一个 click，jsdom 的 fireEvent.click 等价于这一步）。
+describe('LeftNav 目录点击定位——拖拽收进把手后，行的点击恢复走原生 click（Phase 15 回归修复）', () => {
+  it('块行：点击行（非把手）滚动到对应正文块', async () => {
     useBookStore.getState().updateDoc(docWithChapterAndBlocks())
     const { container } = render(<LeftNav />)
     stubOutlineRowRects(container)
@@ -494,9 +506,8 @@ describe('LeftNav 目录点击定位不依赖 click 事件（Phase 14 回归修�
     cards.forEach((c) => river.appendChild(c))
     document.body.appendChild(river)
 
-    const blockRow = container.querySelector('[data-outline-row-index="2"]') as HTMLElement
-    blockRow.dispatchEvent(new PointerEvent('pointerdown', { clientX: 5, clientY: 75, pointerId: 1, button: 0, bubbles: true }))
-    window.dispatchEvent(new PointerEvent('pointerup', { clientX: 5, clientY: 75, pointerId: 1, bubbles: true }))
+    const blockRow = container.querySelector('[data-outline-row-index="2"] .outline-row') as HTMLElement
+    fireEvent.click(blockRow)
     await new Promise((r) => setTimeout(r, 0))
 
     expect(cards[2].scrollIntoView).toHaveBeenCalled()
@@ -504,7 +515,7 @@ describe('LeftNav 目录点击定位不依赖 click 事件（Phase 14 回归修�
     cards.forEach((c) => c.remove())
   })
 
-  it('标题行：未越过阈值的 pointerdown→pointerup 也能滚动到对应标题', async () => {
+  it('标题行：点击行（非把手）滚动到对应标题', async () => {
     useBookStore.getState().updateDoc(docWithChapterAndBlocks())
     const { container } = render(<LeftNav />)
     stubOutlineRowRects(container)
@@ -516,16 +527,15 @@ describe('LeftNav 目录点击定位不依赖 click 事件（Phase 14 回归修�
     river.appendChild(heading)
     document.body.appendChild(river)
 
-    const headingRow = container.querySelector('[data-outline-row-index="0"]') as HTMLElement
-    headingRow.dispatchEvent(new PointerEvent('pointerdown', { clientX: 5, clientY: 15, pointerId: 1, button: 0, bubbles: true }))
-    window.dispatchEvent(new PointerEvent('pointerup', { clientX: 5, clientY: 15, pointerId: 1, bubbles: true }))
+    const headingRow = container.querySelector('[data-outline-row-index="0"] .outline-row') as HTMLElement
+    fireEvent.click(headingRow)
     await new Promise((r) => setTimeout(r, 0))
 
     expect(heading.scrollIntoView).toHaveBeenCalled()
     river.remove()
   })
 
-  it('真的越过阈值的拖拽不触发滚动（只触发 moveCardTo/moveSection）', () => {
+  it('从把手真的越过阈值的拖拽不触发滚动（只触发 moveCardTo/moveSection）', () => {
     useBookStore.getState().updateDoc(docTwoChaptersWithSection())
     const { container } = render(<LeftNav />)
     stubOutlineRowRects(container)
@@ -547,6 +557,18 @@ describe('LeftNav 目录点击定位不依赖 click 事件（Phase 14 回归修�
     expect(cards[0].scrollIntoView).not.toHaveBeenCalled()
     river.remove()
     cards.forEach((c) => c.remove())
+  })
+
+  it('pointerdown 落在行文字上（不是把手）不会开始拖拽——移动再多也不触发 moveCardTo', () => {
+    useBookStore.getState().updateDoc(docTwoChaptersWithSection())
+    const { container } = render(<LeftNav />)
+    stubOutlineRowRects(container)
+    const cardARow = container.querySelector('[data-outline-row-index="1"] .outline-row-text') as HTMLElement
+    cardARow.dispatchEvent(new PointerEvent('pointerdown', { clientX: 5, clientY: 45, pointerId: 1, button: 0, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 5, clientY: 500, pointerId: 1, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: 5, clientY: 500, pointerId: 1, bubbles: true }))
+    expect(moveCardTo).not.toHaveBeenCalled()
+    expect(moveSection).not.toHaveBeenCalled()
   })
 })
 
@@ -592,6 +614,18 @@ describe('LeftNav 目录内拖动重排（Phase 12 Task 3）', () => {
     dragRow(cardARow, 45, 46) // 位移 1px，远小于阈值
     expect(moveCardTo).not.toHaveBeenCalled()
     expect(moveSection).not.toHaveBeenCalled()
+  })
+
+  // Phase 15：每一行（标题行、块行）都必须渲染出专用的拖拽把手——这是拖拽唯一
+  // 认可的起点，没有它整套 dragRow 测试都无从驱动（见 dragHandleOf 的报错）。
+  it('每一行（标题行、块行）都渲染一个专用拖拽把手 [data-outline-drag-handle]', () => {
+    useBookStore.getState().updateDoc(docTwoChaptersWithSection())
+    const { container } = render(<LeftNav />)
+    const rows = container.querySelectorAll('[data-outline-row-index]')
+    expect(rows.length).toBe(6) // 章1,卡A,节1.1,卡B,章2,卡C
+    rows.forEach((row) => {
+      expect(row.querySelector('[data-outline-drag-handle]')).toBeTruthy()
+    })
   })
 })
 

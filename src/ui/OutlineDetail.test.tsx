@@ -135,4 +135,16 @@ describe('OutlineDetail', () => {
     const chap1Card = container.querySelector('[data-outline-row-index="0"]') as HTMLElement
     expect(chap1Card.getAttribute('data-row-color')).toBe(autoCardColor('c0'))
   })
+
+  // Phase 15 回归修复：详细大纲跟侧栏简略树共用同一个 useOutlineRowDrag hook，
+  // 拖拽同样只认专用把手当起点——每行（标题、块）都要渲染出这个把手。
+  it('每一行（标题行、块行）都渲染一个专用拖拽把手 [data-outline-drag-handle]', () => {
+    useBookStore.getState().updateDoc(docWithChapterAndBlocks())
+    const { container } = render(<OutlineDetail />)
+    const rows = container.querySelectorAll('[data-outline-row-index]')
+    expect(rows.length).toBe(3)
+    rows.forEach((row) => {
+      expect(row.querySelector('[data-outline-drag-handle]')).toBeTruthy()
+    })
+  })
 })

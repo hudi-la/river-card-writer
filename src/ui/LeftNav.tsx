@@ -355,6 +355,21 @@ export function visibleOutlineRows(rows: OutlineRow[]): { row: OutlineRow; index
 // 冒泡触发行的 onClick（click-to-scroll）；它是个 <button>，天然落在目录拖拽
 // pointerdown 处理器的 `target.closest('textarea, button, ...')` 排除名单里，
 // 不会被当成拖拽起点。
+// 拖拽把手（Phase 15 回归修复）：⠿ 抓手，每行右侧、hover 才淡淡露出。见下面
+// useOutlineRowDrag 的 onPointerDown 注释——拖拽现在只认这个把手当起点，不再
+// 跟整行的点击/双击/折叠三角抢同一个手势入口。侧栏简略树、详细大纲（OutlineDetail）
+// 都渲染它、都共用同一个 class/data 属性，拖拽 hook 认的是 data 属性,不关心
+// 渲染在哪个视图里。
+export const OUTLINE_DRAG_HANDLE_SELECTOR = '[data-outline-drag-handle]'
+
+export function OutlineDragHandle() {
+  return (
+    <span className="outline-drag-handle" data-outline-drag-handle aria-hidden="true" title="拖动排序">
+      ⠿
+    </span>
+  )
+}
+
 export function OutlineCollapseTriangle({
   row,
   hasDescendants,
@@ -453,6 +468,21 @@ export function useOutlineRowDrag({
   // 拖拽真的发生过（越过阈值）之后，紧跟着的那次原生 click 要被吞掉——不然
   // 松手落定之余，click-to-scroll 还会跟着跑一次，把视图滚去被拖动前的旧位置。
   const suppressClickRef = useRef(false)
+  // onDragBegin 是调用方每次渲染内联传入的箭头函数（比如 LeftNav 传的
+  // `() => setHover(null)`）——引用每次渲染都变。之前直接把它放进下面这个
+  // effect 的依赖数组，导致 hover 便签的 setHover 只要一触发（真实拖拽途中，
+  // 指针划过别的行会触发那些行的 onMouseEnter → openHover → setHover）就会让
+  // LeftNav 重渲染、这个 effect 跟着重新挂载——重新挂载的 cleanup 会调
+  // abortDrag() 把刚创建、还没来得及触发 pointerup 的拖拽态直接销毁（ghost/
+  // indicator 从 DOM 里被摘掉），新一轮 effect 挂上全新、干净的
+  // outlineDragRef（回到 null）。用户体感是：抓起一行刚要挪，划过第二行就
+  // "掉了"——这正是本次要修的回归根因。改法跟 rowsRef 一样：把
+  // onDragBegin 存进 ref，每次渲染更新，但不再是 effect 的依赖，effect 因此
+  // 只在真正的挂载/卸载（以及 containerRef/moveCardTo/moveSection/openDoc
+  // 这些理应稳定的引用变化）时才重新订阅一次，拖拽全程不会被中途的 hover
+  // 重渲染打断。
+  const onDragBeginRef = useRef(onDragBegin)
+  onDragBeginRef.current = onDragBegin
 
   useEffect(() => {
     const railEl = containerRef.current
@@ -516,9 +546,15 @@ export function useOutlineRowDrag({
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 0) return
       const target = e.target as HTMLElement
-      // note 文本框/按钮/盒子行/"＋新章节"都不参与目录行拖拽。
-      if (target.closest('textarea, button, [data-box-id], .add')) return
-      const rowEl = target.closest<HTMLElement>('[data-outline-row-index]')
+      // 拖拽只认专门的把手（Phase 15 回归修复）：之前整行都是拖拽起点，跟
+      // 行上其它手势（click-to-scroll、hover 便签的 mouseenter/mouseleave 重
+      // 渲染、双击改名）抢同一个元素，行为随最近几次改动一次次被打断（见文件
+      // 顶部 useOutlineRowDrag 的大段注释）。现在必须先命中
+      // [data-outline-drag-handle] 才会开始拖拽——命中不了就直接放行，原生
+      // click/dblclick 该怎么走怎么走，不再有 setPointerCapture 抢事件的问题。
+      const handleEl = target.closest<HTMLElement>(OUTLINE_DRAG_HANDLE_SELECTOR)
+      if (!handleEl) return
+      const rowEl = handleEl.closest<HTMLElement>('[data-outline-row-index]')
       if (!rowEl) return
       const index = Number(rowEl.dataset.outlineRowIndex)
       const rows = rowsRef.current
@@ -592,7 +628,7 @@ export function useOutlineRowDrag({
         drag.ghostEl.style.display = 'block'
         drag.sourceEls.forEach((el) => el.classList.add('outline-row-dragging'))
         document.documentElement.classList.add(OUTLINE_DRAG_ACTIVE_CLASS)
-        onDragBegin?.() // 拖起来之后 hover 便签（如果有）没意义，交给调用方关掉
+        onDragBeginRef.current?.() // 拖起来之后 hover 便签（如果有）没意义，交给调用方关掉
       }
       drag.ghostEl.style.transform = `translate(${e.clientX + 12}px, ${e.clientY + 12}px)`
 
@@ -641,8 +677,11 @@ export function useOutlineRowDrag({
       document.removeEventListener('selectstart', onSelectStart, true)
       abortDrag()
     }
+    // onDragBegin 特意不在依赖数组里——见上面 onDragBeginRef 的注释，它经 ref
+    // 读最新值，若把它放进来，效果跟旧 bug 一样：hover 引发的重渲染会在拖拽
+    // 进行到一半时把这个 effect 卸载重挂，销毁尚未 pointerup 的拖拽态。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [containerRef, rowsRef, moveCardTo, moveSection, openDoc, onDragBegin])
+  }, [containerRef, rowsRef, moveCardTo, moveSection, openDoc])
 }
 
 export function LeftNav() {
@@ -818,6 +857,7 @@ export function LeftNav() {
                     <span className="outline-collapsed-marker" aria-hidden="true">⋯</span>
                   )}
                 </div>
+                <OutlineDragHandle />
               </div>
             )
           })}

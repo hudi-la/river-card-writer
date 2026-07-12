@@ -10,6 +10,7 @@ import {
   outlineRowStyle,
   NoteField,
   OutlineCollapseTriangle,
+  OutlineDragHandle,
   useOutlineRowDrag,
   scrollToOutlineIndex,
   scrollToCardIndex,
@@ -101,6 +102,7 @@ export function OutlineDetail() {
                 {row.kind === 'heading' && row.collapsed && (
                   <span className="outline-collapsed-marker" aria-hidden="true">⋯</span>
                 )}
+                <OutlineDragHandle />
               </div>
               <NoteField
                 className="outline-card-note"
