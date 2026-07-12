@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { rowToBook, bookToRow, firstSyncPlan, startSync, rowToUniversal, universalToRow, mergeUniversal, mergeUniversalBoxes } from './sync'
+import { rowToBook, bookToRow, mergeBooksPlan, startSync, rowToUniversal, universalToRow, mergeUniversal, mergeUniversalBoxes } from './sync'
 import type { CwBookRow, CwUniversalRow, SyncSupabaseClient, SyncableBookStore } from './sync'
 import { EMPTY_DOC, UNIVERSAL_BOX_ID } from './bookStore'
 import type { Book, Box, Library } from './bookStore'
@@ -81,12 +81,21 @@ function makeFakeStore(initialLibrary: Library) {
 
 describe('rowToBook / bookToRow', () => {
   it('往返相等：book -> row -> book', () => {
-    const book = makeBook('uuid-1', '我的书')
+    const book = { ...makeBook('uuid-1', '我的书'), updatedAt: '2024-03-01T00:00:00.000Z' }
     const row = bookToRow(book, 'owner-1', 2)
     expect(row.id).toBe('uuid-1')
     expect(row.owner).toBe('owner-1')
     expect(row.position).toBe(2)
+    expect(row.updated_at).toBe('2024-03-01T00:00:00.000Z')
     expect(rowToBook(row)).toEqual(book)
+  })
+
+  it('book 没有 updatedAt 时，bookToRow 兜底用当前时间；round-trip 出来的 book 会带上这个兜底时间', () => {
+    const book = makeBook('uuid-2', '没有时间戳的书')
+    expect(book.updatedAt).toBeUndefined()
+    const row = bookToRow(book, 'owner-1', 0)
+    expect(typeof row.updated_at).toBe('string')
+    expect(rowToBook(row)).toEqual({ ...book, updatedAt: row.updated_at })
   })
 })
 
@@ -167,34 +176,63 @@ describe('mergeUniversalBoxes（非破坏性合并：按 box id union，每个 b
   })
 })
 
-describe('firstSyncPlan', () => {
-  it('云空 + 本地两本 → upload 两本（id 换 uuid）+ idRemap 两条，download 空', () => {
+describe('mergeBooksPlan（非破坏性合并：按 book id union，一本都不能丢）', () => {
+  it('云空 + 本地两本 → merged 两本都在（id 换 uuid）+ toUpload 两本 + idRemap 两条', () => {
     const local = [makeBook('local-a'), makeBook('local-b')]
-    const plan = firstSyncPlan(local, [])
-    expect(plan.download).toEqual([])
-    expect(plan.upload).toHaveLength(2)
+    const plan = mergeBooksPlan(local, [])
+    expect(plan.merged).toHaveLength(2)
+    expect(plan.toUpload).toHaveLength(2)
     expect(Object.keys(plan.idRemap)).toHaveLength(2)
     expect(plan.idRemap['local-a']).toMatch(UUID_RE)
     expect(plan.idRemap['local-b']).toMatch(UUID_RE)
-    const uploadedIds = plan.upload.map((b) => b.id)
-    expect(uploadedIds).toContain(plan.idRemap['local-a'])
-    expect(uploadedIds).toContain(plan.idRemap['local-b'])
+    const mergedIds = plan.merged.map((b) => b.id)
+    expect(mergedIds).toContain(plan.idRemap['local-a'])
+    expect(mergedIds).toContain(plan.idRemap['local-b'])
     // 内容（除 id 外）保持不变
-    expect(plan.upload.find((b) => b.id === plan.idRemap['local-a'])?.title).toBe(local[0].title)
+    expect(plan.merged.find((b) => b.id === plan.idRemap['local-a'])?.title).toBe(local[0].title)
   })
 
-  it('云有一本 → download 一本、upload 空、idRemap 空', () => {
+  it('云有一本、本地有另一本（各自独有）→ merged 两本都在，本地那本 upload、云端那本不重传', () => {
     const cloudBook = makeBook('uuid-cloud', '云端书')
     const row = bookToRow(cloudBook, 'owner-1', 0)
-    const plan = firstSyncPlan([makeBook('local-a')], [row])
-    expect(plan.upload).toEqual([])
-    expect(plan.download).toEqual([cloudBook])
-    expect(plan.idRemap).toEqual({})
+    const localBook = makeBook('local-a', '本地书')
+    const plan = mergeBooksPlan([localBook], [row])
+    expect(plan.merged.map((b) => b.title).sort()).toEqual(['云端书', '本地书'].sort())
+    // 本地那本被换了 uuid 并进了 toUpload；云端那本原样下载，没有出现在 toUpload 里。
+    expect(plan.toUpload).toHaveLength(1)
+    expect(plan.toUpload[0].title).toBe('本地书')
+    expect(plan.idRemap['local-a']).toMatch(UUID_RE)
   })
 
   it('两边都空 → 全空', () => {
-    const plan = firstSyncPlan([], [])
-    expect(plan).toEqual({ upload: [], download: [], idRemap: {} })
+    const plan = mergeBooksPlan([], [])
+    expect(plan).toEqual({ merged: [], toUpload: [], idRemap: {} })
+  })
+
+  it('同 id 书两边都有，本地 updatedAt 更新 → merged 用本地版本，且进 toUpload', () => {
+    const cloudBook = { ...makeBook('uuid-a', '云端标题'), updatedAt: '2024-01-01T00:00:00.000Z' }
+    const row = bookToRow(cloudBook, 'owner-1', 0)
+    const localBook = { ...makeBook('uuid-a', '本地标题'), updatedAt: '2024-06-01T00:00:00.000Z' }
+    const plan = mergeBooksPlan([localBook], [row])
+    expect(plan.merged).toEqual([localBook])
+    expect(plan.toUpload).toEqual([localBook])
+  })
+
+  it('同 id 书两边都有，云端 updatedAt 更新 → merged 用云端版本，不进 toUpload', () => {
+    const cloudBook = { ...makeBook('uuid-a', '云端标题'), updatedAt: '2024-06-01T00:00:00.000Z' }
+    const row = bookToRow(cloudBook, 'owner-1', 0)
+    const localBook = { ...makeBook('uuid-a', '本地标题'), updatedAt: '2024-01-01T00:00:00.000Z' }
+    const plan = mergeBooksPlan([localBook], [row])
+    expect(plan.merged[0].title).toBe('云端标题')
+    expect(plan.toUpload).toEqual([])
+  })
+
+  it('同 id 书两边都有，updatedAt 缺失/相等 → 优先本地', () => {
+    const cloudBook = makeBook('uuid-a', '云端标题')
+    const row = bookToRow(cloudBook, 'owner-1', 0)
+    const localBook = makeBook('uuid-a', '本地标题')
+    const plan = mergeBooksPlan([localBook], [row])
+    expect(plan.merged[0].title).toBe('本地标题')
   })
 })
 
@@ -233,17 +271,112 @@ describe('startSync', () => {
     stop()
   })
 
-  it('云端已有数据 → 下载覆盖本地库（本地当缓存），不上传', async () => {
-    const cloudBook = makeBook('uuid-cloud', '云端书')
+  it('REGRESSION（data-loss bug）：云=[A]，本地=[A,B,C]（B,C 本地独有未同步）→ 同步后库里 A,B,C 都在，B/C 被上传，谁都不会被丢', async () => {
+    const bookA = makeBook('uuid-a', 'A')
+    const rowA = bookToRow(bookA, 'owner-1', 0)
+    const bookB = makeBook('local-b', 'B')
+    const bookC = makeBook('local-c', 'C')
+    const store = makeFakeStore({ books: [bookA, bookB, bookC], activeBookId: 'local-b', universalBoxes: [] })
+    const { client, upsertMock } = makeMockClient([rowA])
+
+    const stop = startSync(store, client, 'owner-1')
+    await flushAsync()
+
+    const lib = store.getState().library
+    // 一本都不能少：A（云端也有）+ B、C（本地独有，之前从未同步过）。
+    expect(lib.books.map((b) => b.title).sort()).toEqual(['A', 'B', 'C'])
+    expect(lib.books.find((b) => b.title === 'A')?.id).toBe('uuid-a')
+
+    // B、C 本地是 nanoid，换成 uuid 后应该被上传到云端，一个都不能漏传。
+    const uploadedTitles = (upsertMock.mock.calls.flatMap((call) => call[0]) as CwBookRow[]).map((r) => r.title)
+    expect(uploadedTitles.sort()).toEqual(['B', 'C'])
+
+    // activeBookId 指向 B，remap 后应该跟着 B 的新 id 走，不能变成 null 或指向别的书。
+    const newBId = lib.books.find((b) => b.title === 'B')?.id
+    expect(lib.activeBookId).toBe(newBId)
+
+    stop()
+  })
+
+  it('云=[A,B]，本地=[A] → 同步后库里 A、B 都在（B 从云端下载）', async () => {
+    const bookA = makeBook('uuid-a', 'A')
+    const bookB = makeBook('uuid-b', 'B')
+    const rowA = bookToRow(bookA, 'owner-1', 0)
+    const rowB = bookToRow(bookB, 'owner-1', 1)
+    const store = makeFakeStore({ books: [bookA], activeBookId: 'uuid-a', universalBoxes: [] })
+    const { client, upsertMock } = makeMockClient([rowA, rowB])
+
+    const stop = startSync(store, client, 'owner-1')
+    await flushAsync()
+
+    const lib = store.getState().library
+    expect(lib.books.map((b) => b.title).sort()).toEqual(['A', 'B'])
+    // A 本地云端一致，没有理由重新上传。
+    expect(upsertMock).not.toHaveBeenCalled()
+
+    stop()
+  })
+
+  it('同一本书两边都有：本地更新（updatedAt 更晚）→ 保留本地版本', async () => {
+    const cloudBook = { ...makeBook('uuid-a', '云端标题'), updatedAt: '2024-01-01T00:00:00.000Z' }
     const row = bookToRow(cloudBook, 'owner-1', 0)
-    const store = makeFakeStore({ books: [makeBook('local-stale', '本地旧书')], activeBookId: null, universalBoxes: [] })
+    const localBook = { ...makeBook('uuid-a', '本地标题（更新）'), updatedAt: '2024-06-01T00:00:00.000Z' }
+    const store = makeFakeStore({ books: [localBook], activeBookId: null, universalBoxes: [] })
     const { client, upsertMock } = makeMockClient([row])
 
     const stop = startSync(store, client, 'owner-1')
     await flushAsync()
 
-    expect(store.getState().library.books).toEqual([cloudBook])
+    expect(store.getState().library.books[0].title).toBe('本地标题（更新）')
+    // 本地更新，应该把本地这版重新推回云端。
+    expect(upsertMock).toHaveBeenCalledTimes(1)
+
+    stop()
+  })
+
+  it('同一本书两边都有：云端更新（updatedAt 更晚）→ 用云端版本覆盖本地', async () => {
+    const cloudBook = { ...makeBook('uuid-a', '云端标题（更新）'), updatedAt: '2024-06-01T00:00:00.000Z' }
+    const row = bookToRow(cloudBook, 'owner-1', 0)
+    const localBook = { ...makeBook('uuid-a', '本地旧标题'), updatedAt: '2024-01-01T00:00:00.000Z' }
+    const store = makeFakeStore({ books: [localBook], activeBookId: null, universalBoxes: [] })
+    const { client, upsertMock } = makeMockClient([row])
+
+    const stop = startSync(store, client, 'owner-1')
+    await flushAsync()
+
+    expect(store.getState().library.books[0].title).toBe('云端标题（更新）')
     expect(upsertMock).not.toHaveBeenCalled()
+
+    stop()
+  })
+
+  it('同一本书两边都有：updatedAt 缺失或相等 → 保留本地（绝不能因为不确定就丢本地改动）', async () => {
+    const cloudBook = makeBook('uuid-a', '云端标题')
+    const row = bookToRow(cloudBook, 'owner-1', 0)
+    const localBook = makeBook('uuid-a', '本地标题')
+    const store = makeFakeStore({ books: [localBook], activeBookId: null, universalBoxes: [] })
+    const { client } = makeMockClient([row])
+
+    const stop = startSync(store, client, 'owner-1')
+    await flushAsync()
+
+    expect(store.getState().library.books[0].title).toBe('本地标题')
+
+    stop()
+  })
+
+  it('云端为空 + 本地有书 → 全部本地保留并上传（既有行为，合并逻辑下不能回归）', async () => {
+    const cloudBook = undefined
+    const localBook = makeBook('local-stale', '本地旧书')
+    const store = makeFakeStore({ books: [localBook], activeBookId: null, universalBoxes: [] })
+    const { client, upsertMock } = makeMockClient([])
+    void cloudBook
+
+    const stop = startSync(store, client, 'owner-1')
+    await flushAsync()
+
+    expect(store.getState().library.books.map((b) => b.title)).toEqual(['本地旧书'])
+    expect(upsertMock).toHaveBeenCalledTimes(1)
 
     stop()
   })

@@ -13,7 +13,7 @@ export type CwBookRow = {
 }
 
 export function rowToBook(row: CwBookRow): Book {
-  return { id: row.id, title: row.title, doc: row.data.doc, boxes: row.data.boxes ?? [] }
+  return { id: row.id, title: row.title, doc: row.data.doc, boxes: row.data.boxes ?? [], updatedAt: row.updated_at }
 }
 
 export function bookToRow(book: Book, ownerId: string, position: number): CwBookRow {
@@ -23,7 +23,11 @@ export function bookToRow(book: Book, ownerId: string, position: number): CwBook
     title: book.title,
     data: { doc: book.doc, boxes: book.boxes },
     position,
-    updated_at: new Date().toISOString(),
+    // 优先用本书自己的 updatedAt（改动发生的真实时间），这样即使这次 upsert
+    // 因为网络问题延后了几秒才发出，云端记的还是"用户实际改动"的时间，不会
+    // 因为写入延迟而在下次合并时被误判成"更旧"。老书/没走过新 store 逻辑的书
+    // 没有 updatedAt 时才退化成"现在"。
+    updated_at: book.updatedAt ?? new Date().toISOString(),
   }
 }
 
@@ -100,29 +104,92 @@ function genUuid(): string {
   })
 }
 
-export type FirstSyncPlan = {
-  upload: Book[]
-  download: Book[]
+export type BookMergePlan = {
+  // sync 完成后，本地 library.books 应该变成的样子——local ∪ cloud，按 book id
+  // union，一本都不丢。
+  merged: Book[]
+  // 需要 upsert 回云端的书：本地独有的（含刚换完 uuid 的）+ 本地版本更新、需要
+  // 覆盖云端旧版本的。云端独有、或云端版本更新被采纳的书不出现在这里——没有
+  // 理由把云端刚给我们的数据原样传回去。
+  toUpload: Book[]
+  // 本地非 uuid（老 nanoid）id → 新 uuid 的映射，调用方要用它去重写 activeBookId。
   idRemap: Record<string, string>
 }
 
-// 首登迁移规则：云有数据 → 云为准（download，本地只当缓存，不 upload）；
-// 云空 + 本地有书 → 全部 upload（本地不会被空云覆盖丢失），本地 id 换成 uuid 并记 idRemap；
-// 两边都空 → 全空。
-export function firstSyncPlan(localBooks: Book[], cloudRows: CwBookRow[]): FirstSyncPlan {
-  if (cloudRows.length > 0) {
-    return { upload: [], download: cloudRows.map(rowToBook), idRemap: {} }
-  }
-  if (localBooks.length > 0) {
-    const idRemap: Record<string, string> = {}
-    const upload = localBooks.map((b) => {
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function isUuid(id: string): boolean {
+  return UUID_RE.test(id)
+}
+
+// 把 updatedAt 解析成好比较的毫秒数；缺失/解析不出来一律返回 null（"不确定"），
+// 不编造一个哨兵值——调用方看到 null 就知道要走"不确定就优先本地"这条分支。
+function parseUpdatedAt(ts: string | undefined): number | null {
+  if (!ts) return null
+  const t = Date.parse(ts)
+  return Number.isNaN(t) ? null : t
+}
+
+// 非破坏性合并（书层）：CRITICAL DATA-SAFETY——这是本次要修的那个丢书 bug 的
+// 根本修复点。老逻辑是"云非空就整个 download 数组替换本地 books"，云端不知道
+// 的本地独有书（还没来得及同步的新书、老的未命名书……）就这么被覆盖丢了。新
+// 规则改成按 book id 的 union：
+//   - 只有本地 → 保留（老 nanoid id 换成 uuid 记进 idRemap）+ 加进 toUpload。
+//   - 只有云端 → 下载进 merged，不需要回传。
+//   - 两边都有同 id 的书 → 比 updatedAt，云端严格更新才用云端版本；否则（本地
+//     更新，或时间戳缺失/相等/无法比较）一律保留本地版本并重新 upload——"不确
+//     定就优先本地"，绝不能因为拿不准就把本地最近的改动/新书丢了。
+// 空云端、空本地都是这条通用规则的自然特例（分别退化成"全部本地 upload"、
+// "全部云端 download"），不需要再单独判空。
+export function mergeBooksPlan(localBooks: Book[], cloudRows: CwBookRow[]): BookMergePlan {
+  const cloudById = new Map(cloudRows.map((r) => [r.id, r]))
+  const idRemap: Record<string, string> = {}
+  const merged: Book[] = []
+  const toUpload: Book[] = []
+  const consumedCloudIds = new Set<string>()
+
+  for (const local of localBooks) {
+    const cloudRow = cloudById.get(local.id)
+    if (cloudRow) {
+      consumedCloudIds.add(local.id)
+      const localTime = parseUpdatedAt(local.updatedAt)
+      const cloudTime = parseUpdatedAt(cloudRow.updated_at)
+      const cloudIsStrictlyNewer = localTime !== null && cloudTime !== null && cloudTime > localTime
+      if (cloudIsStrictlyNewer) {
+        merged.push(rowToBook(cloudRow))
+      } else {
+        merged.push(local)
+        // 本地版本胜出，但如果内容跟云端现有的这行其实一模一样（比如时间戳缺
+        // 失只是因为老数据、两边压根没人改过），就没必要每次同步都重新传一遍
+        // 一样的东西——只有内容确实不同才需要把本地这版覆盖回云端。
+        const cloudAsBook = rowToBook(cloudRow)
+        const contentIdentical =
+          local.title === cloudAsBook.title &&
+          JSON.stringify(local.doc) === JSON.stringify(cloudAsBook.doc) &&
+          JSON.stringify(local.boxes) === JSON.stringify(cloudAsBook.boxes)
+        if (!contentIdentical) toUpload.push(local)
+      }
+    } else if (isUuid(local.id)) {
+      // 本地独有，但已经是 uuid（大概率是之前上传过、这次因为网络问题没写进
+      // 云端，或者云端那行被别的机制清掉了）——原样保留 id，重新传一次。
+      merged.push(local)
+      toUpload.push(local)
+    } else {
+      // 本地独有、还是老 nanoid——从没同步过，换成 uuid 再上传。
       const newId = genUuid()
-      idRemap[b.id] = newId
-      return { ...b, id: newId }
-    })
-    return { upload, download: [], idRemap }
+      idRemap[local.id] = newId
+      const remapped = { ...local, id: newId }
+      merged.push(remapped)
+      toUpload.push(remapped)
+    }
   }
-  return { upload: [], download: [], idRemap: {} }
+
+  const cloudOnlyRows = cloudRows.filter((r) => !consumedCloudIds.has(r.id)).sort((a, b) => a.position - b.position)
+  for (const row of cloudOnlyRows) {
+    merged.push(rowToBook(row))
+  }
+
+  return { merged, toUpload, idRemap }
 }
 
 // sync 只用到 supabase client 的这一小片接口，方便测试注入 mock；真实
@@ -255,22 +322,30 @@ export function startSync(
     })
   }
 
+  // CRITICAL DATA-SAFETY：一本书都不能因为这次同步而消失。老实现在"云端非空"
+  // 时直接把本地 books 数组整个换成云端下载下来的那份，云端还不知道的本地独
+  // 有书（新建的、还没同步过的老书……）就这么被覆盖丢了——这是本次要修的那个
+  // 真实丢书事故的根因。现在改成调用 mergeBooksPlan 算出 local ∪ cloud 的并
+  // 集，本地独有的书永远保留（并顺带补传上云），不存在"云端替换本地"这条路径。
   async function initBooks() {
     const { data } = await cl.from(TABLE).select('*')
     if (stopped) return
     const cloudRows = (data ?? []) as CwBookRow[]
-    const localBooks = store.getState().library.books
-    const plan = firstSyncPlan(localBooks, cloudRows)
+    const cur = store.getState().library
+    const localBooks = cur.books
+    const plan = mergeBooksPlan(localBooks, cloudRows)
 
-    if (cloudRows.length > 0) {
-      setLibraryLocally({ ...store.getState().library, books: plan.download, activeBookId: null })
-    } else if (plan.upload.length > 0) {
-      const cur = store.getState().library
-      const remappedBooks = cur.books.map((b) => ({ ...b, id: plan.idRemap[b.id] ?? b.id }))
-      const remappedActiveId = cur.activeBookId ? plan.idRemap[cur.activeBookId] ?? cur.activeBookId : cur.activeBookId
-      setLibraryLocally({ ...cur, books: remappedBooks, activeBookId: remappedActiveId })
+    const remappedActiveId = cur.activeBookId ? plan.idRemap[cur.activeBookId] ?? cur.activeBookId : cur.activeBookId
+    const booksChanged = plan.merged.length !== localBooks.length || plan.merged.some((b, i) => b !== localBooks[i])
+    if (booksChanged || remappedActiveId !== cur.activeBookId) {
+      setLibraryLocally({ ...cur, books: plan.merged, activeBookId: remappedActiveId })
+    }
 
-      const rows = plan.upload.map((b, i) => bookToRow(b, owner, i))
+    if (plan.toUpload.length > 0) {
+      const rows = plan.toUpload.map((b) => {
+        const position = plan.merged.findIndex((x) => x.id === b.id)
+        return bookToRow(b, owner, position === -1 ? 0 : position)
+      })
       await cl.from(TABLE).upsert(rows)
     }
   }

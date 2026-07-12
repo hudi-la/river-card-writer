@@ -7,7 +7,13 @@ const OLD_BOOK_KEY = 'card-writer:book'
 const LIBRARY_KEY = 'card-writer:library'
 
 export type Box = { id: string; name: string; cards: any[] }
-export type Book = { id: string; title: string; doc: any; boxes: Box[] }
+// updatedAt：本书内容最后一次改动的时间（ISO string），每次改标题/正文/盒子都要
+// 重新盖章。sync 层拿它来判断"云端跟本地这本同 id 的书谁更新"——CRITICAL：
+// 缺失时（老数据、还没被这次改动碰过）一律当成"比云端旧的都不算数"，交给 sync
+// 那边的合并规则去处理（该规则选择在缺失/无法比较时优先本地，绝不因为不确定
+// 就丢本地改动）。可选字段，而不是给个假的哨兵日期——不确定就是不确定，别装
+// 出一个"很旧"的确定值来源，那样反而可能在别的比较逻辑里被误用。
+export type Book = { id: string; title: string; doc: any; boxes: Box[]; updatedAt?: string }
 export type Library = { books: Book[]; activeBookId: string | null; universalBoxes: Box[] }
 
 // 库级通用盒子：不属于任何一本书，跨所有书共享同一份实例。Phase 14 起支持
@@ -76,7 +82,7 @@ type BookState = {
 }
 
 function freshBook(title?: string): Book {
-  return { id: nanoid(), title: title ?? '未命名', doc: structuredClone(EMPTY_DOC), boxes: [] }
+  return { id: nanoid(), title: title ?? '未命名', doc: structuredClone(EMPTY_DOC), boxes: [], updatedAt: new Date().toISOString() }
 }
 
 // 把一章的段落文本拼成一张"章标题卡"：card > paragraph(style:'chapter', text: chapter.title)。
@@ -89,8 +95,11 @@ function chapterTitleCard(title: string) {
 
 export function normalizeBook(raw: any): Book {
   const boxes: Box[] = Array.isArray(raw.boxes) ? raw.boxes : []
+  // 老数据没有 updatedAt 字段——留空（undefined），不编造一个哨兵日期。sync 合并
+  // 逻辑里"缺失就当不确定、优先本地"的规则已经保证这不会导致丢书/丢改动。
+  const updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : undefined
   if (raw.doc) {
-    return { id: raw.id, title: raw.title, doc: raw.doc, boxes }
+    return { id: raw.id, title: raw.title, doc: raw.doc, boxes, updatedAt }
   }
   // 旧格式迁移：每章 → [章标题卡, ...该章的卡]，顺次拼进一个大 doc。
   const chapters = Array.isArray(raw.chapters) ? raw.chapters : []
@@ -105,7 +114,7 @@ export function normalizeBook(raw: any): Book {
     content.push(...chapterCards)
   }
   const doc = content.length > 0 ? { type: 'doc', content } : structuredClone(EMPTY_DOC)
-  return { id: raw.id, title: raw.title, doc, boxes }
+  return { id: raw.id, title: raw.title, doc, boxes, updatedAt }
 }
 
 export function normalizeLibrary(raw: any): Library {
@@ -168,7 +177,11 @@ export const useBookStore = create<BookState>((set, get) => {
   function withActiveBook<T>(mutate: (book: Book) => { book: Book; result: T }): T | undefined {
     const book = get().activeBook()
     if (!book) return undefined
-    const { book: updated, result } = mutate(book)
+    const { book: mutated, result } = mutate(book)
+    // 每次通过这条路径改书（正文/盒子/卡片……）都重新盖 updatedAt 时间戳，供 sync
+    // 层的"同 id 书谁更新"判断使用——统一在这一个地方盖章，而不是让每个 action
+    // 各自记得盖一遍、容易漏掉。
+    const updated = { ...mutated, updatedAt: new Date().toISOString() }
     const library = { ...get().library, books: get().library.books.map((b) => (b.id === book.id ? updated : b)) }
     persist(library)
     set({ library })
@@ -195,7 +208,10 @@ export const useBookStore = create<BookState>((set, get) => {
     goToShelf: () => set({ shell: 'shelf' }),
     openUniversalBox: () => set({ shell: 'universal' }),
     renameBook: (id, title) => {
-      const library = { ...get().library, books: get().library.books.map((b) => (b.id === id ? { ...b, title } : b)) }
+      const library = {
+        ...get().library,
+        books: get().library.books.map((b) => (b.id === id ? { ...b, title, updatedAt: new Date().toISOString() } : b)),
+      }
       persist(library)
       set({ library })
     },
