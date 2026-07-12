@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef } from 'react'
-import { useBookStore } from '../state/bookStore'
+import { useLayoutEffect, useRef, useState } from 'react'
+import { useBookStore, type Book } from '../state/bookStore'
 import { usePrefsStore } from '../state/prefsStore'
 import { LeftNav } from './LeftNav'
 import { RiverEditor } from '../editor/RiverEditor'
@@ -16,12 +16,56 @@ const FONT_STACK: Record<'serif' | 'sans', string> = {
 // var，再叠一份组件 state 只是重复劳动。
 type RailDragState = { startX: number; startWidth: number }
 
+// 书内标题：点击/双击进入编辑态（跟书柜封面双击改名同一套手感，只是这里单击
+// 也能进——书内没有"点标题会不小心开别的东西"这个顾虑，不需要像 Bookshelf
+// 的 BookCard 那样把单击专门让给"开书"）。Enter/失焦提交，空标题（trim 后为
+// 空）忽略不保存，退回编辑前的标题。book 切换时（key=book.id 由父组件保证
+// 重新挂载）本地 draft 天然跟着重置，不需要额外 effect 同步。
+function WorkspaceTitle({ book, renameBook }: { book: Book; renameBook: (id: string, title: string) => void }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(book.title)
+
+  const commitRename = () => {
+    const title = draft.trim()
+    if (title && title !== book.title) renameBook(book.id, title)
+    else setDraft(book.title)
+    setEditing(false)
+  }
+
+  const beginEdit = () => {
+    setDraft(book.title)
+    setEditing(true)
+  }
+
+  return editing ? (
+    <input
+      className="workspace-title-edit"
+      value={draft}
+      autoFocus
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commitRename}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commitRename()
+        if (e.key === 'Escape') {
+          setDraft(book.title)
+          setEditing(false)
+        }
+      }}
+    />
+  ) : (
+    <h1 className="workspace-title" onClick={beginEdit} onDoubleClick={beginEdit}>
+      {book.title}
+    </h1>
+  )
+}
+
 export function Workspace() {
   const viewKind = useBookStore((s) => s.viewKind)
   const activeBoxId = useBookStore((s) => s.activeBoxId)
   const activeBookId = useBookStore((s) => s.library.activeBookId)
   const book = useBookStore((s) => s.activeBook())
   const goToShelf = useBookStore((s) => s.goToShelf)
+  const renameBook = useBookStore((s) => s.renameBook)
   const prefs = usePrefsStore((s) => s.prefs)
   const setRailWidth = usePrefsStore((s) => s.setRailWidth)
   const railDragRef = useRef<RailDragState | null>(null)
@@ -80,6 +124,11 @@ export function Workspace() {
         <button className="back-to-shelf" onClick={goToShelf}>
           ← 书柜
         </button>
+        {/* key 加前缀——RiverEditor/BoxView 兄弟节点已经用 activeBookId/activeBoxId
+            当 key，book.id 原样用会跟它们撞车（React 会警告"两个子节点同一个
+            key"）。这里的 key 只是为了切书时强制重挂载、重置本地 draft/editing
+            状态，值本身不需要跟别处的 key 语义一致，加前缀避免撞车即可。 */}
+        <WorkspaceTitle key={`title-${book.id}`} book={book} renameBook={renameBook} />
         <ReadingSettings />
         {viewKind === 'box' ? (
           <BoxView key={activeBoxId} boxId={activeBoxId} />

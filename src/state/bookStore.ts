@@ -65,6 +65,8 @@ type BookState = {
   updateDoc: (doc: object) => void
   openDoc: () => void
   addBox: (name: string) => Box | undefined
+  // 重命名当前书里指定 id 的盒子；忽略空名（trim 后为空则 no-op，盒子名不变）。
+  renameBox: (boxId: string, name: string) => void
   // 新增一个具名通用盒子（库级，跨所有书共享），返回新盒子。
   addUniversalBox: (name: string) => Box
   // 重命名指定 id 的通用盒子；id 不存在时 no-op。
@@ -301,6 +303,14 @@ export const useBookStore = create<BookState>((set, get) => {
     addBox: (name) => {
       const box: Box = { id: nanoid(), name, cards: [] }
       return withActiveBook((book) => ({ book: { ...book, boxes: [...book.boxes, box] }, result: box }))
+    },
+    renameBox: (boxId, name) => {
+      const trimmed = name.trim()
+      if (!trimmed) return
+      withActiveBook((book) => ({
+        book: { ...book, boxes: book.boxes.map((b) => (b.id === boxId ? { ...b, name: trimmed } : b)) },
+        result: undefined,
+      }))
     },
     addUniversalBox: (name) => {
       const box: Box = { id: nanoid(), name, cards: [] }

@@ -39,6 +39,10 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 .box-row-header { display:flex; align-items:center; gap:6px; cursor:pointer; }
 .box-chevron { flex:none; width:1em; color:var(--muted); font-size:.85em; text-align:center; }
 .box-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.box-name-edit {
+  flex:1; min-width:0; font:inherit; font-size:13px; border:1px solid var(--hair);
+  border-radius:4px; padding:1px 5px; background:var(--paper); color:var(--ink);
+}
 .box-card-list { margin:2px 0 4px 21px; display:flex; flex-direction:column; gap:1px; }
 .box-card-item {
   display:flex; align-items:center; gap:6px; padding:3px 6px; border-radius:4px;
@@ -410,6 +414,18 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
   border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
 }
 .back-to-shelf:hover { color: var(--ink); border-color: var(--hair); }
+.workspace-title {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 6;
+  margin: 0; max-width: min(50vw, 480px); font-size: 14px; font-weight: 600; color: var(--ink);
+  cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center;
+  padding: 5px 10px; border-radius: 6px; border: 1px solid transparent;
+}
+.workspace-title:hover { border-color: var(--hair); background: rgba(120,158,196,.06); }
+.workspace-title-edit {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 6;
+  width: min(50vw, 480px); font: inherit; font-size: 14px; font-weight: 600; text-align: center;
+  border: 1px solid var(--hair); border-radius: 6px; padding: 5px 10px; background: var(--paper); color: var(--ink);
+}
 
 .box-view { width: min(680px, 90%); }
 .box-header { display:flex; align-items:baseline; gap:8px; margin-bottom:18px; }

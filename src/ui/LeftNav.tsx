@@ -653,6 +653,8 @@ export function LeftNav() {
   const openDoc = useBookStore((s) => s.openDoc)
   const openBox = useBookStore((s) => s.openBox)
   const addBox = useBookStore((s) => s.addBox)
+  const renameBox = useBookStore((s) => s.renameBox)
+  const renameUniversalBox = useBookStore((s) => s.renameUniversalBox)
   const carry = useBookStore((s) => s.carry)
   const setHeadingNote = useEditorBridge((s) => s.setHeadingNote)
   const setCardNote = useEditorBridge((s) => s.setCardNote)
@@ -855,6 +857,7 @@ export function LeftNav() {
           onOpen={() => openBox(b.id)}
           onToggleCollapsed={() => toggleBoxCollapsed(b.id)}
           onCarryCard={(cardId) => carry(b.id, cardId)}
+          onRename={(name) => renameBox(b.id, name)}
         />
       ))}
       <div
@@ -880,6 +883,8 @@ export function LeftNav() {
           onOpen={() => setOpenUniversalBoxId(box.id)}
           onToggleCollapsed={() => toggleBoxCollapsed(box.id)}
           onCarryCard={(cardId) => carry(box.id, cardId)}
+          onRename={(name) => renameUniversalBox(box.id, name)}
+          opensOverlay
           icon="⟡"
           extraClassName="universal-box"
         />
@@ -898,6 +903,16 @@ export function LeftNav() {
 // 缩进列出该盒子的卡片预览。整行（含卡片列表）都在同一个 [data-box-id] 元素
 // 内——拖卡到盒子时用 elementFromPoint().closest('[data-box-id]') 找落点
 // （见 RiverEditor.tsx），落在卡片预览行上也照样能命中这个盒子。
+// 通用盒子的 onOpen 会铺出一个悬浮大窗（UniversalBoxModal），这个大窗会盖住
+// 侧栏这一行——双击手势的第二下 click 落到大窗（或它的遮罩）上而不是盒名上，
+// 原生 dblclick 也就永远等不到。真机上验证过：单击先开了窗，窗盖住这一行，
+// 第二下点击/原生 dblclick 都打在窗上，改名压根进不去。普通盒子的 onOpen 只是
+// 切 viewKind（不铺任何东西盖住这一行），没有这个问题，不需要下面这套延迟判定。
+// 用一个短延迟去抖：单击先不着急开，等一小段时间——这段时间里如果第二下点击
+// 到达（说明是双击），就取消这次"开"，直接进入改名态；没有第二下，延迟结束后
+// 再真正 onOpen()。
+const OVERLAY_CLICK_DISAMBIGUATE_MS = 250
+
 function BoxRow({
   box,
   active,
@@ -905,6 +920,8 @@ function BoxRow({
   onOpen,
   onToggleCollapsed,
   onCarryCard,
+  onRename,
+  opensOverlay,
   icon,
   extraClassName,
 }: {
@@ -914,16 +931,57 @@ function BoxRow({
   onOpen: () => void
   onToggleCollapsed: () => void
   onCarryCard: (cardId: string) => void
+  onRename: (name: string) => void
+  opensOverlay?: boolean
   icon?: string
   extraClassName?: string
 }) {
   const cards = box.cards ?? []
+  // 盒名双击改名（跟 Bookshelf 的 BookCard/UniversalBoxEntry 同一套手感）：本地
+  // editing/draft 撑显示，Enter/失焦提交，空名（trim 后）忽略不提交。编辑态时
+  // header 的 onClick 用 editing 挡住，不会同时触发"打开这个盒子"；输入框自己
+  // 的 onClick 也 stopPropagation 兜底。拖拽到盒子（drag-to-box）走的是
+  // elementFromPoint().closest('[data-box-id]')，跟这里的编辑态无关，不受影响。
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(box.name)
+  const pendingOpenTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (pendingOpenTimer.current) clearTimeout(pendingOpenTimer.current)
+  }, [])
+
+  const commitRename = () => {
+    const name = draft.trim()
+    if (name && name !== box.name) onRename(name)
+    setEditing(false)
+  }
+
+  const handleHeaderClick = () => {
+    if (editing) return
+    if (!opensOverlay) {
+      onOpen()
+      return
+    }
+    if (pendingOpenTimer.current) {
+      // 短延迟内的第二下点击——当成双击，取消这次"开"，直接进入改名态。
+      clearTimeout(pendingOpenTimer.current)
+      pendingOpenTimer.current = null
+      setDraft(box.name)
+      setEditing(true)
+      return
+    }
+    pendingOpenTimer.current = setTimeout(() => {
+      pendingOpenTimer.current = null
+      onOpen()
+    }, OVERLAY_CLICK_DISAMBIGUATE_MS)
+  }
+
   return (
     <div
       data-box-id={box.id}
       className={'chap box-row' + (extraClassName ? ' ' + extraClassName : '') + (active ? ' on' : '')}
     >
-      <div className="box-row-header" onClick={onOpen}>
+      <div className="box-row-header" onClick={handleHeaderClick}>
         <span
           className="box-chevron"
           aria-label={collapsed ? '展开' : '折叠'}
@@ -939,7 +997,41 @@ function BoxRow({
             {icon}
           </span>
         )}
-        <span className="box-name">{box.name}</span>
+        {editing ? (
+          <input
+            className="box-name-edit"
+            value={draft}
+            autoFocus
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitRename()
+              if (e.key === 'Escape') {
+                setDraft(box.name)
+                setEditing(false)
+              }
+            }}
+          />
+        ) : (
+          <span
+            className="box-name"
+            onDoubleClick={(e) => {
+              e.stopPropagation()
+              // 普通盒子这里是唯一的双击入口；通用盒子理论上已经被 handleHeaderClick
+              // 的"第二下点击"分支抢先处理掉了（原生 dblclick 都在那之后才触发），
+              // 这里只是兜底清掉可能还挂着的延迟"开"定时器，双保险不留隐患。
+              if (pendingOpenTimer.current) {
+                clearTimeout(pendingOpenTimer.current)
+                pendingOpenTimer.current = null
+              }
+              setDraft(box.name)
+              setEditing(true)
+            }}
+          >
+            {box.name}
+          </span>
+        )}
       </div>
       {!collapsed && cards.length > 0 && (
         <div className="box-card-list">

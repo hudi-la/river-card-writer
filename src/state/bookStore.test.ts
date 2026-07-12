@@ -127,6 +127,28 @@ describe('bookStore — 当前书代理', () => {
     expect(useBookStore.getState().addBox('素材')).toBeUndefined()
   })
 
+  it('renameBox 改名当前书的盒子并持久化，其余盒子不受影响', () => {
+    const book = useBookStore.getState().addBook('A')
+    useBookStore.getState().openBook(book.id)
+    const box = useBookStore.getState().addBox('旧盒名')!
+    const other = useBookStore.getState().addBox('其它盒子')!
+    useBookStore.getState().renameBox(box.id, '新盒名')
+    const s = useBookStore.getState()
+    expect(s.activeBook()!.boxes.find((b) => b.id === box.id)?.name).toBe('新盒名')
+    expect(s.activeBook()!.boxes.find((b) => b.id === other.id)?.name).toBe('其它盒子')
+    const raw = JSON.parse(localStorage.getItem('card-writer:library')!)
+    const rawBook = raw.books.find((b: any) => b.id === book.id)
+    expect(rawBook.boxes.find((b: any) => b.id === box.id).name).toBe('新盒名')
+  })
+
+  it('renameBox 忽略空名（trim 后为空），盒子名不变', () => {
+    const book = useBookStore.getState().addBook('A')
+    useBookStore.getState().openBook(book.id)
+    const box = useBookStore.getState().addBox('旧盒名')!
+    useBookStore.getState().renameBox(box.id, '   ')
+    expect(useBookStore.getState().activeBook()!.boxes.find((b) => b.id === box.id)?.name).toBe('旧盒名')
+  })
+
   it('takeCardFromBox / carry / cancelCarry / dropCarried 作用于当前书', () => {
     const book = useBookStore.getState().addBook('A')
     useBookStore.getState().openBook(book.id)

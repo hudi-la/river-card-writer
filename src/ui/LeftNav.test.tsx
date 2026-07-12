@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { LeftNav, outlineFromDoc } from './LeftNav'
 import { useBookStore, UNIVERSAL_BOX_ID } from '../state/bookStore'
@@ -142,15 +142,20 @@ describe('LeftNav', () => {
     // 点击不改变 viewKind/activeBoxId——那条路是"本书盒子"专用的
     expect(useBookStore.getState().viewKind).toBe('doc')
     expect(useBookStore.getState().activeBoxId).toBeNull()
-    const dialog = screen.getByRole('dialog')
-    expect(dialog.getAttribute('aria-label')).toBe('通用盒子')
+    // 通用盒子的"开"带一个短延迟（跟双击改名去抖，见 LeftNav.tsx 的
+    // OVERLAY_CLICK_DISAMBIGUATE_MS 注释），单击最终仍会打开，只是不再是
+    // 严格同步的——用 waitFor 等它落定。
+    await waitFor(() => {
+      const dialog = screen.getByRole('dialog')
+      expect(dialog.getAttribute('aria-label')).toBe('通用盒子')
+    })
   })
 
   it('打开通用盒子后，该项被记为 active；关闭大窗后恢复', async () => {
     render(<LeftNav />)
     const row = screen.getByText('通用盒子').closest('[data-box-id]') as HTMLElement
     await userEvent.click(within(row).getByText('通用盒子'))
-    expect(row.className).toContain('on')
+    await waitFor(() => expect(row.className).toContain('on'))
     await userEvent.click(screen.getByLabelText('关闭'))
     expect(row.className).not.toContain('on')
     expect(screen.queryByRole('dialog')).toBeNull()
@@ -165,7 +170,57 @@ describe('LeftNav', () => {
     const inspirationRow = screen.getByText('灵感').closest('[data-box-id]') as HTMLElement
     expect(inspirationRow.getAttribute('data-box-id')).toBe(inspiration.id)
     await userEvent.click(within(inspirationRow).getByText('灵感'))
-    expect(screen.getByRole('dialog').getAttribute('aria-label')).toBe('灵感')
+    await waitFor(() => expect(screen.getByRole('dialog').getAttribute('aria-label')).toBe('灵感'))
+  })
+})
+
+describe('LeftNav 盒子改名', () => {
+  it('双击本书盒子名进入编辑态，输入新名字回车后调用 renameBox(boxId, name)', async () => {
+    const box = useBookStore.getState().addBox('旧盒名')!
+    const renameSpy = vi.spyOn(useBookStore.getState(), 'renameBox')
+    render(<LeftNav />)
+    const nameEl = screen.getByText('旧盒名')
+    await userEvent.dblClick(nameEl)
+    const input = screen.getByDisplayValue('旧盒名') as HTMLInputElement
+    await userEvent.clear(input)
+    await userEvent.type(input, '新盒名{Enter}')
+    expect(renameSpy).toHaveBeenCalledWith(box.id, '新盒名')
+    renameSpy.mockRestore()
+  })
+
+  it('双击通用盒子名进入编辑态，输入新名字回车后调用 renameUniversalBox(id, name)', async () => {
+    const renameSpy = vi.spyOn(useBookStore.getState(), 'renameUniversalBox')
+    render(<LeftNav />)
+    const nameEl = screen.getByText('通用盒子')
+    await userEvent.dblClick(nameEl)
+    const input = screen.getByDisplayValue('通用盒子') as HTMLInputElement
+    await userEvent.clear(input)
+    await userEvent.type(input, '灵感{Enter}')
+    expect(renameSpy).toHaveBeenCalledWith(UNIVERSAL_BOX_ID, '灵感')
+    renameSpy.mockRestore()
+  })
+
+  it('单击（非双击）盒子名仍然打开该盒子，且不进入编辑态', async () => {
+    const box = useBookStore.getState().addBox('素材盒')!
+    render(<LeftNav />)
+    const nameEl = screen.getByText('素材盒')
+    await userEvent.click(nameEl)
+    expect(useBookStore.getState().viewKind).toBe('box')
+    expect(useBookStore.getState().activeBoxId).toBe(box.id)
+    expect(screen.queryByDisplayValue('素材盒')).toBeNull()
+  })
+
+  it('改名为空白（trim 后为空）不调用 renameBox，直接退出编辑态', async () => {
+    const box = useBookStore.getState().addBox('素材盒')!
+    render(<LeftNav />)
+    const nameEl = screen.getByText('素材盒')
+    await userEvent.dblClick(nameEl)
+    const input = screen.getByDisplayValue('素材盒') as HTMLInputElement
+    await userEvent.clear(input)
+    await userEvent.type(input, '   {Enter}')
+    // 盒名在 store 里没变——空白输入被忽略，没有调用改名
+    expect(useBookStore.getState().activeBook()!.boxes.find((b) => b.id === box.id)?.name).toBe('素材盒')
+    expect(screen.getByText('素材盒')).toBeTruthy()
   })
 })
 
