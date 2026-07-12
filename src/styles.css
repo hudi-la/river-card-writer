@@ -142,13 +142,45 @@ html.outline-drag-active, html.outline-drag-active * { user-select:none !importa
 }
 .chap-edit { width:100%; border:1px solid var(--hair); border-radius:4px; background:var(--paper); color:var(--ink); font:inherit; padding:4px 6px; }
 
-.outline-view-toggle { display:flex; gap:4px; margin-bottom:10px; }
-.outline-view-toggle button {
-  flex:1; border:1px solid var(--faint); background:none; color:var(--muted);
-  font-size:11px; padding:4px 6px; border-radius:5px; cursor:pointer;
+/* 侧栏"详细 / 排列大纲"按钮（Phase 14 Task 2）：原来的简略/详细切换换成了这一个
+   开悬浮大窗的按钮，样式沿用原切换按钮的低调描边风格。 */
+.outline-detail-open-btn {
+  display:block; width:100%; margin-bottom:10px; border:1px solid var(--faint);
+  background:none; color:var(--muted); font-size:11px; padding:5px 8px;
+  border-radius:5px; cursor:pointer; text-align:center;
 }
-.outline-view-toggle button.on { background:rgba(120,158,196,.16); border-color:var(--hair); color:var(--ink); font-weight:600; }
-.outline-view-toggle button:hover { border-color:var(--hair); }
+.outline-detail-open-btn:hover { border-color:var(--hair); color:var(--ink); }
+
+/* 通用悬浮大窗（Modal，Phase 14 Task 2）：遮罩 + 居中大面板，纯壳组件，被详细
+   大纲、后续通用盒子视图共用——样式因此不掺任何"大纲"相关的东西。z-index 盖过
+   目录拖拽的 ghost/落点线（49/50）和 hover 便签（1000）。 */
+.modal-backdrop {
+  position:fixed; inset:0; z-index:2000; background:rgba(37,32,25,.35);
+  display:flex; align-items:center; justify-content:center; padding:24px;
+}
+.modal-panel {
+  width:min(920px, 92vw); max-height:min(80vh, 900px);
+  display:flex; flex-direction:column;
+  background:var(--paper); border:1px solid var(--hair); border-radius:10px;
+  box-shadow:0 12px 40px rgba(0,0,0,.24); overflow:hidden;
+}
+.modal-header {
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:14px 18px; border-bottom:1px solid var(--faint); flex:none;
+}
+.modal-title { margin:0; font-size:15px; font-weight:600; color:var(--ink); }
+.modal-close {
+  flex:none; border:1px solid var(--faint); background:none; color:var(--muted);
+  width:28px; height:28px; border-radius:6px; cursor:pointer; font-size:13px; line-height:1;
+}
+.modal-close:hover { color:var(--ink); border-color:var(--hair); }
+.modal-body { padding:18px; overflow-y:auto; }
+
+/* 详细大纲（OutlineDetail）在大窗里比侧栏宽敞得多——卡片间距、字号都比塞在
+   172px 窄栏时松一档，方便排大框架时看清楚。 */
+.outline-detail .outline-card { padding:12px 14px; }
+.outline-detail .outline-card-title { font-size:1.05em; padding-bottom:8px; }
+.outline-detail .outline-card-note { min-height:60px; }
 
 /* 简略视图 hover 便签：.rail 是 overflow-y:auto 的独立滚动栏，CSS 规范下这会让
    overflow-x 隐式变 auto，栏会裁掉任何越界的绝对定位子元素——所以便签不再是栏内

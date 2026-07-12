@@ -237,36 +237,36 @@ describe('LeftNav 盒子内容展示', () => {
   })
 })
 
-describe('LeftNav 简略/详细两视图', () => {
-  it('默认简略视图：不铺出 note 文本框', () => {
+// Phase 14 Task 2：详细视图搬进悬浮大窗——侧栏不再有简略/详细切换，只有一个
+// "详细"按钮开窗；窗内是 OutlineDetail（每行 note 文本框），窗外侧栏本身永远
+// 是简略树，不铺 note 文本框。
+describe('LeftNav 侧栏只留简略树 + 详细按钮开悬浮大窗（Phase 14 Task 2）', () => {
+  it('不再渲染简略/详细切换按钮', () => {
+    useBookStore.getState().updateDoc(docWithNote())
+    render(<LeftNav />)
+    expect(screen.queryByText('简略')).toBeNull()
+  })
+
+  it('侧栏本身（未开窗）不铺出 note 文本框，即使条目有 note', () => {
     useBookStore.getState().updateDoc(docWithNote())
     render(<LeftNav />)
     expect(screen.queryByDisplayValue('讲主角出发')).toBeNull()
+    expect(screen.queryByPlaceholderText('写点说明…')).toBeNull()
   })
 
-  it('切到详细视图后，每条 outline 项下面铺出显示该条 note 的文本框', async () => {
+  it('点"详细"按钮打开悬浮大窗，里面是详细大纲（每条 note 文本框）', async () => {
     useBookStore.getState().updateDoc(docWithNote())
     render(<LeftNav />)
-    await userEvent.click(screen.getByText('详细'))
+    expect(screen.queryByText('详细大纲')).toBeNull()
+    await userEvent.click(screen.getByText('详细 / 排列大纲'))
+    expect(screen.getByText('详细大纲')).toBeTruthy()
     expect(screen.getByDisplayValue('讲主角出发')).toBeTruthy()
-    // 没 note 的条目也有一个（空的）文本框，占位一致
-    const textareas = screen.getAllByPlaceholderText('写点说明…')
-    expect(textareas.length).toBeGreaterThan(0)
   })
 
-  it('详细视图切回简略后，note 文本框不再渲染', async () => {
+  it('大窗内编辑某条 note，失焦后调 editorBridge.setHeadingNote(index, value)', async () => {
     useBookStore.getState().updateDoc(docWithNote())
     render(<LeftNav />)
-    await userEvent.click(screen.getByText('详细'))
-    expect(screen.getByDisplayValue('讲主角出发')).toBeTruthy()
-    await userEvent.click(screen.getByText('简略'))
-    expect(screen.queryByDisplayValue('讲主角出发')).toBeNull()
-  })
-
-  it('详细视图里编辑某条 note，失焦后调 editorBridge.setHeadingNote(index, value)', async () => {
-    useBookStore.getState().updateDoc(docWithNote())
-    render(<LeftNav />)
-    await userEvent.click(screen.getByText('详细'))
+    await userEvent.click(screen.getByText('详细 / 排列大纲'))
     const textarea = screen.getByDisplayValue('讲主角出发')
     await userEvent.clear(textarea)
     await userEvent.type(textarea, '改过的说明')
@@ -274,11 +274,22 @@ describe('LeftNav 简略/详细两视图', () => {
     expect(setHeadingNote).toHaveBeenCalledWith(0, '改过的说明')
   })
 
-  it('视图选择持久化到 prefsStore.prefs.outlineView', async () => {
+  it('按 Esc 关闭大窗', async () => {
     useBookStore.getState().updateDoc(docWithNote())
     render(<LeftNav />)
-    await userEvent.click(screen.getByText('详细'))
-    expect(usePrefsStore.getState().prefs.outlineView).toBe('detail')
+    await userEvent.click(screen.getByText('详细 / 排列大纲'))
+    expect(screen.getByText('详细大纲')).toBeTruthy()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByText('详细大纲')).toBeNull()
+  })
+
+  it('点遮罩关闭大窗', async () => {
+    useBookStore.getState().updateDoc(docWithNote())
+    render(<LeftNav />)
+    await userEvent.click(screen.getByText('详细 / 排列大纲'))
+    const backdrop = document.querySelector('.modal-backdrop') as HTMLElement
+    await userEvent.click(backdrop)
+    expect(screen.queryByText('详细大纲')).toBeNull()
   })
 })
 
@@ -332,30 +343,6 @@ describe('LeftNav 大纲树：标题行 + 块行（Phase 12 Task 2）', () => {
     useBookStore.getState().updateDoc(doc)
     render(<LeftNav />)
     expect(screen.getByText('（空块）')).toBeTruthy()
-  })
-
-  it('详细视图里每个块行也铺出 note 文本框，编辑后调 editorBridge.setCardNote(cardIndex, value)', async () => {
-    useBookStore.getState().updateDoc(docWithChapterAndBlocks())
-    render(<LeftNav />)
-    await userEvent.click(screen.getByText('详细'))
-    const textareas = screen.getAllByPlaceholderText('写点说明…')
-    // rows 顺序：[章(cardIndex 0), 正文一(cardIndex 1), 正文二(cardIndex 2)]，
-    // 文本框顺序跟 rows 一致——第二个文本框对应 cardIndex 1 的块。
-    expect(textareas.length).toBe(3)
-    await userEvent.type(textareas[1], '块说明')
-    await userEvent.tab()
-    expect(setCardNote).toHaveBeenCalledWith(1, '块说明')
-  })
-
-  it('详细视图里标题行的 note 仍走 editorBridge.setHeadingNote(headingIndex, value)', async () => {
-    useBookStore.getState().updateDoc(docWithChapterAndBlocks())
-    render(<LeftNav />)
-    await userEvent.click(screen.getByText('详细'))
-    const textareas = screen.getAllByPlaceholderText('写点说明…')
-    await userEvent.type(textareas[0], '章节说明')
-    await userEvent.tab()
-    expect(setHeadingNote).toHaveBeenCalledWith(0, '章节说明')
-    expect(setCardNote).not.toHaveBeenCalled()
   })
 
   it('点块行滚动到该块（正文里第 cardIndex 个 section.card scrollIntoView）', async () => {
@@ -627,15 +614,6 @@ describe('LeftNav 目录折叠三角（Phase 13 Task 2）', () => {
     expect(within(blockRow).queryByLabelText('展开')).toBeNull()
   })
 
-  it('详细视图里同样支持折叠三角与隐藏后代', async () => {
-    useBookStore.getState().updateDoc(docChapterWithBlocksAndSection())
-    render(<LeftNav />)
-    await userEvent.click(screen.getByText('详细'))
-    const chap1Row = screen.getByText('第一章').closest('.outline-card') as HTMLElement
-    const triangle = within(chap1Row).getByLabelText('折叠')
-    await userEvent.click(triangle)
-    expect(toggleCollapsed).toHaveBeenCalledWith(0)
-  })
 })
 
 // Phase 14 Task 1：目录小改——折叠记号 + 统色 + 预览按宽度截断加省略号。
@@ -652,14 +630,6 @@ describe('LeftNav 目录小改（Phase 14 Task 1）', () => {
     const { container } = render(<LeftNav />)
     const chap1Row = container.querySelector('[data-outline-row-index="0"]') as HTMLElement
     expect(chap1Row.querySelector('.outline-collapsed')).toBeNull()
-  })
-
-  it('#1 详细视图里折叠的标题行也带折叠记号 class', async () => {
-    useBookStore.getState().updateDoc(docChapterWithBlocksAndSection(true))
-    render(<LeftNav />)
-    await userEvent.click(screen.getByText('详细'))
-    const chap1Card = screen.getByText('第一章').closest('.outline-card') as HTMLElement
-    expect(chap1Card.className).toContain('outline-collapsed')
   })
 
   it('#2 目录行底色读该卡片的手动 color', () => {
@@ -686,14 +656,6 @@ describe('LeftNav 目录小改（Phase 14 Task 1）', () => {
     const blockRow = container.querySelector('[data-outline-row-index="1"]') as HTMLElement
     expect(headingRow.getAttribute('data-row-color')).toBe(autoCardColor('c0'))
     expect(blockRow.getAttribute('data-row-color')).toBe(autoCardColor('c1'))
-  })
-
-  it('#2 详细视图里 outline-card 同样带 data-row-color', async () => {
-    useBookStore.getState().updateDoc(docWithChapterAndBlocks())
-    render(<LeftNav />)
-    await userEvent.click(screen.getByText('详细'))
-    const chap1Card = screen.getByText('第一章').closest('.outline-card') as HTMLElement
-    expect(chap1Card.getAttribute('data-row-color')).toBe(autoCardColor('c0'))
   })
 
   it('#4 块行预览容器带单行省略 class，标题行不带', () => {
