@@ -97,6 +97,32 @@ describe('rowToBook / bookToRow', () => {
     expect(typeof row.updated_at).toBe('string')
     expect(rowToBook(row)).toEqual({ ...book, updatedAt: row.updated_at })
   })
+
+  it('没有 cover 的书 → bookToRow 的 cover 列写 null，rowToBook 读回来 cover 是 undefined（不影响其它字段，云端老行同样如此）', () => {
+    const book = makeBook('uuid-no-cover', '没有封面的书')
+    const row = bookToRow(book, 'owner-1', 0)
+    expect(row.cover).toBeNull()
+    expect(rowToBook(row).cover).toBeUndefined()
+    expect(rowToBook(row)).toEqual({ ...book, updatedAt: row.updated_at })
+  })
+
+  it('带自定义 cover 的书 → bookToRow/rowToBook 往返 cover 原样保留，doc/boxes 不受影响（cover 是独立于 data 之外的一列）', () => {
+    const cover = { colors: ['#111111', '#222222', '#333333'] as [string, string, string], angle: 210, texture: false }
+    const book = { ...makeBook('uuid-cover', '有封面的书'), cover, updatedAt: '2024-05-01T00:00:00.000Z' }
+    const row = bookToRow(book, 'owner-1', 0)
+    expect(row.cover).toEqual(cover)
+    // cover 是独立的一列，data 里只有 doc/boxes——改封面不应该把 cover 也塞进 data。
+    expect((row.data as any).cover).toBeUndefined()
+    expect(rowToBook(row)).toEqual(book)
+  })
+
+  it('云端行的 cover 形状不对（脏数据）→ rowToBook 当成没有封面处理，不抛出', () => {
+    const book = makeBook('uuid-dirty-cover', '书')
+    const row = bookToRow(book, 'owner-1', 0)
+    ;(row as any).cover = { colors: ['only-one'] }
+    expect(() => rowToBook(row)).not.toThrow()
+    expect(rowToBook(row).cover).toBeUndefined()
+  })
 })
 
 describe('universalToRow / rowToUniversal', () => {
@@ -233,6 +259,23 @@ describe('mergeBooksPlan（非破坏性合并：按 book id union，一本都不
     const localBook = makeBook('uuid-a', '本地标题')
     const plan = mergeBooksPlan([localBook], [row])
     expect(plan.merged[0].title).toBe('本地标题')
+  })
+
+  it('同 id 书两边都有，updatedAt 缺失/相等，但本地多了个云端没有的 cover → 视为"内容不同"，进 toUpload（不然本地的封面永远同步不到云端）', () => {
+    const cloudBook = makeBook('uuid-cover-diff')
+    const row = bookToRow(cloudBook, 'owner-1', 0)
+    const localBook = { ...makeBook('uuid-cover-diff'), cover: { colors: ['#111111', '#222222', '#333333'] as [string, string, string] } }
+    const plan = mergeBooksPlan([localBook], [row])
+    expect(plan.merged[0]).toEqual(localBook)
+    expect(plan.toUpload).toEqual([localBook])
+  })
+
+  it('同 id 书两边都有、cover 也相同（都没有）→ 仍然当内容相同，不重传', () => {
+    const cloudBook = makeBook('uuid-cover-same')
+    const row = bookToRow(cloudBook, 'owner-1', 0)
+    const localBook = makeBook('uuid-cover-same')
+    const plan = mergeBooksPlan([localBook], [row])
+    expect(plan.toUpload).toEqual([])
   })
 })
 

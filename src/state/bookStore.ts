@@ -8,13 +8,30 @@ const OLD_BOOK_KEY = 'card-writer:book'
 const LIBRARY_KEY = 'card-writer:library'
 
 export type Box = { id: string; name: string; cards: any[] }
+
+// 自定义封面（可选）：三色渐变 + 可调角度 + 可选纹理开关。缺失时封面回退到
+// coverGradient(id) 那个自动哈希渐变——这是唯一的新增可选属性，绝不影响
+// doc/boxes，也绝不会让没设置过封面的老书/新书表现有任何变化。
+export type Cover = { colors: [string, string, string]; angle?: number; texture?: boolean }
+
+// 宽松校验，永不抛出：只要求 colors 是三个字符串；angle/texture 存在时要求
+// 类型对——不对的形状（脏数据、以后格式演化留下的旧样子）一律当"没有封面"处理，
+// 而不是让渲染/store 逻辑炸掉。
+export function isValidCover(raw: any): raw is Cover {
+  if (!raw || typeof raw !== 'object') return false
+  if (!Array.isArray(raw.colors) || raw.colors.length !== 3) return false
+  if (!raw.colors.every((c: any) => typeof c === 'string')) return false
+  if (raw.angle !== undefined && typeof raw.angle !== 'number') return false
+  if (raw.texture !== undefined && typeof raw.texture !== 'boolean') return false
+  return true
+}
 // updatedAt：本书内容最后一次改动的时间（ISO string），每次改标题/正文/盒子都要
 // 重新盖章。sync 层拿它来判断"云端跟本地这本同 id 的书谁更新"——CRITICAL：
 // 缺失时（老数据、还没被这次改动碰过）一律当成"比云端旧的都不算数"，交给 sync
 // 那边的合并规则去处理（该规则选择在缺失/无法比较时优先本地，绝不因为不确定
 // 就丢本地改动）。可选字段，而不是给个假的哨兵日期——不确定就是不确定，别装
 // 出一个"很旧"的确定值来源，那样反而可能在别的比较逻辑里被误用。
-export type Book = { id: string; title: string; doc: any; boxes: Box[]; updatedAt?: string }
+export type Book = { id: string; title: string; doc: any; boxes: Box[]; updatedAt?: string; cover?: Cover }
 export type Library = { books: Book[]; activeBookId: string | null; universalBoxes: Box[] }
 
 // 库级通用盒子：不属于任何一本书，跨所有书共享同一份实例。Phase 14 起支持
@@ -53,6 +70,12 @@ type BookState = {
   openUniversalBox: () => void
   renameBook: (id: string, title: string) => void
   deleteBook: (id: string) => void
+  // 设置/替换某本书的自定义封面（三色渐变+角度+纹理开关）。只碰 cover 字段，
+  // 绝不touch doc/boxes——跟 renameBook 一样重新盖 updatedAt、走 persist，供
+  // 快照/云同步捕捉到这次改动。
+  setBookCover: (id: string, cover: Cover) => void
+  // 封面"恢复默认"：清掉 cover 字段，回退到 coverGradient(id) 那个自动渐变。
+  clearBookCover: (id: string) => void
   // 供 sync 模块使用：整体替换 library 并落盘（首登下载/上传回填 uuid 时用），
   // 绕开各 action 自己的局部更新逻辑，最小侵入地把云同步挂进 store。
   setLibrary: (library: Library) => void
@@ -101,8 +124,12 @@ export function normalizeBook(raw: any): Book {
   // 老数据没有 updatedAt 字段——留空（undefined），不编造一个哨兵日期。sync 合并
   // 逻辑里"缺失就当不确定、优先本地"的规则已经保证这不会导致丢书/丢改动。
   const updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : undefined
+  // 老数据/别处传入的形状都没有 cover——缺失或形状不对时一律 undefined，渲染层
+  // 自然回退到 coverGradient(id)。这一处校验统一收口，normalizeBook 之外没有
+  // 别的地方需要再检查一遍 cover 的合法性。
+  const cover = isValidCover(raw.cover) ? raw.cover : undefined
   if (raw.doc) {
-    return { id: raw.id, title: raw.title, doc: raw.doc, boxes, updatedAt }
+    return { id: raw.id, title: raw.title, doc: raw.doc, boxes, updatedAt, cover }
   }
   // 旧格式迁移：每章 → [章标题卡, ...该章的卡]，顺次拼进一个大 doc。
   const chapters = Array.isArray(raw.chapters) ? raw.chapters : []
@@ -117,7 +144,7 @@ export function normalizeBook(raw: any): Book {
     content.push(...chapterCards)
   }
   const doc = content.length > 0 ? { type: 'doc', content } : structuredClone(EMPTY_DOC)
-  return { id: raw.id, title: raw.title, doc, boxes, updatedAt }
+  return { id: raw.id, title: raw.title, doc, boxes, updatedAt, cover }
 }
 
 export function normalizeLibrary(raw: any): Library {
@@ -267,6 +294,26 @@ export const useBookStore = create<BookState>((set, get) => {
       const library = { ...cur, books, activeBookId: wasActive ? null : cur.activeBookId }
       persist(library)
       set(wasActive ? { library, shell: 'shelf', viewKind: 'doc', activeBoxId: null, carried: null } : { library })
+    },
+    setBookCover: (id, cover) => {
+      const library = {
+        ...get().library,
+        books: get().library.books.map((b) => (b.id === id ? { ...b, cover, updatedAt: new Date().toISOString() } : b)),
+      }
+      persist(library)
+      set({ library })
+    },
+    clearBookCover: (id) => {
+      const library = {
+        ...get().library,
+        books: get().library.books.map((b) => {
+          if (b.id !== id) return b
+          const { cover, ...rest } = b
+          return { ...rest, updatedAt: new Date().toISOString() }
+        }),
+      }
+      persist(library)
+      set({ library })
     },
 
     // sync/import 传入的 library 可能是旧算法拼出来的、不知道 universalBoxes 这个字段

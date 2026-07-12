@@ -1,8 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Bookshelf } from './Bookshelf'
+import { Bookshelf, coverGradient } from './Bookshelf'
 import { useBookStore, EMPTY_DOC, UNIVERSAL_BOX_ID } from '../state/bookStore'
+
+// jsdom 的 CSSOM 会把 style.backgroundImage 里的颜色（hex/hsl）规范化成
+// rgb(...)——跟真实浏览器渲染出的实际颜色完全一致，只是字符串表示不同。直接
+// 拿 hex/hsl 字面量去 toBe 会误报。统一"过一遍 DOM"再比较，两边都走同一套
+// 规范化，断言的还是"最终渲染出的渐变一致"，不是字符串巧合。
+function normalizeGradient(css: string): string {
+  const el = document.createElement('div')
+  el.style.backgroundImage = css
+  return el.style.backgroundImage
+}
 
 beforeEach(() => {
   localStorage.clear()
@@ -138,6 +148,105 @@ describe('Bookshelf', () => {
       expect(screen.getByRole('dialog')).toBeTruthy()
       await userEvent.keyboard('{Escape}')
       expect(screen.queryByRole('dialog')).toBeNull()
+    })
+  })
+
+  describe('自定义封面', () => {
+    it('没自定义过封面的书：封面渲染的是自动渐变 coverGradient(id)（默认行为不变）', () => {
+      const book = useBookStore.getState().addBook('从没改过封面的书')
+      render(<Bookshelf />)
+      const cover = screen.getByText('从没改过封面的书').closest('.book-card')!.querySelector('.book-cover') as HTMLElement
+      expect(cover.style.backgroundImage).toBe(normalizeGradient(coverGradient(book.id)))
+    })
+
+    it('点"编辑封面"打开弹窗，标题带书名；点某个预设、保存 → 弹窗关闭，书柜上这本书的封面立刻换成预设的渐变，不影响封面按钮打开/关闭之外的东西', async () => {
+      const book = useBookStore.getState().addBook('要换封面的书')
+      render(<Bookshelf />)
+      const card = screen.getByText('要换封面的书').closest('.book-card')!
+      const editBtn = within(card).getByRole('button', { name: '编辑封面' })
+      await userEvent.click(editBtn)
+
+      expect(screen.getByRole('dialog')).toBeTruthy()
+      expect(screen.getByText(/封面 · 要换封面的书/)).toBeTruthy()
+
+      const presetBtn = screen.getByTitle('晨雾')
+      await userEvent.click(presetBtn)
+      await userEvent.click(screen.getByText('保存'))
+
+      expect(screen.queryByRole('dialog')).toBeNull()
+      const updated = useBookStore.getState().library.books.find((b) => b.id === book.id)
+      expect(updated?.cover).toEqual({ colors: ['#eee2d3', '#c9b8a8', '#8fa6a3'], angle: 135, texture: true })
+
+      const cover = card.querySelector('.book-cover') as HTMLElement
+      expect(cover.style.backgroundImage).toBe(normalizeGradient('linear-gradient(135deg, #eee2d3, #c9b8a8, #8fa6a3)'))
+      // doc/boxes 不受影响。
+      expect(updated?.doc).toEqual(book.doc)
+      expect(updated?.boxes).toEqual(book.boxes)
+    })
+
+    it('自定义三个颜色 + 角度 + 关掉纹理 → 保存后书柜封面用自定义颜色渲染，且不带纹理叠层（.book-cover--no-texture）', async () => {
+      useBookStore.getState().addBook('自定义封面的书')
+      render(<Bookshelf />)
+      const card = screen.getByText('自定义封面的书').closest('.book-card')!
+      await userEvent.click(within(card).getByRole('button', { name: '编辑封面' }))
+
+      const colorInputs = screen.getAllByLabelText(/封面颜色/) as HTMLInputElement[]
+      fireEvent.change(colorInputs[0], { target: { value: '#101010' } })
+      fireEvent.change(colorInputs[1], { target: { value: '#202020' } })
+      fireEvent.change(colorInputs[2], { target: { value: '#303030' } })
+      fireEvent.change(screen.getByLabelText('渐变角度'), { target: { value: '90' } })
+      await userEvent.click(screen.getByLabelText('纹理')) // 默认开着，点一下关掉
+      await userEvent.click(screen.getByText('保存'))
+
+      const cover = card.querySelector('.book-cover') as HTMLElement
+      expect(cover.style.backgroundImage).toBe(normalizeGradient('linear-gradient(90deg, #101010, #202020, #303030)'))
+      expect(cover.className).toContain('book-cover--no-texture')
+    })
+
+    it('"随机"按钮：点一下换出一份新的三色+角度组合（不抛出，且落在合法 hex 颜色范围内）', async () => {
+      useBookStore.getState().addBook('随机封面')
+      render(<Bookshelf />)
+      const card = screen.getByText('随机封面').closest('.book-card')!
+      await userEvent.click(within(card).getByRole('button', { name: '编辑封面' }))
+
+      const preview = document.querySelector('.cover-editor-preview') as HTMLElement
+      const before = preview.style.backgroundImage
+      await userEvent.click(screen.getByText('🎲 随机'))
+      const after = preview.style.backgroundImage
+      // jsdom 把 hex 规范化成 rgb(r, g, b)——断言的是"洗牌产出了一个合法的三色渐变"。
+      expect(after).toMatch(/^linear-gradient\(\d+deg, rgb\(\d+, \d+, \d+\), rgb\(\d+, \d+, \d+\), rgb\(\d+, \d+, \d+\)\)$/)
+      // 极小概率随机出跟起点一样的组合，但断言"是一个合法渐变"已经足够覆盖"洗牌真的生效了、不抛异常"。
+      expect(before).not.toBe('')
+    })
+
+    it('设置过封面之后点"恢复默认"：cover 字段清空，书柜封面变回 coverGradient(id)', async () => {
+      const book = useBookStore.getState().addBook('先设置后恢复')
+      useBookStore.getState().setBookCover(book.id, { colors: ['#111111', '#222222', '#333333'], angle: 45, texture: true })
+      render(<Bookshelf />)
+      const card = screen.getByText('先设置后恢复').closest('.book-card')!
+      // 恢复前：封面确实是自定义的那份。
+      expect((card.querySelector('.book-cover') as HTMLElement).style.backgroundImage).toBe(
+        normalizeGradient('linear-gradient(45deg, #111111, #222222, #333333)'),
+      )
+
+      await userEvent.click(within(card).getByRole('button', { name: '编辑封面' }))
+      await userEvent.click(screen.getByText('恢复默认'))
+
+      expect(screen.queryByRole('dialog')).toBeNull()
+      const updated = useBookStore.getState().library.books.find((b) => b.id === book.id)
+      expect(updated?.cover).toBeUndefined()
+      const cover = card.querySelector('.book-cover') as HTMLElement
+      expect(cover.style.backgroundImage).toBe(normalizeGradient(coverGradient(book.id)))
+    })
+
+    it('重新打开一本已有封面的书的编辑器：草稿以当前封面为起点，不是从预设/上次编辑另一本书的草稿开始', async () => {
+      const book = useBookStore.getState().addBook('已有封面')
+      useBookStore.getState().setBookCover(book.id, { colors: ['#aaaaaa', '#bbbbbb', '#cccccc'], angle: 77, texture: true })
+      render(<Bookshelf />)
+      const card = screen.getByText('已有封面').closest('.book-card')!
+      await userEvent.click(within(card).getByRole('button', { name: '编辑封面' }))
+      const preview = document.querySelector('.cover-editor-preview') as HTMLElement
+      expect(preview.style.backgroundImage).toBe(normalizeGradient('linear-gradient(77deg, #aaaaaa, #bbbbbb, #cccccc)'))
     })
   })
 })

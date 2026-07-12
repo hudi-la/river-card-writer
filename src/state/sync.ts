@@ -1,8 +1,11 @@
-import type { Book, Box, Library } from './bookStore'
-import { UNIVERSAL_BOX_ID } from './bookStore'
+import type { Book, Box, Cover, Library } from './bookStore'
+import { UNIVERSAL_BOX_ID, isValidCover } from './bookStore'
 import { mergeUniversalCards } from './backup'
 
-// cw_books 表行形状（见 Task 1 计划）：id uuid, owner uuid, title text, data jsonb({doc,boxes}), position int, updated_at。
+// cw_books 表行形状：id uuid, owner uuid, title text, data jsonb({doc,boxes}), position int,
+// updated_at, cover jsonb（可空，独立于 data 之外的一列——封面变更从不touch data 里的
+// doc/boxes，迁移是纯加列、老行 cover 一律是 null，rowToBook 把 null/不合法形状都当
+// "没有封面"处理）。
 export type CwBookRow = {
   id: string
   owner: string
@@ -10,10 +13,18 @@ export type CwBookRow = {
   data: { doc: any; boxes: Book['boxes'] }
   position: number
   updated_at: string
+  cover?: Cover | null
 }
 
 export function rowToBook(row: CwBookRow): Book {
-  return { id: row.id, title: row.title, doc: row.data.doc, boxes: row.data.boxes ?? [], updatedAt: row.updated_at }
+  return {
+    id: row.id,
+    title: row.title,
+    doc: row.data.doc,
+    boxes: row.data.boxes ?? [],
+    updatedAt: row.updated_at,
+    cover: isValidCover(row.cover) ? row.cover : undefined,
+  }
 }
 
 export function bookToRow(book: Book, ownerId: string, position: number): CwBookRow {
@@ -28,6 +39,7 @@ export function bookToRow(book: Book, ownerId: string, position: number): CwBook
     // 因为写入延迟而在下次合并时被误判成"更旧"。老书/没走过新 store 逻辑的书
     // 没有 updatedAt 时才退化成"现在"。
     updated_at: book.updatedAt ?? new Date().toISOString(),
+    cover: book.cover ?? null,
   }
 }
 
@@ -166,7 +178,8 @@ export function mergeBooksPlan(localBooks: Book[], cloudRows: CwBookRow[]): Book
         const contentIdentical =
           local.title === cloudAsBook.title &&
           JSON.stringify(local.doc) === JSON.stringify(cloudAsBook.doc) &&
-          JSON.stringify(local.boxes) === JSON.stringify(cloudAsBook.boxes)
+          JSON.stringify(local.boxes) === JSON.stringify(cloudAsBook.boxes) &&
+          JSON.stringify(local.cover ?? null) === JSON.stringify(cloudAsBook.cover ?? null)
         if (!contentIdentical) toUpload.push(local)
       }
     } else if (isUuid(local.id)) {

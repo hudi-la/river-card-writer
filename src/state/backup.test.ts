@@ -10,11 +10,13 @@ import {
   mergeUniversalBoxes,
   sanitizeFilename,
 } from './backup'
-import { EMPTY_DOC, UNIVERSAL_BOX_ID, type Book, type Box, type Library } from './bookStore'
+import { EMPTY_DOC, UNIVERSAL_BOX_ID, type Book, type Box, type Cover, type Library } from './bookStore'
 
 function book(id: string, title: string): Book {
   return { id, title, doc: structuredClone(EMPTY_DOC), boxes: [] }
 }
+
+const sampleCover: Cover = { colors: ['#111111', '#222222', '#333333'], angle: 180, texture: false }
 
 function universalBox(cards: any[] = []): Box {
   return { id: UNIVERSAL_BOX_ID, name: '通用盒子', cards }
@@ -120,6 +122,49 @@ describe('backup — mergeImported', () => {
     const current: Library = { books: [book('c1', '当前')], activeBookId: null }
     const merged = mergeImported(current, [book('i1', '导入')])
     expect(merged.activeBookId).toBeNull()
+  })
+})
+
+describe('backup — cover 跟着 export/import 一起走，不丢也不误伤没有封面的书', () => {
+  it('exportBook / exportLibrary 里带 cover 的书，cover 原样出现在导出 JSON 里', () => {
+    const withCover: Book = { ...book('b1', '有封面的书'), cover: sampleCover }
+    const json = exportBook(withCover, '2026-07-12T00:00:00.000Z')
+    const parsed = JSON.parse(json)
+    expect(parsed.books[0].cover).toEqual(sampleCover)
+
+    const library: Library = { books: [withCover, book('b2', '没封面的书')], activeBookId: null }
+    const libJson = exportLibrary(library, '2026-07-12T00:00:00.000Z')
+    const parsedLib = JSON.parse(libJson)
+    expect(parsedLib.books[0].cover).toEqual(sampleCover)
+    expect(parsedLib.books[1].cover).toBeUndefined()
+  })
+
+  it('export → parseBackup → mergeImported 全链路往返：带 cover 的书 cover 不丢，没 cover 的书依旧没有 cover（不会被平白造出一个）', () => {
+    const withCover: Book = { ...book('has-cover', '有封面的书'), cover: sampleCover }
+    const withoutCover = book('no-cover', '没封面的书')
+    const library: Library = { books: [withCover, withoutCover], activeBookId: null }
+    const json = exportLibrary(library, '2026-07-12T00:00:00.000Z')
+
+    const parsed = parseBackup(json)
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    expect(parsed.books.find((b) => b.id === 'has-cover')?.cover).toEqual(sampleCover)
+    expect(parsed.books.find((b) => b.id === 'no-cover')?.cover).toBeUndefined()
+
+    const current: Library = { books: [], activeBookId: null }
+    const merged = mergeImported(current, parsed.books)
+    expect(merged.books.find((b) => b.id === 'has-cover')?.cover).toEqual(sampleCover)
+    expect(merged.books.find((b) => b.id === 'no-cover')?.cover).toBeUndefined()
+    // 卡数/盒子没有因为多了 cover 字段而受影响。
+    expect(merged.books).toHaveLength(2)
+  })
+
+  it('导入的书没有 cover 时，当前库里其它书的 cover 不受影响（只增不减，互不干扰）', () => {
+    const currentWithCover: Book = { ...book('mine', '我的书'), cover: sampleCover }
+    const current: Library = { books: [currentWithCover], activeBookId: 'mine' }
+    const merged = mergeImported(current, [book('imported', '导入的书（没封面）')])
+    expect(merged.books.find((b) => b.id === 'mine')?.cover).toEqual(sampleCover)
+    expect(merged.books.find((b) => b.id === 'imported')?.cover).toBeUndefined()
   })
 })
 

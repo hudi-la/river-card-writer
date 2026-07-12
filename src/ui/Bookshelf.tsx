@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { useBookStore, type Book, type Box } from '../state/bookStore'
+import { useBookStore, isValidCover, type Book, type Box } from '../state/bookStore'
 import { BackupControls } from './BackupControls'
 import { exportBook, sanitizeFilename } from '../state/backup'
 import { downloadTextFile, todayStamp } from './download'
 import { UniversalBoxModal } from './BoxView'
+import { CoverEditorModal, coverToCss } from './CoverEditor'
 
 // 纯函数：书 id 哈希出两三个低饱和柔色，拼一个 linear-gradient 当封面——不碰真实
 // 图片，呼应"纹理+三色渐变"的封面审美（具体纹理叠层在 CSS ::after 里统一加，不
@@ -17,12 +18,25 @@ export function coverGradient(id: string): string {
   return `linear-gradient(135deg, hsl(${hue1} 38% 78%), hsl(${hue2} 32% 70%), hsl(${hue3} 30% 82%))`
 }
 
+// 封面背景：book.cover 存在就用它（三色渐变+可调角度），否则回退到老的自动哈希
+// 渐变——这是唯一的分支，没设置过封面的书（老书、新建的书）表现跟改动前完全
+// 一致。cover 形状万一是脏数据（比如导入了一份手改过的备份），isValidCover 兜
+// 底，绝不因为渲染这一步炸掉整个书柜。
+export function coverBackground(book: Book): string {
+  if (isValidCover(book.cover)) return coverToCss(book.cover)
+  return coverGradient(book.id)
+}
+
 function BookCard({ book }: { book: Book }) {
   const openBook = useBookStore((s) => s.openBook)
   const renameBook = useBookStore((s) => s.renameBook)
   const deleteBook = useBookStore((s) => s.deleteBook)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(book.title)
+  const [coverEditorOpen, setCoverEditorOpen] = useState(false)
+  // 有自定义封面、且没被明确关掉纹理时才叠加那层细纹理；自动渐变封面维持老样子
+  // （一直都带纹理），不需要额外判断。
+  const hasTexture = !isValidCover(book.cover) || book.cover.texture !== false
 
   const commitRename = () => {
     const title = draft.trim()
@@ -38,7 +52,25 @@ function BookCard({ book }: { book: Book }) {
 
   return (
     <div className="book-card" onClick={() => !editing && openBook(book.id)}>
-      <div className="book-cover" style={{ backgroundImage: coverGradient(book.id) }} />
+      <div
+        className={`book-cover${hasTexture ? '' : ' book-cover--no-texture'}`}
+        style={{ backgroundImage: coverBackground(book) }}
+      >
+        {/* 贴底居中的封面编辑按钮必须嵌在 .book-cover 内部（不是跟它平级的
+            .book-card 子元素）——.book-card 还包着下面的书名文字，"bottom:8px"
+            要是相对 .book-card 算，会落到书名边上而不是封面底部。 */}
+        <button
+          className="book-cover-edit"
+          aria-label="编辑封面"
+          title="编辑封面"
+          onClick={(e) => {
+            e.stopPropagation()
+            setCoverEditorOpen(true)
+          }}
+        >
+          🎨 封面
+        </button>
+      </div>
       <button className="book-export" aria-label="导出这本书" title="导出这本书" onClick={handleExportBook}>
         ⬇
       </button>
@@ -52,6 +84,7 @@ function BookCard({ book }: { book: Book }) {
       >
         ×
       </button>
+      <CoverEditorModal book={book} open={coverEditorOpen} onClose={() => setCoverEditorOpen(false)} />
       {editing ? (
         <input
           className="book-title-edit"

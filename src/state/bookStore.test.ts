@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Editor } from '@tiptap/core'
 import { baseExtensions } from '../editor/schema'
-import { useBookStore, EMPTY_DOC, load, normalizeBook, normalizeLibrary, UNIVERSAL_BOX_ID } from './bookStore'
+import { useBookStore, EMPTY_DOC, load, normalizeBook, normalizeLibrary, UNIVERSAL_BOX_ID, isValidCover, type Cover } from './bookStore'
 
 beforeEach(() => {
   localStorage.clear()
@@ -564,5 +564,100 @@ describe('bookStore — 迁移 & normalizeLibrary', () => {
 
     // 已经是当前形状——内容应该原样不变（哪怕内部又 setItem 了一次，字符串也该完全一致）。
     expect(localStorage.getItem('card-writer:library')).toBe(raw)
+  })
+})
+
+// 自定义封面（Cover）：新增的可选属性，DATA-SAFETY 铁律要求——没设置过封面的
+// 书（老数据、新建的书）表现必须跟改动前完全一致；一本书的 doc/boxes/卡片
+// 数量不能因为这批改动少一张。
+describe('bookStore — 自定义封面 cover', () => {
+  const cover: Cover = { colors: ['#111111', '#222222', '#333333'], angle: 200, texture: false }
+
+  it('isValidCover：三个字符串颜色 + 可选 angle(number)/texture(boolean) 才算合法', () => {
+    expect(isValidCover(cover)).toBe(true)
+    expect(isValidCover({ colors: ['#111', '#222', '#333'] })).toBe(true)
+    expect(isValidCover(undefined)).toBe(false)
+    expect(isValidCover(null)).toBe(false)
+    expect(isValidCover({})).toBe(false)
+    expect(isValidCover({ colors: ['#111', '#222'] })).toBe(false) // 只有两个颜色
+    expect(isValidCover({ colors: [1, 2, 3] })).toBe(false) // 不是字符串
+    expect(isValidCover({ colors: ['#111', '#222', '#333'], angle: 'x' })).toBe(false)
+    expect(isValidCover({ colors: ['#111', '#222', '#333'], texture: 'x' })).toBe(false)
+  })
+
+  it('setBookCover 给指定书设置 cover、重新盖 updatedAt、并持久化；不碰 doc/boxes', () => {
+    const book = useBookStore.getState().addBook('新书')
+    const docBefore = book.doc
+    const boxesBefore = book.boxes
+    useBookStore.getState().setBookCover(book.id, cover)
+    const updated = useBookStore.getState().library.books.find((b) => b.id === book.id)!
+    expect(updated.cover).toEqual(cover)
+    expect(updated.doc).toBe(docBefore)
+    expect(updated.boxes).toBe(boxesBefore)
+    expect(updated.updatedAt).toBeDefined()
+    const raw = JSON.parse(localStorage.getItem('card-writer:library')!)
+    expect(raw.books.find((b: any) => b.id === book.id).cover).toEqual(cover)
+  })
+
+  it('clearBookCover 清掉 cover，回退到自动渐变（书上不再有 cover 字段）', () => {
+    const book = useBookStore.getState().addBook('新书')
+    useBookStore.getState().setBookCover(book.id, cover)
+    useBookStore.getState().clearBookCover(book.id)
+    const updated = useBookStore.getState().library.books.find((b) => b.id === book.id)!
+    expect(updated.cover).toBeUndefined()
+    const raw = JSON.parse(localStorage.getItem('card-writer:library')!)
+    expect(raw.books.find((b: any) => b.id === book.id).cover).toBeUndefined()
+  })
+
+  it('setBookCover 只改目标书，其它书的 cover/doc/boxes 原样不变', () => {
+    const bookA = useBookStore.getState().addBook('A')
+    const bookB = useBookStore.getState().addBook('B')
+    useBookStore.getState().setBookCover(bookA.id, cover)
+    const b = useBookStore.getState().library.books.find((x) => x.id === bookB.id)!
+    expect(b.cover).toBeUndefined()
+    expect(b.doc).toEqual(bookB.doc)
+    expect(b.boxes).toEqual(bookB.boxes)
+  })
+
+  it('DATA-SAFETY 迁移测试：一批老书（无 cover 字段，带卡片）经 normalizeLibrary 后，每一本书、每一张卡都原样健在，且能正常渲染（cover 缺失不抛出）', () => {
+    const oldLib = {
+      books: [
+        {
+          id: 'old-1',
+          title: '老书一',
+          doc: { type: 'doc', content: [{ type: 'card', attrs: { cardId: 'c1' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '卡片一' }] }] }, { type: 'card', attrs: { cardId: 'c2' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '卡片二' }] }] }] },
+          boxes: [{ id: 'bx1', name: '盒子', cards: [{ type: 'card', attrs: { cardId: 'boxed-1' }, content: [] }] }],
+        },
+        { id: 'old-2', title: '老书二', doc: EMPTY_DOC, boxes: [] },
+      ],
+      activeBookId: 'old-1',
+    }
+    const beforeSnapshot = JSON.parse(JSON.stringify(oldLib.books))
+
+    const lib = normalizeLibrary(oldLib)
+
+    expect(lib.books).toHaveLength(2)
+    expect(lib.books).toEqual(beforeSnapshot) // 每本书、每张卡完全不变（cover 缺失不影响其它字段）
+    expect(lib.books[0].doc.content).toHaveLength(2) // 两张卡都还在
+    expect(lib.books[0].boxes[0].cards).toHaveLength(1) // 盒子里的卡也还在
+    expect(lib.books[0].cover).toBeUndefined()
+    expect(lib.books[1].cover).toBeUndefined()
+  })
+
+  it('normalizeLibrary：带合法 cover 的书 —— cover 原样保留，doc/boxes 不受影响', () => {
+    const oldLib = {
+      books: [{ id: 'b1', title: '有封面的书', doc: EMPTY_DOC, boxes: [], cover }],
+      activeBookId: null,
+    }
+    const lib = normalizeLibrary(oldLib)
+    expect(lib.books[0].cover).toEqual(cover)
+    expect(lib.books[0].doc).toEqual(EMPTY_DOC)
+  })
+
+  it('normalizeBook：cover 形状不对（脏数据）时丢弃，不抛出，其它字段不受影响', () => {
+    expect(() => normalizeBook({ id: 'x', title: 't', doc: EMPTY_DOC, boxes: [], cover: 'not-an-object' })).not.toThrow()
+    const b = normalizeBook({ id: 'x', title: 't', doc: EMPTY_DOC, boxes: [], cover: { colors: ['only-one'] } })
+    expect(b.cover).toBeUndefined()
+    expect(b.doc).toEqual(EMPTY_DOC)
   })
 })
