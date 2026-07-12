@@ -321,6 +321,24 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 .backup-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .backup-msg { font-size: 12px; color: var(--muted); }
 .backup-msg-error { color: #b5533c; }
+.local-snapshots { position: relative; }
+.local-snapshots-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 320px; max-width: 420px;
+  max-height: 260px; overflow-y: auto; background: var(--paper); border: 1px solid var(--hair);
+  border-radius: 8px; box-shadow: 0 10px 28px rgba(0,0,0,.12); padding: 6px;
+}
+.local-snapshots-empty { font-size: 12px; color: var(--muted); padding: 8px 10px; margin: 0; }
+.local-snapshots-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; font-size: 12px;
+}
+.local-snapshots-row:hover { background: var(--faint); }
+.local-snapshots-time { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.local-snapshots-desc { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.local-snapshots-restore {
+  border: 1px solid var(--faint); background: none; color: var(--muted); border-radius: 5px;
+  padding: 3px 8px; font-size: 11px; cursor: pointer; white-space: nowrap;
+}
+.local-snapshots-restore:hover { color: var(--ink); border-color: var(--hair); }
 .shelf-hint { color: var(--muted); text-align: center; padding: 96px 0; font-size: 14px; }
 .shelf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 26px; margin-bottom: 36px; }
 .book-card { position: relative; cursor: pointer; }

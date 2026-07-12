@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Editor } from '@tiptap/core'
 import { baseExtensions } from '../editor/schema'
 import { useBookStore, EMPTY_DOC, load, normalizeBook, normalizeLibrary, UNIVERSAL_BOX_ID } from './bookStore'
@@ -499,5 +499,48 @@ describe('bookStore — 迁移 & normalizeLibrary', () => {
     }
     const b = normalizeBook(raw)
     expect(b.boxes).toEqual([])
+  })
+
+  it('store 初始化时，若 load() 的迁移结果跟 localStorage 里原始形状不同，立刻落盘（不用等用户下一次改动）', async () => {
+    localStorage.clear()
+    // 老格式：没有 universalBoxes 字段，且用的是 chapters（老正文格式），两者都会
+    // 被 normalizeLibrary/normalizeBook 迁移成新形状。
+    const oldFormat = {
+      books: [
+        {
+          id: 'old-book',
+          title: '旧书',
+          chapters: [{ id: 'c1', title: '第一章', doc: { type: 'doc', content: [{ type: 'card', content: [{ type: 'paragraph' }] }] } }],
+        },
+      ],
+      activeBookId: null,
+    }
+    localStorage.setItem('card-writer:library', JSON.stringify(oldFormat))
+
+    // vi.resetModules() 让下面这次 import 拿到一个全新的模块实例，其内部的
+    // useBookStore = create(...) 会重新执行一遍初始化逻辑（包括 load() + 迁移后
+    // 立刻 persist 的那段），而不是复用文件顶部早就初始化好的单例。
+    vi.resetModules()
+    await import('./bookStore')
+
+    const stored = JSON.parse(localStorage.getItem('card-writer:library')!)
+    // 迁移后的形状已经落盘：universalBoxes 补上了，books[0] 也从 chapters 变成了 doc。
+    expect(stored.universalBoxes).toBeDefined()
+    expect(Array.isArray(stored.universalBoxes)).toBe(true)
+    expect(stored.books[0].doc).toBeDefined()
+    expect(stored.books[0].chapters).toBeUndefined()
+  })
+
+  it('store 初始化时，若 localStorage 里已经是当前形状：不做多余的落盘（对象内容不变）', async () => {
+    localStorage.clear()
+    const current = { books: [{ id: 'b1', title: '书', doc: EMPTY_DOC, boxes: [], updatedAt: '2026-01-01T00:00:00.000Z' }], activeBookId: null, universalBoxes: [{ id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [] }] }
+    const raw = JSON.stringify(current)
+    localStorage.setItem('card-writer:library', raw)
+
+    vi.resetModules()
+    await import('./bookStore')
+
+    // 已经是当前形状——内容应该原样不变（哪怕内部又 setItem 了一次，字符串也该完全一致）。
+    expect(localStorage.getItem('card-writer:library')).toBe(raw)
   })
 })

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import { mergeImported, mergeUniversalCards } from './backup'
+import { pushSnapshot, decideSnapshot } from './snapshots'
 
 export const EMPTY_DOC = { type: 'doc', content: [{ type: 'card', content: [{ type: 'paragraph' }] }] }
 const OLD_BOOK_KEY = 'card-writer:book'
@@ -163,16 +164,58 @@ export function load(): Library {
   return { books: [freshBook()], activeBookId: null, universalBoxes: defaultUniversalBoxes() }
 }
 
+// 自动本地快照的最后一道保险（snapshots.ts）挂在这里：每次真正落盘之后，顺手判断
+// 要不要滚动快照一份（含"掉书前强制快照上一次"的 shrink-guard）。这两个模块级变量
+// 记录"上一次持久化的 library"和"上一次落快照的时间"，供 decideSnapshot 做决策；
+// __resetForTest 会把它们清零，避免测试之间互相污染。
+let prevPersistedLibrary: Library | null = null
+let lastSnapshotTs: number | null = null
+
 function persist(library: Library) {
   try {
     localStorage.setItem(LIBRARY_KEY, JSON.stringify(library))
   } catch (e) {
     console.warn('persist failed', e)
   }
+
+  // 快照这一步绝不能抛出、也绝不能影响到上面这次真正的落盘——已经在 try 之外
+  // 执行过了。这里再包一层 try/catch，任何差错都吞掉。
+  try {
+    const now = Date.now()
+    const target = decideSnapshot(prevPersistedLibrary, library, now, lastSnapshotTs)
+    if (target) {
+      pushSnapshot(target, now)
+      lastSnapshotTs = now
+    }
+  } catch (e) {
+    console.warn('snapshot failed', e)
+  } finally {
+    prevPersistedLibrary = library
+  }
 }
 
 export const useBookStore = create<BookState>((set, get) => {
+  // load() 内部做了不少形状迁移（老单本书→library、补 universalBoxes、chapters→doc
+  // 等）。这些迁移只发生在内存里——如果迁移后的新形状一直没被写回
+  // localStorage（用户这次打开只是看看、什么都没改就关掉了），下次真正需要读它的
+  // 地方（比如 sync、比如浏览器崩溃恢复）读到的还是老形状。这里在启动时比较"读到
+  // 的原始字符串"跟"迁移后的样子"，不一致就立刻 persist 一次，让 localStorage
+  // 永远反映当前形状，不留旧样子在那"潜伏"。
+  let rawStoredBeforeMigration: string | null = null
+  try {
+    rawStoredBeforeMigration = localStorage.getItem(LIBRARY_KEY)
+  } catch {
+    rawStoredBeforeMigration = null
+  }
   const initialLibrary = load()
+  try {
+    if (rawStoredBeforeMigration !== JSON.stringify(initialLibrary)) {
+      persist(initialLibrary)
+    }
+  } catch {
+    // 迁移落盘失败不影响启动——内存里已经是最新形状，之后任何一次改动触发的
+    // persist() 都会把它写下去。
+  }
 
   function withActiveBook<T>(mutate: (book: Book) => { book: Book; result: T }): T | undefined {
     const book = get().activeBook()
@@ -335,6 +378,10 @@ export const useBookStore = create<BookState>((set, get) => {
     __resetForTest: () => {
       const book = freshBook()
       const library: Library = { books: [book], activeBookId: null, universalBoxes: defaultUniversalBoxes() }
+      // 测试之间互相隔离：不让上一个测试遗留的"上一次 library / 上一次快照时间"
+      // 污染这一个测试的 shrink-guard / 节流判断。
+      prevPersistedLibrary = null
+      lastSnapshotTs = null
       persist(library)
       set({ library, shell: 'shelf', viewKind: 'doc', activeBoxId: null, carried: null })
     },

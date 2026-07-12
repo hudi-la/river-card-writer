@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { BackupControls } from './BackupControls'
 import { useBookStore, EMPTY_DOC, UNIVERSAL_BOX_ID } from '../state/bookStore'
 import { exportLibrary } from '../state/backup'
+import { pushSnapshot } from '../state/snapshots'
 
 beforeEach(() => {
   localStorage.clear()
@@ -199,5 +200,49 @@ describe('BackupControls', () => {
     await waitFor(() => expect(screen.getByText(/导入了 0 本书/)).toBeTruthy())
     const cards = useBookStore.getState().library.universalBoxes.find((b) => b.id === UNIVERSAL_BOX_ID)!.cards
     expect(cards).toContainEqual(oldCard)
+  })
+})
+
+describe('BackupControls — 本地快照（自动快照的非破坏性恢复入口）', () => {
+  it('渲染"本地快照"按钮；点开显示最近快照列表（时间 + 书名/张数）', async () => {
+    localStorage.clear()
+    useBookStore.getState().__resetForTest()
+    pushSnapshot(
+      { books: [{ id: 'snap-b1', title: '快照里的书', doc: EMPTY_DOC, boxes: [] }], activeBookId: null, universalBoxes: [] },
+      1_700_000_000_000
+    )
+
+    render(<BackupControls />)
+    expect(screen.getByText('⟲ 本地快照')).toBeTruthy()
+    // 打开前不应该已经把菜单渲染出来
+    expect(screen.queryByText(/快照里的书/)).toBeFalsy()
+
+    await userEvent.click(screen.getByText('⟲ 本地快照'))
+    expect(await screen.findByText(/快照里的书/)).toBeTruthy()
+  })
+
+  it('点某条快照的"恢复"：把快照里缺失的书找补回来，当前书一本不少（非破坏性）', async () => {
+    localStorage.clear()
+    useBookStore.getState().__resetForTest()
+    const survivor = useBookStore.getState().library.books[0]
+
+    // 构造一份"当年还在、现在已经被删掉"的书快照：跟 survivor 一起、外加一本已删除的书。
+    const removedBook = { id: 'removed-book', title: '被删掉的书', doc: EMPTY_DOC, boxes: [] }
+    pushSnapshot(
+      { books: [survivor, removedBook], activeBookId: null, universalBoxes: useBookStore.getState().library.universalBoxes },
+      1_700_000_000_001
+    )
+
+    render(<BackupControls />)
+    await userEvent.click(screen.getByText('⟲ 本地快照'))
+    const restoreBtns = await screen.findAllByText('恢复')
+    await userEvent.click(restoreBtns[0])
+
+    await waitFor(() => expect(screen.getByText(/已从快照恢复/)).toBeTruthy())
+    const books = useBookStore.getState().library.books
+    // 找回了被删掉的书
+    expect(books.some((b) => b.id === 'removed-book')).toBe(true)
+    // 当前原有的书（survivor）一本不少、也没被重复导入
+    expect(books.filter((b) => b.id === survivor.id)).toHaveLength(1)
   })
 })
