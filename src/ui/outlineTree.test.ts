@@ -46,7 +46,9 @@ describe('outlineTreeFromDoc', () => {
     expect(rows[0]).toMatchObject({ kind: 'heading', level: 1, text: '章A', note: '章节说明', cardIndex: 0 })
   })
 
-  it('block 行 text/preview 取自卡片纯文本，note 取自 card.note', () => {
+  // Phase 14 Task 1 #4：preview 不再在这里固定截到 N 字——完整文字原样保留，
+  // 交给渲染层的单行省略容器（.outline-preview-ellipsis）按实际行宽截断。
+  it('block 行 text/preview 取自卡片纯文本（preview 是完整文本，不截断），note 取自 card.note', () => {
     const doc = {
       type: 'doc',
       content: [card('c0', [paragraph('这是一段比较长的正文用于测试预览截断效果')], { note: '块备注' })],
@@ -55,7 +57,7 @@ describe('outlineTreeFromDoc', () => {
     expect(rows[0].kind).toBe('block')
     expect(rows[0].note).toBe('块备注')
     expect(rows[0].text).toBe('这是一段比较长的正文用于测试预览截断效果')
-    expect(rows[0].preview).toBe('这是一段比较长的正文用于测试预览'.slice(0, 14))
+    expect(rows[0].preview).toBe('这是一段比较长的正文用于测试预览截断效果')
   })
 
   it('空卡（无文字）preview 是空串', () => {

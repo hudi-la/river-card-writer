@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { LeftNav, outlineFromDoc } from './LeftNav'
 import { useBookStore, UNIVERSAL_BOX_ID } from '../state/bookStore'
 import { usePrefsStore } from '../state/prefsStore'
+import { autoCardColor } from '../editor/schema'
 
 // mock 掉 editorBridge：LeftNav 编辑 note 时只应该经它调 setHeadingNote/setCardNote，
 // 不直接碰 doc——mock 让我们断言调用参数，而不必真起一个 TipTap editor。
@@ -634,5 +635,89 @@ describe('LeftNav 目录折叠三角（Phase 13 Task 2）', () => {
     const triangle = within(chap1Row).getByLabelText('折叠')
     await userEvent.click(triangle)
     expect(toggleCollapsed).toHaveBeenCalledWith(0)
+  })
+})
+
+// Phase 14 Task 1：目录小改——折叠记号 + 统色 + 预览按宽度截断加省略号。
+describe('LeftNav 目录小改（Phase 14 Task 1）', () => {
+  it('#1 折叠的标题行带折叠记号 class，展开的不带', () => {
+    useBookStore.getState().updateDoc(docChapterWithBlocksAndSection(true))
+    const { container } = render(<LeftNav />)
+    const chap1Row = container.querySelector('[data-outline-row-index="0"]') as HTMLElement
+    expect(chap1Row.querySelector('.outline-collapsed')).toBeTruthy()
+  })
+
+  it('#1 未折叠的标题行不带折叠记号 class', () => {
+    useBookStore.getState().updateDoc(docChapterWithBlocksAndSection(false))
+    const { container } = render(<LeftNav />)
+    const chap1Row = container.querySelector('[data-outline-row-index="0"]') as HTMLElement
+    expect(chap1Row.querySelector('.outline-collapsed')).toBeNull()
+  })
+
+  it('#1 详细视图里折叠的标题行也带折叠记号 class', async () => {
+    useBookStore.getState().updateDoc(docChapterWithBlocksAndSection(true))
+    render(<LeftNav />)
+    await userEvent.click(screen.getByText('详细'))
+    const chap1Card = screen.getByText('第一章').closest('.outline-card') as HTMLElement
+    expect(chap1Card.className).toContain('outline-collapsed')
+  })
+
+  it('#2 目录行底色读该卡片的手动 color', () => {
+    const doc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'card',
+          attrs: { cardId: 'c0', color: '#ff0000' },
+          content: [{ type: 'paragraph', attrs: { style: 'chapter' }, content: [{ type: 'text', text: '第一章' }] }],
+        },
+      ],
+    }
+    useBookStore.getState().updateDoc(doc)
+    const { container } = render(<LeftNav />)
+    const row = container.querySelector('[data-outline-row-index="0"]') as HTMLElement
+    expect(row.getAttribute('data-row-color')).toBe('#ff0000')
+  })
+
+  it('#2 没手动设色时目录行底色用 autoCardColor(cardId)', () => {
+    useBookStore.getState().updateDoc(docWithChapterAndBlocks())
+    const { container } = render(<LeftNav />)
+    const headingRow = container.querySelector('[data-outline-row-index="0"]') as HTMLElement
+    const blockRow = container.querySelector('[data-outline-row-index="1"]') as HTMLElement
+    expect(headingRow.getAttribute('data-row-color')).toBe(autoCardColor('c0'))
+    expect(blockRow.getAttribute('data-row-color')).toBe(autoCardColor('c1'))
+  })
+
+  it('#2 详细视图里 outline-card 同样带 data-row-color', async () => {
+    useBookStore.getState().updateDoc(docWithChapterAndBlocks())
+    render(<LeftNav />)
+    await userEvent.click(screen.getByText('详细'))
+    const chap1Card = screen.getByText('第一章').closest('.outline-card') as HTMLElement
+    expect(chap1Card.getAttribute('data-row-color')).toBe(autoCardColor('c0'))
+  })
+
+  it('#4 块行预览容器带单行省略 class，标题行不带', () => {
+    useBookStore.getState().updateDoc(docWithChapterAndBlocks())
+    const { container } = render(<LeftNav />)
+    const headingRow = container.querySelector('[data-outline-row-index="0"]') as HTMLElement
+    const blockRow = container.querySelector('[data-outline-row-index="1"]') as HTMLElement
+    const headingSpan = headingRow.querySelector('.outline-row-text') as HTMLElement
+    const blockSpan = blockRow.querySelector('.outline-row-text') as HTMLElement
+    expect(blockSpan.className).toContain('outline-preview-ellipsis')
+    expect(headingSpan.className).not.toContain('outline-preview-ellipsis')
+  })
+
+  it('#4 块行预览不再固定截断到14字——完整文字进 DOM，交给 CSS 按宽度截断', () => {
+    const longText = '一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十'
+    const doc = {
+      type: 'doc',
+      content: [
+        { type: 'card', attrs: { cardId: 'c0' }, content: [{ type: 'paragraph', attrs: { style: 'chapter' }, content: [{ type: 'text', text: '章' }] }] },
+        { type: 'card', attrs: { cardId: 'c1' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: longText }] }] },
+      ],
+    }
+    useBookStore.getState().updateDoc(doc)
+    render(<LeftNav />)
+    expect(screen.getByText(longText)).toBeTruthy()
   })
 })

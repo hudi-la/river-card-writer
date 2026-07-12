@@ -1,9 +1,10 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { useBookStore, UNIVERSAL_BOX_ID, type Box } from '../state/bookStore'
 import { usePrefsStore } from '../state/prefsStore'
 import { useEditorBridge } from '../state/editorBridge'
 import { cardText } from './BoxView'
+import { autoCardColor } from '../editor/schema'
 
 // 大纲项：从 book.doc 里所有 style==='chapter'（章，level 1）/'h1'（节，level 2）的
 // 段落派生出来。index 是该标题在"所有章/节标题"里的序号（不分级别），点击大纲项时
@@ -61,12 +62,26 @@ export type OutlineRow = {
   // 段落的 collapsed 属性（跟 schema.ts 的 toggleCollapsed/hiddenCardIndices 是
   // 同一个属性）。block 行恒为 false，不参与折叠。
   collapsed: boolean
+  // 该行对应卡片的底色（Phase 14 Task 1 #2）——跟正文 CardView 同一套规则：手动
+  // 设了 color 就用它，否则按 cardId 走 autoCardColor 稳定哈希出默认色。目录和
+  // 正文因此永远读的是同一份颜色，不会各算各的。
+  bg: string
+  // 是否手动设色——决定色带透明度档位，跟正文 .river .card[data-color]（16%）
+  // vs 没设色时的默认（13%）两档保持一致。
+  bgExplicit: boolean
 }
-
-const BLOCK_PREVIEW_LEN = 14
 
 function headingLevel(style: string): 1 | 2 | 3 {
   return style === 'chapter' ? 1 : style === 'h1' ? 2 : 3
+}
+
+// 读一张卡的底色 + 是否手动设色——heading 行、block 行共用同一份逻辑，都是
+// 直接读它所在的卡（doc.content[cardIndex]），跟 CardView.tsx 里 `bg = color ||
+// autoCardColor(cardId)` 完全同一条公式，保证目录色带 = 正文色带。
+function cardBg(card: any): { bg: string; explicit: boolean } {
+  const cardId: string = card?.attrs?.cardId || ''
+  const explicitColor: string | null = card?.attrs?.color || null
+  return { bg: explicitColor || autoCardColor(cardId), explicit: !!explicitColor }
 }
 
 export function outlineTreeFromDoc(doc: any): OutlineRow[] {
@@ -75,6 +90,7 @@ export function outlineTreeFromDoc(doc: any): OutlineRow[] {
   const cards = doc?.content || []
   for (let cardIndex = 0; cardIndex < cards.length; cardIndex++) {
     const card = cards[cardIndex]
+    const { bg, explicit: bgExplicit } = cardBg(card)
     const paragraphs = card?.content || []
     const headingParagraph = paragraphs.find((p: any) => {
       const style = p?.attrs?.style
@@ -90,19 +106,25 @@ export function outlineTreeFromDoc(doc: any): OutlineRow[] {
         preview: '',
         cardIndex,
         collapsed: !!headingParagraph.attrs?.collapsed,
+        bg,
+        bgExplicit,
       })
       currentHeadingLevel = level
     } else {
       const text = cardText(card)
-      const preview = text ? (text.length > BLOCK_PREVIEW_LEN ? text.slice(0, BLOCK_PREVIEW_LEN) : text) : ''
+      // 预览不再在 JS 里固定截到 N 字（Phase 14 Task 1 #4）——完整文字进 DOM，
+      // 交给渲染时的单行省略容器（.outline-preview-ellipsis）按实际行宽截断，
+      // 宽一点的栏能显示更多字，窄栏自动少显示，都以「…」收尾。
       rows.push({
         level: Math.min(currentHeadingLevel + 1, 3) as 1 | 2 | 3,
         kind: 'block',
         text,
         note: card?.attrs?.note || '',
-        preview,
+        preview: text,
         cardIndex,
         collapsed: false,
+        bg,
+        bgExplicit,
       })
     }
   }
@@ -138,14 +160,48 @@ function outlineRowLabel(row: OutlineRow): { text: string; faint: boolean } {
   return { text: '（空块）', faint: true }
 }
 
+// 折叠记号（Phase 14 Task 1 #1）：只加在收起的标题行上——展开的标题行、所有
+// 块行都不带这个 class。视觉记号本身（淡"…"）走 CSS ::after，挂在这个 class
+// 的后代选择器上，见 styles.css。
+const OUTLINE_COLLAPSED_CLASS = 'outline-collapsed'
+// 手动设色的行（Phase 14 Task 1 #2）：色带透明度要跟正文 .river .card[data-color]
+// 对齐到更深的一档（16% vs 默认 13%），靠这个 class 切换 color-mix 的百分比。
+const OUTLINE_COLOR_EXPLICIT_CLASS = 'outline-color-explicit'
+
 function outlineRowClassName(row: OutlineRow): string {
   const kindClass = row.kind === 'heading' ? 'outline-heading' : 'outline-block'
-  return `chap outline-row ${kindClass} outline-level-${row.level}`
+  const collapsedClass = row.kind === 'heading' && row.collapsed ? ` ${OUTLINE_COLLAPSED_CLASS}` : ''
+  const colorClass = row.bgExplicit ? ` ${OUTLINE_COLOR_EXPLICIT_CLASS}` : ''
+  return `chap outline-row ${kindClass} outline-level-${row.level}${collapsedClass}${colorClass}`
 }
 
 function outlineCardClassName(row: OutlineRow): string {
   const kindClass = row.kind === 'block' ? ' outline-card-block' : ''
-  return `outline-card outline-card-level-${row.level}${kindClass}`
+  const collapsedClass = row.kind === 'heading' && row.collapsed ? ` ${OUTLINE_COLLAPSED_CLASS}` : ''
+  const colorClass = row.bgExplicit ? ` ${OUTLINE_COLOR_EXPLICIT_CLASS}` : ''
+  return `outline-card outline-card-level-${row.level}${kindClass}${collapsedClass}${colorClass}`
+}
+
+// 这一行的底色变量——统一走 CSS 自定义属性 --row-bg，styles.css 用同一条
+// color-mix 公式（跟正文 .river .card 一致）算出实际背景色。
+function outlineRowStyle(row: OutlineRow): CSSProperties {
+  return { ['--row-bg' as any]: row.bg }
+}
+
+// 块行的预览/说明容器要单行省略截断（Phase 14 Task 1 #4），标题行不变——用一个
+// 独立 class 而不是复用已有的 .outline-row-text，方便单独断言、单独调整样式。
+function outlineRowTextClassName(row: OutlineRow, faint: boolean): string {
+  let cls = 'outline-row-text'
+  if (faint) cls += ' faint'
+  if (row.kind === 'block') cls += ' outline-preview-ellipsis'
+  return cls
+}
+
+// 详细视图卡片标题：跟简略视图同样的省略规则 + 折叠记号挂载点。
+function outlineCardTitleTextClassName(row: OutlineRow): string {
+  let cls = 'outline-card-title-text'
+  if (row.kind === 'block') cls += ' outline-preview-ellipsis'
+  return cls
 }
 
 // hover 便签 / 详细视图卡片里的 note 文本框都用这个：本地 state 撑显示，失焦才
@@ -699,6 +755,8 @@ export function LeftNav() {
                   className={outlineCardClassName(row)}
                   data-outline-row-index={i}
                   data-outline-kind={row.kind}
+                  data-row-color={row.bg}
+                  style={outlineRowStyle(row)}
                 >
                   <div className="outline-card-title" onClick={() => handleRowClick(row, headingIndices[i])}>
                     {row.kind === 'heading' && (
@@ -708,7 +766,12 @@ export function LeftNav() {
                         onToggle={() => bridgeToggleCollapsed(row.cardIndex)}
                       />
                     )}
-                    <span>{row.kind === 'heading' ? row.text || '（无标题）' : row.preview || '（空块）'}</span>
+                    <span className={outlineCardTitleTextClassName(row)}>
+                      {row.kind === 'heading' ? row.text || '（无标题）' : row.preview || '（空块）'}
+                    </span>
+                    {row.kind === 'heading' && row.collapsed && (
+                      <span className="outline-collapsed-marker" aria-hidden="true">⋯</span>
+                    )}
                   </div>
                   <NoteField
                     className="outline-card-note"
@@ -727,10 +790,15 @@ export function LeftNav() {
                     className="outline-item-wrap"
                     data-outline-row-index={i}
                     data-outline-kind={row.kind}
+                    data-row-color={row.bg}
+                    style={outlineRowStyle(row)}
                     onMouseEnter={(e) => openHover(row, headingIndices[i], e.currentTarget)}
                     onMouseLeave={scheduleCloseHover}
                   >
-                    <div className={outlineRowClassName(row)} onClick={() => handleRowClick(row, headingIndices[i])}>
+                    <div
+                      className={outlineRowClassName(row)}
+                      onClick={() => handleRowClick(row, headingIndices[i])}
+                    >
                       {row.kind === 'heading' && (
                         <OutlineCollapseTriangle
                           row={row}
@@ -738,7 +806,10 @@ export function LeftNav() {
                           onToggle={() => bridgeToggleCollapsed(row.cardIndex)}
                         />
                       )}
-                      <span className={'outline-row-text' + (label.faint ? ' faint' : '')}>{label.text}</span>
+                      <span className={outlineRowTextClassName(row, label.faint)}>{label.text}</span>
+                      {row.kind === 'heading' && row.collapsed && (
+                        <span className="outline-collapsed-marker" aria-hidden="true">⋯</span>
+                      )}
                     </div>
                   </div>
                 )

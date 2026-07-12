@@ -83,6 +83,33 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
 }
 .outline-heading .outline-row-text { flex:1; min-width:0; }
 .outline-row-text.faint { opacity:.55; font-style:italic; }
+/* 统色（Phase 14 Task 1 #2）：每个目录行读它对应卡片的颜色（手动 color 或
+   autoCardColor(cardId)），透明度跟正文 .river .card 的两档一致——没手动设色
+   13%，手动设色 16%（--row-bg 由 LeftNav.tsx 内联设置，一路继承到子元素）。目
+   录和正文用的是同一份颜色计算 + 同一条 color-mix 公式，两边看起来才像一套。 */
+.outline-row {
+  background: color-mix(in srgb, var(--row-bg, transparent) 13%, transparent);
+}
+.outline-row.outline-color-explicit {
+  background: color-mix(in srgb, var(--row-bg) 16%, transparent);
+}
+/* 折叠记号（Phase 14 Task 1 #1）：只有收起的标题行才带 .outline-collapsed（挂在
+   行容器上，供样式/测试选取），视觉记号是标题后一个独立的淡"⋯"——独立的 flex
+   子项（flex:none），不参与标题文字那一截的宽度收缩/省略号竞争，所以哪怕标题本
+   身已经因为太长被截断，这个记号也始终稳稳地跟在后面，不会被吞掉。展开的标题、
+   所有块行都不渲染这个记号。 */
+.outline-collapsed-marker {
+  flex: none;
+  margin-left: 4px;
+  color: var(--muted);
+  opacity: .55;
+}
+/* 预览按宽度截断（Phase 14 Task 1 #4）：块行不再由 JS 固定截到 N 字，完整文字
+   进 DOM，交给这层单行省略容器按实际渲染宽度截断——栏宽一点显示的字就多一点，
+   都以「…」收尾，比固定字数更贴合实际排版。 */
+.outline-preview-ellipsis {
+  display:block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
 /* 目录标题行的折叠三角（Phase 13 Task 2）：跟 box-chevron 同一套尺寸感，独立
    热区（<button>），不参与目录拖拽（拖拽 pointerdown 处理器排除 button）、点击
    自己 stopPropagation，不冒泡到行的 click-to-scroll。没有后代的标题（比如空
@@ -140,9 +167,14 @@ html.outline-drag-active, html.outline-drag-active * { user-select:none !importa
 }
 .note-popover-textarea:focus, .outline-card-note:focus { outline:none; border-color:var(--thread, #7fa3c4); }
 
-/* 详细视图：每条铺成一张小卡，标题在上、说明直接摊开在下，像缩略图。 */
+/* 详细视图：每条铺成一张小卡，标题在上、说明直接摊开在下，像缩略图。背景色跟
+   简略视图的 .outline-row 同一套 color-mix 公式（见上面 #2 的注释）。 */
 .outline-card {
   padding:8px; margin-bottom:8px; border:1px solid var(--faint); border-radius:6px;
+  background: color-mix(in srgb, var(--row-bg, transparent) 13%, transparent);
+}
+.outline-card.outline-color-explicit {
+  background: color-mix(in srgb, var(--row-bg) 16%, transparent);
 }
 .outline-card-level-2 { margin-left:16px; }
 .outline-card-level-3 { margin-left:32px; }
@@ -151,6 +183,7 @@ html.outline-drag-active, html.outline-drag-active * { user-select:none !importa
   display:flex; align-items:center; gap:4px;
   padding:0 0 6px; color:var(--ink); font-weight:600; cursor:pointer; font-size:.95em;
 }
+.outline-card-title-text { flex:1; min-width:0; }
 .outline-card-note { min-height:44px; }
 .page { padding:36px 0; display:flex; justify-content:center; position:relative; }
 .river-wrap { width: min(var(--reading-measure), 96%); }
