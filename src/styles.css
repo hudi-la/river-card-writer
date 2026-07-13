@@ -172,9 +172,12 @@ html.outline-drag-active, html.outline-drag-active * { user-select:none !importa
 /* 目录头：sticky 吸在栏顶，实底色让下方大纲行滚过时被盖住。margin 负值 + 同量
    padding 让它横跨整条栏宽（含 .rail 的 12px 侧内边距），行不会从侧缝透出。 */
 .rail-outline-head {
-  position: sticky; top: 0; z-index: 5; background: var(--paper);
+  position: sticky; top: 0; z-index: 5; box-sizing: border-box;
+  height: var(--topbar-h, 52px);
+  background: color-mix(in srgb, var(--paper) 85%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  margin: 0 -12px 10px; padding: 16px 12px 8px; border-bottom: 1px solid var(--faint);
+  margin: 0 -12px 10px; padding: 0 12px; border-bottom: 1px solid var(--faint);
 }
 .rail-outline-head .rlabel { margin: 0; }
 .outline-arrange-btn {
@@ -254,10 +257,14 @@ html.outline-drag-active, html.outline-drag-active * { user-select:none !importa
 .river-wrap .river { width: 100%; }
 /* sticky 顶栏：往下滚正文时吸在视口顶。三栏网格 1fr auto 1fr 让书名精确居中；
    半透明毛玻璃底，正文从下面滚过时朦胧透出。 */
+/* 顶栏统一高度 var(--topbar-h)：左栏「目录」头和正文顶栏同高、底部 1px 描边
+   因此连成一条不断裂的直线（中间只被 .rail 的列分隔线竖切一下），两条同一种
+   半透明毛玻璃底——整条顶看起来是一整片、而不是错开的两截。 */
 .workspace-topbar {
   position: sticky; top: 0; z-index: 20; width: 100%; box-sizing: border-box;
+  height: var(--topbar-h, 52px);
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
-  padding: 10px 24px; margin-bottom: 26px;
+  padding: 0 24px; margin-bottom: 26px;
   background: color-mix(in srgb, var(--paper) 85%, transparent);
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--faint);
