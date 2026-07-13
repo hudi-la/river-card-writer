@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { createAuthStore } from './authStore'
+import { createAuthStore, friendlyAuthError } from './authStore'
 
 function makeMockClient(overrides: Partial<Record<'getSession' | 'onAuthStateChange' | 'signInWithOtp' | 'signOut', any>> = {}) {
   return {
@@ -55,11 +55,21 @@ describe('authStore', () => {
     expect(res).toEqual({ sent: true })
   })
 
-  it('signInWithEmail 失败：返回 { sent: false, error }', async () => {
+  it('signInWithEmail 失败：未知错误原样透传', async () => {
     const client = makeMockClient({ signInWithOtp: vi.fn().mockResolvedValue({ data: null, error: { message: '发送失败' } }) })
     const store = createAuthStore(client as any, true)
     const res = await store.getState().signInWithEmail('a@b.com')
     expect(res).toEqual({ sent: false, error: '发送失败' })
+  })
+
+  it('signInWithEmail 触发频率限制：映射成友好中文提示', async () => {
+    const client = makeMockClient({
+      signInWithOtp: vi.fn().mockResolvedValue({ data: null, error: { message: 'email rate limit exceeded' } }),
+    })
+    const store = createAuthStore(client as any, true)
+    const res = await store.getState().signInWithEmail('a@b.com')
+    expect(res.sent).toBe(false)
+    expect(res.error).toContain('发送太频繁')
   })
 
   it('cloudEnabled=false 时 signInWithEmail 直接返回 sent:false + error，不崩', async () => {
@@ -77,6 +87,12 @@ describe('authStore', () => {
     expect(client.auth.signOut).toHaveBeenCalled()
     expect(store.getState().status).toBe('signed-out')
     expect(store.getState().session).toBe(null)
+  })
+
+  it('friendlyAuthError：rate limit / 网络 / 未知错误分别映射', () => {
+    expect(friendlyAuthError('email rate limit exceeded')).toContain('发送太频繁')
+    expect(friendlyAuthError('Failed to fetch')).toContain('网络')
+    expect(friendlyAuthError('某个我们没见过的错误')).toBe('某个我们没见过的错误')
   })
 
   it('continueLocalOnly：置 localOnly=true 并持久化', () => {

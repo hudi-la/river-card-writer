@@ -33,6 +33,25 @@ export type AuthState = {
   __resetForTest: () => void
 }
 
+// Supabase auth 返回的是英文技术错误（如 "email rate limit exceeded"），
+// 这里映射成对用户友好的中文提示，未知错误原样透传。
+export function friendlyAuthError(raw: string): string {
+  const msg = raw.toLowerCase()
+  if (msg.includes('rate limit') || msg.includes('too many')) {
+    return '发送太频繁啦：登录邮件每小时能发的数量有限，请过一会儿（约一小时）再试，或先点下面「先本地用（不登录）」。'
+  }
+  if (msg.includes('invalid') && msg.includes('email')) {
+    return '邮箱格式好像不对，检查一下再发。'
+  }
+  if (msg.includes('signups not allowed') || msg.includes('signup is disabled')) {
+    return '这个邮箱还没开通登录，换一个或先点「先本地用（不登录）」。'
+  }
+  if (msg.includes('failed to fetch') || msg.includes('network')) {
+    return '网络没连上，检查一下网络再试。'
+  }
+  return raw
+}
+
 function loadLocalOnly(): boolean {
   try {
     return localStorage.getItem(LOCAL_ONLY_KEY) === '1'
@@ -74,7 +93,7 @@ export function createAuthStore(client: AuthClient | null = defaultClient, enabl
         email,
         options: { emailRedirectTo: window.location.origin },
       })
-      if (error) return { sent: false, error: error.message }
+      if (error) return { sent: false, error: friendlyAuthError(error.message) }
       return { sent: true }
     },
 
