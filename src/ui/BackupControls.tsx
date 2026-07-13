@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { Download, Upload, History } from 'lucide-react'
 import { useBookStore } from '../state/bookStore'
 import { exportLibrary, parseBackup, mergeUniversalBoxes } from '../state/backup'
 import { downloadTextFile, todayStamp } from './download'
@@ -52,10 +53,12 @@ export function BackupControls() {
   return (
     <div className="backup-controls">
       <button className="backup-btn" onClick={handleExport}>
-        ⬇ 导出备份
+        <Download size={16} strokeWidth={1.75} aria-hidden="true" />
+        导出备份
       </button>
       <button className="backup-btn" onClick={handleImportClick}>
-        ⬆ 从备份导入
+        <Upload size={16} strokeWidth={1.75} aria-hidden="true" />
+        从备份导入
       </button>
       <input
         ref={fileInputRef}
@@ -117,7 +120,8 @@ function LocalSnapshots({ onMessage }: { onMessage: (m: { text: string; error?: 
   return (
     <div className="local-snapshots">
       <button className="backup-btn" onClick={handleToggle}>
-        ⟲ 本地快照
+        <History size={16} strokeWidth={1.75} aria-hidden="true" />
+        本地快照
       </button>
       {open && (
         <div className="local-snapshots-menu">

@@ -26,7 +26,7 @@ describe('Workspace', () => {
     render(<Workspace />)
     await new Promise((r) => setTimeout(r, 0))
     expect(useBookStore.getState().activeBook()!.boxes.length).toBe(0)
-    await userEvent.click(screen.getByText('＋ 新盒子'))
+    await userEvent.click(screen.getByText('新盒子'))
     const boxes = useBookStore.getState().activeBook()!.boxes
     expect(boxes.length).toBe(1)
     expect(useBookStore.getState().viewKind).toBe('box')

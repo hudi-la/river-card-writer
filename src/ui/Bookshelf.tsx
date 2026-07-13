@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Plus, Palette, Trash2, Download, Package } from 'lucide-react'
 import { useBookStore, isValidCover, type Book, type Box } from '../state/bookStore'
 import { BackupControls } from './BackupControls'
 import { exportBook, sanitizeFilename } from '../state/backup'
@@ -68,11 +69,12 @@ function BookCard({ book }: { book: Book }) {
             setCoverEditorOpen(true)
           }}
         >
-          🎨 封面
+          <Palette size={13} strokeWidth={1.75} aria-hidden="true" />
+          封面
         </button>
       </div>
       <button className="book-export" aria-label="导出这本书" title="导出这本书" onClick={handleExportBook}>
-        ⬇
+        <Download size={13} strokeWidth={1.75} aria-hidden="true" />
       </button>
       <button
         className="book-delete"
@@ -82,7 +84,7 @@ function BookCard({ book }: { book: Book }) {
           if (window.confirm(`删除《${book.title}》？此操作不可撤销。`)) deleteBook(book.id)
         }}
       >
-        ×
+        <Trash2 size={13} strokeWidth={1.75} aria-hidden="true" />
       </button>
       <CoverEditorModal book={book} open={coverEditorOpen} onClose={() => setCoverEditorOpen(false)} />
       {editing ? (
@@ -136,8 +138,13 @@ function ShelfAddBookTile() {
         openBook(book.id)
       }}
     >
-      <div className="book-cover shelf-add-cover" aria-hidden="true">＋</div>
-      <p className="book-title shelf-add-label">＋ 新书</p>
+      <div className="book-cover shelf-add-cover" aria-hidden="true">
+        <Plus size={28} strokeWidth={1.75} />
+      </div>
+      <p className="book-title shelf-add-label">
+        <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
+        新书
+      </p>
     </div>
   )
 }
@@ -158,7 +165,9 @@ function UniversalBoxEntry({ box, onOpen }: { box: Box; onOpen: (id: string) => 
 
   return (
     <div className="universal-box-entry" onClick={() => !editing && onOpen(box.id)}>
-      <span className="universal-box-icon" aria-hidden="true">⟡</span>
+      <span className="universal-box-icon" aria-hidden="true">
+        <Package size={14} strokeWidth={1.75} />
+      </span>
       {editing ? (
         <input
           className="universal-box-name-edit"
@@ -206,7 +215,8 @@ function UniversalBoxSection({ onOpen }: { onOpen: (id: string) => void }) {
         <UniversalBoxEntry key={box.id} box={box} onOpen={onOpen} />
       ))}
       <div className="universal-box-add" onClick={() => addUniversalBox('通用盒子')}>
-        ＋ 新通用盒子
+        <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
+        新通用盒子
       </div>
     </div>
   )

@@ -1,5 +1,6 @@
-import { useRef, useState, useEffect, type CSSProperties, type RefObject, type MutableRefObject } from 'react'
+import { useRef, useState, useEffect, type CSSProperties, type RefObject, type MutableRefObject, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { Plus, GripVertical, ChevronDown, ChevronRight, Package } from 'lucide-react'
 import { useBookStore, type Box } from '../state/bookStore'
 import { useEditorBridge } from '../state/editorBridge'
 import { cardText, UniversalBoxModal } from './BoxView'
@@ -365,7 +366,7 @@ export const OUTLINE_DRAG_HANDLE_SELECTOR = '[data-outline-drag-handle]'
 export function OutlineDragHandle() {
   return (
     <span className="outline-drag-handle" data-outline-drag-handle aria-hidden="true" title="拖动排序">
-      ⠿
+      <GripVertical size={14} strokeWidth={1.75} />
     </span>
   )
 }
@@ -385,13 +386,19 @@ export function OutlineCollapseTriangle({
       type="button"
       className="outline-collapse-triangle"
       aria-label={row.collapsed ? '展开' : '折叠'}
+      aria-expanded={!row.collapsed}
+      data-collapsed={row.collapsed}
       onClick={(e) => {
         e.stopPropagation()
         e.preventDefault()
         onToggle()
       }}
     >
-      {row.collapsed ? '▸' : '▾'}
+      {row.collapsed ? (
+        <ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" />
+      ) : (
+        <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
+      )}
     </button>
   )
 }
@@ -832,7 +839,8 @@ export function LeftNav() {
         <>
           <p className="outline-hint">还没有章节标题</p>
           <div className="add" onClick={() => addChapter()}>
-            ＋ 新章节
+            <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
+            新章节
           </div>
         </>
       ) : (
@@ -871,7 +879,8 @@ export function LeftNav() {
             )
           })}
           <div className="add" onClick={() => addChapter()}>
-            ＋ 新章节
+            <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
+            新章节
           </div>
         </>
       )}
@@ -916,7 +925,8 @@ export function LeftNav() {
           if (b) openBox(b.id)
         }}
       >
-        ＋ 新盒子
+        <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
+        新盒子
       </div>
       {/* 通用盒子不属于本书，跟本书的盒子隔一条浅分隔线，并带一个共享图标——
           提示这是跨所有书共享的同一个盒子，而不是本书的第 N 个盒子。Phase 14
@@ -934,7 +944,7 @@ export function LeftNav() {
           onCarryCard={(cardId) => carry(box.id, cardId)}
           onRename={(name) => renameUniversalBox(box.id, name)}
           opensOverlay
-          icon="⟡"
+          icon={<Package size={14} strokeWidth={1.75} />}
           extraClassName="universal-box"
         />
       ))}
@@ -982,7 +992,7 @@ function BoxRow({
   onCarryCard: (cardId: string) => void
   onRename: (name: string) => void
   opensOverlay?: boolean
-  icon?: string
+  icon?: ReactNode
   extraClassName?: string
 }) {
   const cards = box.cards ?? []
@@ -1034,12 +1044,17 @@ function BoxRow({
         <span
           className="box-chevron"
           aria-label={collapsed ? '展开' : '折叠'}
+          data-collapsed={collapsed}
           onClick={(e) => {
             e.stopPropagation()
             onToggleCollapsed()
           }}
         >
-          {collapsed ? '▸' : '▾'}
+          {collapsed ? (
+            <ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" />
+          ) : (
+            <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
+          )}
         </span>
         {icon && (
           <span className="universal-box-icon" aria-hidden="true">

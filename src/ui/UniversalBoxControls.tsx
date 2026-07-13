@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { Download, Upload } from 'lucide-react'
 import { useBookStore, UNIVERSAL_BOX_ID } from '../state/bookStore'
 import { exportUniversalBox, parseUniversalExport } from '../state/backup'
 import { downloadTextFile, todayStamp } from './download'
@@ -44,10 +45,12 @@ export function UniversalBoxControls() {
   return (
     <div className="backup-controls universal-box-controls">
       <button className="backup-btn" onClick={handleExport}>
-        ⬇ 导出
+        <Download size={16} strokeWidth={1.75} aria-hidden="true" />
+        导出
       </button>
       <button className="backup-btn" onClick={handleImportClick}>
-        ⬆ 导入
+        <Upload size={16} strokeWidth={1.75} aria-hidden="true" />
+        导入
       </button>
       <input
         ref={fileInputRef}

@@ -99,7 +99,7 @@ describe('LeftNav', () => {
 
   it('空文档时目录区显示可点击的＋新章节，点击后调 editorBridge.addChapter', async () => {
     render(<LeftNav />)
-    const btn = screen.getByText('＋ 新章节')
+    const btn = screen.getByText('新章节')
     await userEvent.click(btn)
     expect(addChapter).toHaveBeenCalledTimes(1)
   })
@@ -108,7 +108,7 @@ describe('LeftNav', () => {
     useBookStore.getState().updateDoc(docWithHeadings())
     render(<LeftNav />)
     expect(screen.getByText('一')).toBeTruthy()
-    const btn = screen.getByText('＋ 新章节')
+    const btn = screen.getByText('新章节')
     expect(btn).toBeTruthy()
     await userEvent.click(btn)
     expect(addChapter).toHaveBeenCalledTimes(1)
@@ -117,7 +117,7 @@ describe('LeftNav', () => {
   it('点"＋ 新盒子"后 store.boxes +1，并进入该盒子', async () => {
     render(<LeftNav />)
     expect(useBookStore.getState().activeBook()!.boxes.length).toBe(0)
-    await userEvent.click(screen.getByText('＋ 新盒子'))
+    await userEvent.click(screen.getByText('新盒子'))
     const boxes = useBookStore.getState().activeBook()!.boxes
     expect(boxes.length).toBe(1)
     expect(useBookStore.getState().viewKind).toBe('box')
@@ -661,7 +661,7 @@ describe('LeftNav 目录折叠三角（Phase 13 Task 2）', () => {
     const { container } = render(<LeftNav />)
     const chap1Row = container.querySelector('[data-outline-row-index="0"]') as HTMLElement
     const triangle = within(chap1Row).getByLabelText('折叠')
-    expect(triangle.textContent).toBe('▾')
+    expect(triangle.getAttribute('data-collapsed')).toBe('false')
   })
 
   it('点标题行的三角调 editorBridge.toggleCollapsed(cardIndex)，且不触发行的点击滚动/拖拽', async () => {
@@ -696,7 +696,7 @@ describe('LeftNav 目录折叠三角（Phase 13 Task 2）', () => {
     const { container } = render(<LeftNav />)
     const chap1Row = container.querySelector('[data-outline-row-index="0"]') as HTMLElement
     const triangle = within(chap1Row).getByLabelText('展开')
-    expect(triangle.textContent).toBe('▸')
+    expect(triangle.getAttribute('data-collapsed')).toBe('true')
   })
 
   it('没有后代的标题行（如空章）不显示可点的折叠三角', () => {

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Settings } from 'lucide-react'
 import { usePrefsStore } from '../state/prefsStore'
 import { useDismiss } from './useDismiss'
 
@@ -15,9 +16,10 @@ export function ReadingSettings() {
       <button
         className="settings-gear"
         title="阅读设置"
+        aria-label="阅读设置"
         onClick={() => setOpen((o) => !o)}
       >
-        ⚙
+        <Settings size={16} strokeWidth={1.75} aria-hidden="true" />
       </button>
       {open && (
         <div className="settings-panel">

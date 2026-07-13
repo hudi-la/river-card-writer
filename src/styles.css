@@ -37,7 +37,7 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
    自己才是可点区域，卡片列表不继承手型光标。 */
 .box-row { cursor:default; }
 .box-row-header { display:flex; align-items:center; gap:6px; cursor:pointer; }
-.box-chevron { flex:none; width:1em; color:var(--muted); font-size:.85em; text-align:center; }
+.box-chevron { flex:none; display:flex; align-items:center; justify-content:center; width:14px; color:var(--muted); }
 .box-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .box-name-edit {
   flex:1; min-width:0; font:inherit; font-size:13px; border:1px solid var(--hair);
@@ -64,11 +64,11 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
   background:rgba(120,158,196,.22);
   outline:1.5px solid var(--thread, #7fa3c4); outline-offset:-1.5px;
 }
-.add { padding:6px 8px; color:var(--muted); cursor:pointer; opacity:.8; }
+.add { display:flex; align-items:center; gap:4px; padding:6px 8px; color:var(--muted); cursor:pointer; opacity:.8; }
 /* 通用盒子在盒子组末尾：一条浅分隔线 + 共享图标，跟本书的盒子区分开——它不是
    本书的第 N 个盒子，是跨所有书共享的同一个实例。 */
 .universal-box-divider { height:1px; background:var(--faint); margin:10px 4px; }
-.universal-box-icon { color:var(--muted); font-size:.9em; }
+.universal-box-icon { display:flex; align-items:center; color:var(--muted); }
 /* 大纲树（Phase 12 Task 2）：标题行加粗程度随层级递减，块行再缩进一级、更淡更小。
    .outline-row-text 是行内 span，天然只包住文字本身的宽度（不像整行的块级
    div 会撑满栏宽）——hover 便签的定位就是量这个 span 的 rect，见 LeftNav.tsx
@@ -119,8 +119,9 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
    自己 stopPropagation，不冒泡到行的 click-to-scroll。没有后代的标题（比如空
    章）用一个不可点的占位 span 保持同宽，文字不会因为有没有三角而错位对不齐。 */
 .outline-collapse-triangle {
-  flex:none; width:14px; height:14px; padding:0; margin:0; border:none; background:none;
-  color:var(--muted); font-size:.8em; line-height:14px; text-align:center; cursor:pointer;
+  flex:none; display:flex; align-items:center; justify-content:center; width:14px; height:14px;
+  padding:0; margin:0; border:none; background:none;
+  color:var(--muted); cursor:pointer;
   border-radius:3px;
 }
 .outline-collapse-triangle:hover { color:var(--ink); background:rgba(120,158,196,.16); }
@@ -151,7 +152,7 @@ html.outline-drag-active, html.outline-drag-active * { user-select:none !importa
    （.outline-card-title，本身是 flex）用 margin-left:auto 顶到行尾，两边共用
    同一个 class，位置规则各自声明。 */
 .outline-drag-handle {
-  flex:none; color:var(--muted); font-size:12px; line-height:1; cursor:grab;
+  flex:none; display:flex; align-items:center; color:var(--muted); line-height:1; cursor:grab;
   opacity:0; padding:2px 4px; border-radius:3px;
 }
 .outline-item-wrap .outline-drag-handle {
@@ -264,7 +265,8 @@ html.outline-drag-active, html.outline-drag-active * { user-select:none !importa
 .reading-settings { position: relative; justify-self: end; z-index: 6; }
 .settings-gear {
   border: 1px solid var(--faint); background: var(--paper); color: var(--muted);
-  border-radius: 6px; width: 28px; height: 28px; font-size: 14px; cursor: pointer; line-height: 1;
+  border-radius: 6px; width: 28px; height: 28px; cursor: pointer; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
 }
 .settings-gear:hover { color: var(--ink); border-color: var(--hair); }
 .settings-panel {
@@ -294,8 +296,15 @@ html.outline-drag-active, html.outline-drag-active * { user-select:none !importa
 }
 .river .card[data-color] { background: color-mix(in srgb, var(--card-bg) 16%, transparent); }
 .river .card + .card::before { content:""; position:absolute; left:40px; right:16px; top:0; border-top:1px solid var(--hair); }
-.river .card::after { content:"⠿"; position:absolute; left:14px; top:14px; color:var(--muted); opacity:0; cursor:grab; font-size:12px; }
-.river .card:hover::after { opacity:.5; }
+/* 拖拽把手（改成真实 DOM 元素，见 CardView.tsx 的 GripVertical）：定位跟老的
+   ⠿ ::after 一致（left/top 14px），pointer-events:none——命中判定始终是
+   RiverEditor 里对 e.clientX - rect.left 的像素区间判断，这个图标只是视觉提示，
+   不参与事件处理，不会影响拖拽/点击的命中逻辑。 */
+.river .card .card-drag-handle {
+  position:absolute; left:14px; top:14px; display:flex; color:var(--muted);
+  opacity:0; cursor:grab; pointer-events:none;
+}
+.river .card:hover .card-drag-handle { opacity:.5; }
 .river .card.dragging { opacity:.35; }
 /* 真实鼠标拖卡片时挂在 <html> 上（见 RiverEditor.tsx）：把整个页面的原生文字选区
    关掉，防止按手把手之后、松手落到左栏盒子之前，contenteditable 抢着开一段原生
@@ -322,7 +331,7 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 .river .card-body p[data-style="chapter"] { font-size: 1.9em; font-weight: 700; text-indent: 0; margin: .6em 0 .4em; line-height: 1.3; }
 .river .card-body p[data-style="h1"] { font-size: 1.2em; font-weight: 700; text-indent: 0; margin: .4em 0; line-height: 1.5; }
 .river .card-body p[data-style="h2"] { font-size: 1.1em; font-weight: 600; text-indent: 0; margin: .4em 0; line-height: 1.5; }
-.add-card { margin: 14px 0 0 40px; border: 1px dashed var(--faint); background: none; color: var(--muted); border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
+.add-card { display: inline-flex; align-items: center; gap: 4px; margin: 14px 0 0 40px; border: 1px dashed var(--faint); background: none; color: var(--muted); border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
 .add-card:hover { color: var(--ink); border-color: var(--hair); }
 .river p.is-empty::before { content: attr(data-placeholder); color: var(--muted); opacity: .5; float: left; height: 0; pointer-events: none; }
 /* 删除线 mark（<s class="strike">）——浏览器对 <s> 默认就是 line-through，这里
@@ -357,6 +366,7 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 .backup-btn {
   border: 1px solid var(--faint); background: var(--paper); color: var(--muted);
   border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
 }
 .backup-btn:hover { color: var(--ink); border-color: var(--hair); }
 .backup-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
@@ -408,7 +418,8 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 .book-delete {
   position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%;
   border: 1px solid rgba(255,255,255,.5); background: rgba(30,26,20,.35); color: #fff;
-  font-size: 13px; line-height: 1; cursor: pointer; opacity: 0; transition: opacity .15s ease;
+  line-height: 1; cursor: pointer; opacity: 0; transition: opacity .15s ease;
+  display: flex; align-items: center; justify-content: center;
 }
 .book-card:hover .book-delete { opacity: 1; }
 .book-export {
@@ -425,6 +436,7 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
   padding: 4px 10px; border-radius: 12px; white-space: nowrap;
   border: 1px solid rgba(255,255,255,.5); background: rgba(30,26,20,.4); color: #fff;
   font-size: 11px; line-height: 1.4; cursor: pointer; opacity: 0; transition: opacity .15s ease;
+  display: inline-flex; align-items: center; gap: 4px;
 }
 .book-card:hover .book-cover-edit { opacity: 1; }
 .shelf-add {
@@ -435,11 +447,11 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 /* "＋ 新书"挪到书卡旁边（Phase 14 Task 4）：跟 .book-card 同尺寸网格格子，封面
    换成虚线框 + 大大的"＋"，跟已有的书一眼区分开。 */
 .shelf-add-cover {
-  display: flex; align-items: center; justify-content: center; font-size: 34px; line-height: 1;
+  display: flex; align-items: center; justify-content: center; line-height: 1;
   color: var(--muted); border-style: dashed; box-shadow: none; background: none;
 }
 .shelf-add-book:hover .shelf-add-cover { color: var(--ink); border-color: var(--hair); transform: translateY(-3px); }
-.shelf-add-label { text-align: center; color: var(--muted); }
+.shelf-add-label { display: flex; align-items: center; justify-content: center; gap: 4px; text-align: center; color: var(--muted); }
 .shelf-add-book:hover .shelf-add-label { color: var(--ink); }
 /* 书柜里的通用盒子入口：跟"＋ 新书"分开一行，实线边框（不是虚线的"新建"手感）
    带共享图标，暗示这是一个已经存在、跨所有书共享的容器，而不是新建动作。
@@ -458,7 +470,8 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
   border-radius: 4px; padding: 2px 5px; background: var(--paper); color: var(--ink); width: 8em;
 }
 .universal-box-add {
-  display: inline-block; padding: 10px 16px; border: 1px dashed var(--faint); border-radius: 8px;
+  display: inline-flex; align-items: center; gap: 4px; padding: 10px 16px;
+  border: 1px dashed var(--faint); border-radius: 8px;
   color: var(--muted); cursor: pointer; font-size: 13px;
 }
 .universal-box-add:hover { color: var(--ink); border-color: var(--hair); }
@@ -466,6 +479,7 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
   justify-self: start;
   border: 1px solid var(--faint); background: var(--paper); color: var(--muted);
   border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px;
 }
 .back-to-shelf:hover { color: var(--ink); border-color: var(--hair); }
 .workspace-title {

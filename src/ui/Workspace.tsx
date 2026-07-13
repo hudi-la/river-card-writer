@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
 import { useBookStore, type Book } from '../state/bookStore'
 import { usePrefsStore } from '../state/prefsStore'
 import { LeftNav } from './LeftNav'
@@ -127,7 +128,8 @@ export function Workspace() {
             误触整条中缝进改名。 */}
         <div className="workspace-topbar">
           <button className="back-to-shelf" onClick={goToShelf}>
-            ← 书柜
+            <ArrowLeft size={14} strokeWidth={1.75} aria-hidden="true" />
+            书柜
           </button>
           {/* key 加前缀——RiverEditor/BoxView 兄弟节点已经用 activeBookId/activeBoxId
               当 key，book.id 原样用会跟它们撞车（React 会警告"两个子节点同一个

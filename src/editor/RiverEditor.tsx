@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { Plus } from 'lucide-react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { baseExtensions } from './schema'
@@ -425,7 +426,8 @@ export function RiverEditor() {
           editor.chain().focus().appendCard().run()
         }}
       >
-        ＋ 加一张卡
+        <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
+        加一张卡
       </button>
     </div>
   )

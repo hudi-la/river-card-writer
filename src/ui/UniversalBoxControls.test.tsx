@@ -23,14 +23,14 @@ function cardJSON(cardId: string, text: string) {
 describe('UniversalBoxControls', () => {
   it('渲染导出/导入两个按钮', () => {
     render(<UniversalBoxControls />)
-    expect(screen.getByText('⬇ 导出')).toBeTruthy()
-    expect(screen.getByText('⬆ 导入')).toBeTruthy()
+    expect(screen.getByText('导出')).toBeTruthy()
+    expect(screen.getByText('导入')).toBeTruthy()
   })
 
   it('点导出：创建 blob URL、触发一次下载，并给出成功提示', async () => {
     useBookStore.getState().parkCard(UNIVERSAL_BOX_ID, cardJSON('u1', '甲'))
     render(<UniversalBoxControls />)
-    await userEvent.click(screen.getByText('⬇ 导出'))
+    await userEvent.click(screen.getByText('导出'))
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1)
     expect(await screen.findByText(/已导出 1 张卡/)).toBeTruthy()

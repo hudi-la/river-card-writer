@@ -20,8 +20,8 @@ beforeEach(() => {
 describe('BackupControls', () => {
   it('渲染导出/导入两个按钮', () => {
     render(<BackupControls />)
-    expect(screen.getByText('⬇ 导出备份')).toBeTruthy()
-    expect(screen.getByText('⬆ 从备份导入')).toBeTruthy()
+    expect(screen.getByText('导出备份')).toBeTruthy()
+    expect(screen.getByText('从备份导入')).toBeTruthy()
   })
 
   it('点导出：创建 blob URL、触发一次下载，并给出成功提示', async () => {
@@ -29,7 +29,7 @@ describe('BackupControls', () => {
       library: { books: [{ id: 'b1', title: 'A', doc: EMPTY_DOC, boxes: [] }], activeBookId: null },
     })
     render(<BackupControls />)
-    await userEvent.click(screen.getByText('⬇ 导出备份'))
+    await userEvent.click(screen.getByText('导出备份'))
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1)
     expect(await screen.findByText(/已导出 1 本书/)).toBeTruthy()
@@ -104,7 +104,7 @@ describe('BackupControls', () => {
       },
     })
     render(<BackupControls />)
-    await userEvent.click(screen.getByText('⬇ 导出备份'))
+    await userEvent.click(screen.getByText('导出备份'))
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
     // 通过 mock 的 Blob 内容验证：createObjectURL 拿到的第一个参数是 Blob，读出它的文本核对 universalBoxes。
     const blobArg = (URL.createObjectURL as any).mock.calls[0][0] as Blob
@@ -213,11 +213,11 @@ describe('BackupControls — 本地快照（自动快照的非破坏性恢复入
     )
 
     render(<BackupControls />)
-    expect(screen.getByText('⟲ 本地快照')).toBeTruthy()
+    expect(screen.getByText('本地快照')).toBeTruthy()
     // 打开前不应该已经把菜单渲染出来
     expect(screen.queryByText(/快照里的书/)).toBeFalsy()
 
-    await userEvent.click(screen.getByText('⟲ 本地快照'))
+    await userEvent.click(screen.getByText('本地快照'))
     expect(await screen.findByText(/快照里的书/)).toBeTruthy()
   })
 
@@ -234,7 +234,7 @@ describe('BackupControls — 本地快照（自动快照的非破坏性恢复入
     )
 
     render(<BackupControls />)
-    await userEvent.click(screen.getByText('⟲ 本地快照'))
+    await userEvent.click(screen.getByText('本地快照'))
     const restoreBtns = await screen.findAllByText('恢复')
     await userEvent.click(restoreBtns[0])
 

@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { Plus } from 'lucide-react'
 import { useBookStore } from '../state/bookStore'
 import { useEditorBridge } from '../state/editorBridge'
 import {
@@ -74,7 +75,8 @@ export function OutlineDetail() {
         <>
           <p className="outline-hint">还没有章节标题</p>
           <div className="add" onClick={() => addChapter()}>
-            ＋ 新章节
+            <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
+            新章节
           </div>
         </>
       ) : (
@@ -114,7 +116,8 @@ export function OutlineDetail() {
             </div>
           ))}
           <div className="add" onClick={() => addChapter()}>
-            ＋ 新章节
+            <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
+            新章节
           </div>
         </>
       )}

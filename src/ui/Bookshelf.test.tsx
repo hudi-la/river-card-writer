@@ -46,7 +46,7 @@ describe('Bookshelf', () => {
   it('"＋ 新书" 挪到书卡旁边：跟书卡同在 .shelf-grid 里', async () => {
     const before = useBookStore.getState().library.books.length
     render(<Bookshelf />)
-    const addTile = screen.getByText('＋ 新书')
+    const addTile = screen.getByText('新书')
     expect(addTile.closest('.shelf-grid')).toBeTruthy()
     await userEvent.click(addTile)
     const s = useBookStore.getState()
@@ -71,7 +71,7 @@ describe('Bookshelf', () => {
       library: { books: [], activeBookId: null, universalBoxes: [{ id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [] }] },
     })
     render(<Bookshelf />)
-    expect(screen.getByText('＋ 新书')).toBeTruthy()
+    expect(screen.getByText('新书')).toBeTruthy()
     expect(screen.getByText(/书柜还是空的/)).toBeTruthy()
   })
 
@@ -110,7 +110,7 @@ describe('Bookshelf', () => {
     it('点"＋ 新通用盒子"：universalBoxes +1，且新盒子出现在列表里', async () => {
       const before = useBookStore.getState().library.universalBoxes.length
       render(<Bookshelf />)
-      await userEvent.click(screen.getByText('＋ 新通用盒子'))
+      await userEvent.click(screen.getByText('新通用盒子'))
       expect(useBookStore.getState().library.universalBoxes.length).toBe(before + 1)
     })
 

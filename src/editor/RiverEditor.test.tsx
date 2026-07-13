@@ -31,7 +31,7 @@ describe('RiverEditor', () => {
     ] })
     const { getByText } = render(<RiverEditor />)
     await new Promise((r) => setTimeout(r, 0))
-    await userEvent.click(getByText('＋ 加一张卡'))
+    await userEvent.click(getByText('加一张卡'))
     await new Promise((r) => setTimeout(r, 0))
     const cards = (useBookStore.getState().activeBook()!.doc as any).content
     expect(cards.length).toBe(2)
