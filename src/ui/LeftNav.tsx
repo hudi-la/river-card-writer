@@ -691,6 +691,223 @@ export function useOutlineRowDrag({
   }, [containerRef, rowsRef, moveCardTo, moveSection, openDoc])
 }
 
+// ---- 盒子行拖动重排（书内盒子，即 book.boxes）----
+// 跟目录行拖拽（useOutlineRowDrag）、正文卡片拖拽（RiverEditor）同一套命令式骨架：
+// 专用把手起拖、ref 存拖拽态（不进 effect 依赖）、幂等收尾、固定定位 ghost + 落点线。
+// 只重排本书盒子——通用盒子的 BoxRow 不带 data-book-box-index，天然被
+// otherBoxRowEls 的查询选择器排除在外，不参与这里的落点计算（Task 要求：通用盒子
+// 重排是可选项，这里选择不做，靠"不给它这个 data 属性"就干净地跳过，不需要额外
+// 分支判断）。
+const BOX_DRAG_HANDLE_SELECTOR = '[data-box-drag-handle]'
+const BOX_DRAG_MOVE_THRESHOLD_PX = 4
+const BOX_ROW_DRAG_ACTIVE_CLASS = 'box-row-drag-active'
+const BOOK_BOX_ROW_SELECTOR = '[data-book-box-index]'
+
+type BoxRowDragState = {
+  startBoxId: string
+  sourceEl: HTMLElement
+  ghostEl: HTMLElement
+  indicatorEl: HTMLElement
+  startX: number
+  startY: number
+  moved: boolean
+  pointerId: number
+  pendingTargetIndex: number | null
+}
+
+// 排除掉被拖那一行，按 DOM（=book.boxes）顺序返回其余本书盒子行——数组下标本身
+// 就是 moveBox 要的"摘掉后再插入"下标，不需要额外换算（同 RiverEditor 的
+// otherCards/dropIndexAt 那套写法）。
+function otherBoxRowEls(railEl: HTMLElement, dragBoxId: string): HTMLElement[] {
+  return Array.from(railEl.querySelectorAll<HTMLElement>(BOOK_BOX_ROW_SELECTOR)).filter((el) => el.dataset.boxId !== dragBoxId)
+}
+
+function boxRowDropAt(
+  els: HTMLElement[],
+  clientY: number,
+): { targetIndex: number; rect: { top: number; left: number; width: number } | null } {
+  if (els.length === 0) return { targetIndex: 0, rect: null }
+  let pos = els.length
+  for (let i = 0; i < els.length; i++) {
+    const rect = els[i].getBoundingClientRect()
+    if (clientY < rect.top + rect.height / 2) {
+      pos = i
+      break
+    }
+  }
+  let rect: { top: number; left: number; width: number }
+  if (pos <= 0) {
+    const r = els[0].getBoundingClientRect()
+    rect = { top: r.top, left: r.left, width: r.width }
+  } else if (pos >= els.length) {
+    const r = els[els.length - 1].getBoundingClientRect()
+    rect = { top: r.bottom, left: r.left, width: r.width }
+  } else {
+    const prev = els[pos - 1].getBoundingClientRect()
+    const next = els[pos].getBoundingClientRect()
+    rect = { top: (prev.bottom + next.top) / 2, left: next.left, width: next.width }
+  }
+  return { targetIndex: pos, rect }
+}
+
+function useBoxRowDrag({
+  containerRef,
+  moveBox,
+}: {
+  containerRef: RefObject<HTMLElement | null>
+  moveBox: (boxId: string, targetIndex: number) => void
+}) {
+  const dragRef = useRef<BoxRowDragState | null>(null)
+  // 真的拖拽发生过之后，紧跟的那次原生 click 要被吞掉——不然松手落在别的盒子行
+  // 上，还会顺带触发那一行的"打开这个盒子"，见 useOutlineRowDrag 同名注释。
+  const suppressClickRef = useRef(false)
+
+  useEffect(() => {
+    const railEl = containerRef.current
+    if (!railEl) return
+
+    const cleanupVisuals = (drag: BoxRowDragState) => {
+      drag.ghostEl.remove()
+      drag.indicatorEl.remove()
+      drag.sourceEl.classList.remove('box-row-dragging')
+      document.documentElement.classList.remove(BOX_ROW_DRAG_ACTIVE_CLASS)
+      try {
+        railEl.releasePointerCapture(drag.pointerId)
+      } catch {
+        // 指针早已释放时会抛，忽略即可
+      }
+    }
+
+    const finishDrag = () => {
+      const drag = dragRef.current
+      if (!drag) return
+      dragRef.current = null
+      if (drag.moved && drag.pendingTargetIndex !== null) {
+        moveBox(drag.startBoxId, drag.pendingTargetIndex)
+        suppressClickRef.current = true
+      }
+      cleanupVisuals(drag)
+    }
+
+    const abortDrag = () => {
+      const drag = dragRef.current
+      if (!drag) return
+      dragRef.current = null
+      cleanupVisuals(drag)
+    }
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0) return
+      const target = e.target as HTMLElement
+      const handleEl = target.closest<HTMLElement>(BOX_DRAG_HANDLE_SELECTOR)
+      if (!handleEl) return
+      const rowEl = handleEl.closest<HTMLElement>(BOOK_BOX_ROW_SELECTOR)
+      if (!rowEl) return
+      const boxId = rowEl.dataset.boxId
+      if (!boxId) return
+      e.preventDefault()
+
+      const ghost = document.createElement('div')
+      ghost.className = 'outline-drag-ghost'
+      ghost.textContent = rowEl.querySelector('.box-name, .box-name-edit')?.textContent || '（盒子）'
+      ghost.style.display = 'none'
+      document.body.appendChild(ghost)
+
+      const indicator = document.createElement('div')
+      indicator.className = 'outline-drop-indicator'
+      indicator.style.display = 'none'
+      document.body.appendChild(indicator)
+
+      dragRef.current = {
+        startBoxId: boxId,
+        sourceEl: rowEl,
+        ghostEl: ghost,
+        indicatorEl: indicator,
+        startX: e.clientX,
+        startY: e.clientY,
+        moved: false,
+        pointerId: e.pointerId,
+        pendingTargetIndex: null,
+      }
+      try {
+        railEl.setPointerCapture(e.pointerId)
+      } catch {
+        // 极少数环境不支持 setPointerCapture，忽略即可
+      }
+    }
+
+    const onDragStart = (e: DragEvent) => {
+      if (dragRef.current) e.preventDefault()
+    }
+    const onSelectStart = (e: Event) => {
+      if (dragRef.current) e.preventDefault()
+    }
+    const onClickCapture = (e: MouseEvent) => {
+      if (!suppressClickRef.current) return
+      suppressClickRef.current = false
+      e.stopPropagation()
+      e.preventDefault()
+    }
+
+    const onPointerMove = (e: PointerEvent) => {
+      const drag = dragRef.current
+      if (!drag) return
+      if (!drag.moved) {
+        const dx = e.clientX - drag.startX
+        const dy = e.clientY - drag.startY
+        if (Math.hypot(dx, dy) < BOX_DRAG_MOVE_THRESHOLD_PX) return
+        drag.moved = true
+        drag.ghostEl.style.display = 'block'
+        drag.sourceEl.classList.add('box-row-dragging')
+        document.documentElement.classList.add(BOX_ROW_DRAG_ACTIVE_CLASS)
+      }
+      drag.ghostEl.style.transform = `translate(${e.clientX + 12}px, ${e.clientY + 12}px)`
+
+      const others = otherBoxRowEls(railEl, drag.startBoxId)
+      const { targetIndex, rect } = boxRowDropAt(others, e.clientY)
+      drag.pendingTargetIndex = targetIndex
+      if (rect) {
+        drag.indicatorEl.style.display = 'block'
+        drag.indicatorEl.style.top = `${rect.top}px`
+        drag.indicatorEl.style.left = `${rect.left}px`
+        drag.indicatorEl.style.width = `${rect.width}px`
+      } else {
+        drag.indicatorEl.style.display = 'none'
+      }
+    }
+
+    const onPointerUp = () => finishDrag()
+    const onPointerCancelOrLost = () => finishDrag()
+
+    railEl.addEventListener('pointerdown', onPointerDown)
+    railEl.addEventListener('click', onClickCapture, true)
+    window.addEventListener('pointermove', onPointerMove)
+    railEl.addEventListener('pointerup', onPointerUp)
+    railEl.addEventListener('pointercancel', onPointerCancelOrLost)
+    railEl.addEventListener('lostpointercapture', onPointerCancelOrLost)
+    window.addEventListener('pointerup', onPointerUp)
+    window.addEventListener('pointercancel', onPointerCancelOrLost)
+    window.addEventListener('lostpointercapture', onPointerCancelOrLost)
+    document.addEventListener('dragstart', onDragStart, true)
+    document.addEventListener('selectstart', onSelectStart, true)
+    return () => {
+      railEl.removeEventListener('pointerdown', onPointerDown)
+      railEl.removeEventListener('click', onClickCapture, true)
+      window.removeEventListener('pointermove', onPointerMove)
+      railEl.removeEventListener('pointerup', onPointerUp)
+      railEl.removeEventListener('pointercancel', onPointerCancelOrLost)
+      railEl.removeEventListener('lostpointercapture', onPointerCancelOrLost)
+      window.removeEventListener('pointerup', onPointerUp)
+      window.removeEventListener('pointercancel', onPointerCancelOrLost)
+      window.removeEventListener('lostpointercapture', onPointerCancelOrLost)
+      document.removeEventListener('dragstart', onDragStart, true)
+      document.removeEventListener('selectstart', onSelectStart, true)
+      abortDrag()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [containerRef, moveBox])
+}
+
 export function LeftNav() {
   const book = useBookStore((s) => s.activeBook())
   const universalBoxes = useBookStore((s) => s.library.universalBoxes)
@@ -701,6 +918,7 @@ export function LeftNav() {
   const addBox = useBookStore((s) => s.addBox)
   const renameBox = useBookStore((s) => s.renameBox)
   const renameUniversalBox = useBookStore((s) => s.renameUniversalBox)
+  const moveBox = useBookStore((s) => s.moveBox)
   const carry = useBookStore((s) => s.carry)
   const setHeadingNote = useEditorBridge((s) => s.setHeadingNote)
   const setCardNote = useEditorBridge((s) => s.setCardNote)
@@ -811,6 +1029,7 @@ export function LeftNav() {
     openDoc,
     onDragBegin: () => setHover(null),
   })
+  useBoxRowDrag({ containerRef: railRef, moveBox })
 
   // Phase 14 Task 2：详细大纲搬进悬浮大窗——侧栏只留简略树 + 这一个按钮开窗。
   const [detailOpen, setDetailOpen] = useState(false)
@@ -906,7 +1125,7 @@ export function LeftNav() {
         )}
 
       <p className="rlabel nav-group">盒子</p>
-      {(book?.boxes ?? []).map((b) => (
+      {(book?.boxes ?? []).map((b, i) => (
         <BoxRow
           key={b.id}
           box={b}
@@ -916,6 +1135,8 @@ export function LeftNav() {
           onToggleCollapsed={() => toggleBoxCollapsed(b.id)}
           onCarryCard={(cardId) => carry(b.id, cardId)}
           onRename={(name) => renameBox(b.id, name)}
+          draggable
+          dragIndex={i}
         />
       ))}
       <div
@@ -983,6 +1204,8 @@ function BoxRow({
   opensOverlay,
   icon,
   extraClassName,
+  draggable,
+  dragIndex,
 }: {
   box: Box
   active: boolean
@@ -994,6 +1217,11 @@ function BoxRow({
   opensOverlay?: boolean
   icon?: ReactNode
   extraClassName?: string
+  // 拖动重排把手（useBoxRowDrag）——只有本书盒子传 true + dragIndex，通用盒子不传，
+  // 天然没有 data-book-box-index、也不渲染把手，重排逻辑查询不到它，等于跳过
+  // （Task 明确允许通用盒子重排可选，这里选择不做）。
+  draggable?: boolean
+  dragIndex?: number
 }) {
   const cards = box.cards ?? []
   // 盒名双击改名（跟 Bookshelf 的 BookCard/UniversalBoxEntry 同一套手感）：本地
@@ -1038,6 +1266,7 @@ function BoxRow({
   return (
     <div
       data-box-id={box.id}
+      data-book-box-index={draggable ? dragIndex : undefined}
       className={'chap box-row' + (extraClassName ? ' ' + extraClassName : '') + (active ? ' on' : '')}
     >
       <div className="box-row-header" onClick={handleHeaderClick}>
@@ -1094,6 +1323,17 @@ function BoxRow({
             }}
           >
             {box.name}
+          </span>
+        )}
+        {draggable && (
+          <span
+            className="box-drag-handle"
+            data-box-drag-handle
+            aria-hidden="true"
+            title="拖动排序"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GripVertical size={14} strokeWidth={1.75} />
           </span>
         )}
       </div>

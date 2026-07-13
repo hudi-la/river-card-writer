@@ -315,6 +315,195 @@ describe('bookStore — 库级通用盒子（多个、可命名）', () => {
   })
 })
 
+// 拖拽重排三个新 action：moveBox（本书盒子重排）、moveCardInBox（盒内卡片重排）、
+// moveCardToBox（盒子之间搬卡，覆盖本书盒子/通用盒子任意组合）。DATA-SAFETY 铁律：
+// 每次操作前后，盒子数、卡片数（单盒内以及跨盒总数）必须守恒——测试逐条断言。
+describe('bookStore — 拖拽重排 action（moveBox / moveCardInBox / moveCardToBox）', () => {
+  it('moveBox 把盒子挪到目标下标，其余盒子顺序跟着让位，盒子总数不变，每个盒子的卡片原样不丢', () => {
+    const book = useBookStore.getState().addBook('A')
+    useBookStore.getState().openBook(book.id)
+    const boxA = useBookStore.getState().addBox('A盒')!
+    const boxB = useBookStore.getState().addBox('B盒')!
+    const boxC = useBookStore.getState().addBox('C盒')!
+    const cardJSON = { type: 'card', attrs: { cardId: 'c1' }, content: [] }
+    useBookStore.getState().parkCard(boxA.id, cardJSON)
+
+    const beforeCount = useBookStore.getState().activeBook()!.boxes.length
+
+    // 把 A 挪到下标 2（移除 A 后剩 [B, C]，插到 2 即末尾）→ [B, C, A]
+    useBookStore.getState().moveBox(boxA.id, 2)
+
+    const s = useBookStore.getState()
+    expect(s.activeBook()!.boxes.map((b) => b.id)).toEqual([boxB.id, boxC.id, boxA.id])
+    expect(s.activeBook()!.boxes).toHaveLength(beforeCount)
+    expect(s.getBox(boxA.id)!.cards).toEqual([cardJSON])
+
+    const raw = JSON.parse(localStorage.getItem('card-writer:library')!)
+    const rawBook = raw.books.find((b: any) => b.id === book.id)
+    expect(rawBook.boxes.map((b: any) => b.id)).toEqual([boxB.id, boxC.id, boxA.id])
+  })
+
+  it('moveBox 越界下标被夹到合法范围内，不抛出、不丢盒子', () => {
+    const book = useBookStore.getState().addBook('A')
+    useBookStore.getState().openBook(book.id)
+    const boxA = useBookStore.getState().addBox('A盒')!
+    const boxB = useBookStore.getState().addBox('B盒')!
+    expect(() => useBookStore.getState().moveBox(boxA.id, 999)).not.toThrow()
+    const s = useBookStore.getState()
+    expect(s.activeBook()!.boxes.map((b) => b.id)).toEqual([boxB.id, boxA.id])
+    expect(s.activeBook()!.boxes).toHaveLength(2)
+  })
+
+  it('moveBox 对不存在的 boxId 安全 no-op，不丢/不改盒子顺序', () => {
+    const book = useBookStore.getState().addBook('A')
+    useBookStore.getState().openBook(book.id)
+    const boxA = useBookStore.getState().addBox('A盒')!
+    expect(() => useBookStore.getState().moveBox('not-exist', 0)).not.toThrow()
+    expect(useBookStore.getState().activeBook()!.boxes.map((b) => b.id)).toEqual([boxA.id])
+  })
+
+  it('moveCardInBox 在同一个盒子内重排卡片，卡片数量守恒，内容原样不丢', () => {
+    const book = useBookStore.getState().addBook('A')
+    useBookStore.getState().openBook(book.id)
+    const box = useBookStore.getState().addBox('素材')!
+    const c1 = { type: 'card', attrs: { cardId: 'c1' }, content: [] }
+    const c2 = { type: 'card', attrs: { cardId: 'c2' }, content: [] }
+    const c3 = { type: 'card', attrs: { cardId: 'c3' }, content: [] }
+    useBookStore.getState().parkCard(box.id, c1)
+    useBookStore.getState().parkCard(box.id, c2)
+    useBookStore.getState().parkCard(box.id, c3)
+
+    // 把 c1 挪到末尾（移除后剩 [c2, c3]，插到下标 2）→ [c2, c3, c1]
+    useBookStore.getState().moveCardInBox(box.id, 'c1', 2)
+
+    const s = useBookStore.getState()
+    const cards = s.getBox(box.id)!.cards
+    expect(cards.map((c) => c.attrs.cardId)).toEqual(['c2', 'c3', 'c1'])
+    expect(cards).toHaveLength(3)
+  })
+
+  it('moveCardInBox 也支持通用盒子（盒内重排不限于本书盒子）', () => {
+    const box = useBookStore.getState().addUniversalBox('灵感')
+    const c1 = { type: 'card', attrs: { cardId: 'u1' }, content: [] }
+    const c2 = { type: 'card', attrs: { cardId: 'u2' }, content: [] }
+    useBookStore.getState().parkCard(box.id, c1)
+    useBookStore.getState().parkCard(box.id, c2)
+
+    useBookStore.getState().moveCardInBox(box.id, 'u2', 0)
+
+    const cards = useBookStore.getState().getBox(box.id)!.cards
+    expect(cards.map((c) => c.attrs.cardId)).toEqual(['u2', 'u1'])
+    expect(cards).toHaveLength(2)
+  })
+
+  it('moveCardToBox 把卡从本书盒子搬进通用盒子：源盒少一张，目标盒多一张，两盒总数守恒', () => {
+    const book = useBookStore.getState().addBook('A')
+    useBookStore.getState().openBook(book.id)
+    const fromBox = useBookStore.getState().addBox('素材')!
+    const c1 = { type: 'card', attrs: { cardId: 'c1' }, content: [] }
+    const c2 = { type: 'card', attrs: { cardId: 'c2' }, content: [] }
+    useBookStore.getState().parkCard(fromBox.id, c1)
+    useBookStore.getState().parkCard(fromBox.id, c2)
+    const uniBefore = useBookStore.getState().getBox(UNIVERSAL_BOX_ID)!.cards.length
+    const totalBefore = fromBox && 2 + uniBefore
+
+    useBookStore.getState().moveCardToBox(fromBox.id, 'c1', UNIVERSAL_BOX_ID)
+
+    const s = useBookStore.getState()
+    const fromCards = s.getBox(fromBox.id)!.cards
+    const toCards = s.getBox(UNIVERSAL_BOX_ID)!.cards
+    expect(fromCards.map((c) => c.attrs.cardId)).toEqual(['c2'])
+    expect(toCards.some((c) => c.attrs.cardId === 'c1')).toBe(true)
+    expect(fromCards.length + toCards.length).toBe(totalBefore)
+
+    const raw = JSON.parse(localStorage.getItem('card-writer:library')!)
+    const rawBook = raw.books.find((b: any) => b.id === book.id)
+    expect(rawBook.boxes.find((b: any) => b.id === fromBox.id).cards.map((c: any) => c.attrs.cardId)).toEqual(['c2'])
+    expect(raw.universalBoxes.find((b: any) => b.id === UNIVERSAL_BOX_ID).cards.some((c: any) => c.attrs.cardId === 'c1')).toBe(true)
+  })
+
+  it('moveCardToBox 把卡从通用盒子搬进本书盒子：方向反过来同样守恒', () => {
+    const book = useBookStore.getState().addBook('A')
+    useBookStore.getState().openBook(book.id)
+    const toBox = useBookStore.getState().addBox('素材')!
+    const card = { type: 'card', attrs: { cardId: 'u9' }, content: [] }
+    useBookStore.getState().parkCard(UNIVERSAL_BOX_ID, card)
+
+    useBookStore.getState().moveCardToBox(UNIVERSAL_BOX_ID, 'u9', toBox.id)
+
+    const s = useBookStore.getState()
+    expect(s.getBox(UNIVERSAL_BOX_ID)!.cards.some((c) => c.attrs.cardId === 'u9')).toBe(false)
+    expect(s.getBox(toBox.id)!.cards.map((c) => c.attrs.cardId)).toEqual(['u9'])
+  })
+
+  it('moveCardToBox 支持在两个本书盒子之间搬卡', () => {
+    const book = useBookStore.getState().addBook('A')
+    useBookStore.getState().openBook(book.id)
+    const boxA = useBookStore.getState().addBox('A盒')!
+    const boxB = useBookStore.getState().addBox('B盒')!
+    const card = { type: 'card', attrs: { cardId: 'x1' }, content: [] }
+    useBookStore.getState().parkCard(boxA.id, card)
+
+    useBookStore.getState().moveCardToBox(boxA.id, 'x1', boxB.id, 0)
+
+    const s = useBookStore.getState()
+    expect(s.getBox(boxA.id)!.cards).toEqual([])
+    expect(s.getBox(boxB.id)!.cards).toEqual([card])
+  })
+
+  it('moveCardToBox 目标 = 源盒子（同盒）时安全地当重排处理：不重复、不丢，数量不变', () => {
+    const book = useBookStore.getState().addBook('A')
+    useBookStore.getState().openBook(book.id)
+    const box = useBookStore.getState().addBox('素材')!
+    const c1 = { type: 'card', attrs: { cardId: 'c1' }, content: [] }
+    const c2 = { type: 'card', attrs: { cardId: 'c2' }, content: [] }
+    useBookStore.getState().parkCard(box.id, c1)
+    useBookStore.getState().parkCard(box.id, c2)
+
+    useBookStore.getState().moveCardToBox(box.id, 'c1', box.id, 1)
+
+    const cards = useBookStore.getState().getBox(box.id)!.cards
+    expect(cards).toHaveLength(2)
+    expect(cards.filter((c) => c.attrs.cardId === 'c1')).toHaveLength(1)
+    expect(cards.filter((c) => c.attrs.cardId === 'c2')).toHaveLength(1)
+  })
+
+  it('moveCardToBox 省略 targetIndex 时追加到目标盒末尾', () => {
+    const book = useBookStore.getState().addBook('A')
+    useBookStore.getState().openBook(book.id)
+    const fromBox = useBookStore.getState().addBox('素材')!
+    const toBox = useBookStore.getState().addBox('目标')!
+    const existing = { type: 'card', attrs: { cardId: 'e1' }, content: [] }
+    const moving = { type: 'card', attrs: { cardId: 'm1' }, content: [] }
+    useBookStore.getState().parkCard(toBox.id, existing)
+    useBookStore.getState().parkCard(fromBox.id, moving)
+
+    useBookStore.getState().moveCardToBox(fromBox.id, 'm1', toBox.id)
+
+    expect(useBookStore.getState().getBox(toBox.id)!.cards.map((c) => c.attrs.cardId)).toEqual(['e1', 'm1'])
+  })
+
+  it('moveCardToBox 找不到目标盒子时安全放弃：卡留在源盒子，不丢不重', () => {
+    const book = useBookStore.getState().addBook('A')
+    useBookStore.getState().openBook(book.id)
+    const fromBox = useBookStore.getState().addBox('素材')!
+    const card = { type: 'card', attrs: { cardId: 'c1' }, content: [] }
+    useBookStore.getState().parkCard(fromBox.id, card)
+
+    expect(() => useBookStore.getState().moveCardToBox(fromBox.id, 'c1', 'not-exist')).not.toThrow()
+    expect(useBookStore.getState().getBox(fromBox.id)!.cards).toEqual([card])
+  })
+
+  it('moveCardToBox 找不到源卡片时安全 no-op', () => {
+    const book = useBookStore.getState().addBook('A')
+    useBookStore.getState().openBook(book.id)
+    const fromBox = useBookStore.getState().addBox('素材')!
+    const toBox = useBookStore.getState().addBox('目标')!
+    expect(() => useBookStore.getState().moveCardToBox(fromBox.id, 'nope', toBox.id)).not.toThrow()
+    expect(useBookStore.getState().getBox(toBox.id)!.cards).toEqual([])
+  })
+})
+
 describe('bookStore — 迁移 & normalizeLibrary', () => {
   it('load() 优先读 card-writer:library', () => {
     localStorage.clear()

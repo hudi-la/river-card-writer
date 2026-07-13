@@ -101,6 +101,19 @@ type BookState = {
   parkCard: (boxId: string, cardJSON: any) => void
   takeCardFromBox: (boxId: string, cardId: string) => any | undefined
   getBox: (id: string | null) => Box | undefined
+  // 拖拽重排（DATA-SAFETY：一律 take-then-insert，绝不新增/丢弃数组元素）——
+  // targetIndex 跟 editorBridge.moveCardTo 同一套"splice"语义：先摘掉被挪的那个，
+  // 再在剩下那串里数下标插回去（越界一律夹到 [0, 剩余长度] 之间，不抛、不丢）。
+  // 只重排当前书 boxes 数组本身；通用盒子的顺序不受这个 action 影响。
+  moveBox: (boxId: string, targetIndex: number) => void
+  // 盒内卡片重排——boxId 可以是本书盒子也可以是通用盒子（跟 getBox 一样两边都认）。
+  moveCardInBox: (boxId: string, cardId: string, targetIndex?: number) => void
+  // 把一张卡从 fromBox 搬到 toBox（各自可以是本书盒子/通用盒子，任意组合）：
+  // 移除 + 插入合并成一次 library 更新/一次 persist，不会有"已从源盒摘除、还没进
+  // 目标盒"的中间态。fromBoxId===toBoxId 时安全地退化成盒内重排（不会先删后加导致
+  // 瞬间重复）。目标盒子找不到、或源盒子里找不到这张卡时，安全放弃、原样不动
+  // （卡片留在源盒子，绝不凭空消失）。targetIndex 省略时追加到目标盒末尾。
+  moveCardToBox: (fromBoxId: string, cardId: string, toBoxId: string, targetIndex?: number) => void
   carry: (boxId: string, cardId: string) => void
   cancelCarry: () => void
   dropCarried: () => void
@@ -420,6 +433,75 @@ export const useBookStore = create<BookState>((set, get) => {
       const uni = get().library.universalBoxes.find((b) => b.id === id)
       if (uni) return uni
       return get().activeBook()?.boxes.find((b) => b.id === id)
+    },
+    moveBox: (boxId, targetIndex) => {
+      withActiveBook((book) => {
+        const idx = book.boxes.findIndex((b) => b.id === boxId)
+        if (idx === -1) return { book, result: undefined } // 不存在的 boxId：安全 no-op
+        const boxes = [...book.boxes]
+        const [item] = boxes.splice(idx, 1)
+        const clamped = Math.max(0, Math.min(targetIndex, boxes.length))
+        boxes.splice(clamped, 0, item)
+        return { book: { ...book, boxes }, result: undefined }
+      })
+    },
+    moveCardInBox: (boxId, cardId, targetIndex) => {
+      // 盒内重排复用 moveCardToBox 的"同盒"分支——同一份 take-then-insert 逻辑，
+      // 不重复实现一遍守恒判断。
+      get().moveCardToBox(boxId, cardId, boxId, targetIndex)
+    },
+    moveCardToBox: (fromBoxId, cardId, toBoxId, targetIndex) => {
+      const cur = get().library
+      const book = cur.books.find((b) => b.id === cur.activeBookId)
+
+      const findLoc = (boxId: string): { kind: 'universal' | 'book'; idx: number } | null => {
+        const uIdx = cur.universalBoxes.findIndex((b) => b.id === boxId)
+        if (uIdx !== -1) return { kind: 'universal', idx: uIdx }
+        if (book) {
+          const bIdx = book.boxes.findIndex((b) => b.id === boxId)
+          if (bIdx !== -1) return { kind: 'book', idx: bIdx }
+        }
+        return null
+      }
+
+      const fromLoc = findLoc(fromBoxId)
+      if (!fromLoc) return // 源盒子不存在：安全 no-op
+      const fromBoxCards = (fromLoc.kind === 'universal' ? cur.universalBoxes[fromLoc.idx] : book!.boxes[fromLoc.idx]).cards
+      const card = fromBoxCards.find((c) => c?.attrs?.cardId === cardId)
+      if (!card) return // 源盒子里没有这张卡：安全 no-op，不凭空造一张出来
+
+      const withoutCard = fromBoxCards.filter((c) => c !== card)
+      const sameBox = fromBoxId === toBoxId
+      const toLoc = sameBox ? fromLoc : findLoc(toBoxId)
+      if (!toLoc) return // 目标盒子不存在：安全放弃，卡片原样留在源盒子，不丢
+
+      // 同盒时"移除后剩下的那串"就是 withoutCard 本身；跨盒时目标盒子的现有卡片
+      // 从未包含这张卡，直接用它的完整 cards 数组当插入基准。
+      const baseToCards = sameBox ? withoutCard : (toLoc.kind === 'universal' ? cur.universalBoxes[toLoc.idx] : book!.boxes[toLoc.idx]).cards
+      const clamped = targetIndex === undefined ? baseToCards.length : Math.max(0, Math.min(targetIndex, baseToCards.length))
+      const newToCards = [...baseToCards.slice(0, clamped), card, ...baseToCards.slice(clamped)]
+
+      let universalBoxes = cur.universalBoxes
+      let bookBoxes = book?.boxes
+
+      if (!sameBox) {
+        if (fromLoc.kind === 'universal') universalBoxes = universalBoxes.map((b, i) => (i === fromLoc.idx ? { ...b, cards: withoutCard } : b))
+        else bookBoxes = bookBoxes!.map((b, i) => (i === fromLoc.idx ? { ...b, cards: withoutCard } : b))
+      }
+      if (toLoc.kind === 'universal') universalBoxes = universalBoxes.map((b, i) => (i === toLoc.idx ? { ...b, cards: newToCards } : b))
+      else bookBoxes = bookBoxes!.map((b, i) => (i === toLoc.idx ? { ...b, cards: newToCards } : b))
+
+      const touchesBook = fromLoc.kind === 'book' || toLoc.kind === 'book'
+      if (touchesBook && book) {
+        const updatedBook = { ...book, boxes: bookBoxes!, updatedAt: new Date().toISOString() }
+        const library = { ...cur, universalBoxes, books: cur.books.map((b) => (b.id === book.id ? updatedBook : b)) }
+        persist(library)
+        set({ library })
+      } else {
+        const library = { ...cur, universalBoxes }
+        persist(library)
+        set({ library })
+      }
     },
     carry: (boxId, cardId) => {
       // Non-destructive: the card stays in the box until the moment of drop.

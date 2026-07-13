@@ -137,7 +137,7 @@ describe('Bookshelf', () => {
       await userEvent.click(within(entry).getByText(/张/))
       expect(screen.getByRole('dialog')).toBeTruthy()
       expect(screen.getByText('通用卡内容')).toBeTruthy()
-      const insertBtn = screen.getByText('⤵ 插入正文') as HTMLButtonElement
+      const insertBtn = document.querySelector('[data-box-action="insert"]') as HTMLButtonElement
       expect(insertBtn.disabled).toBe(true)
     })
 
