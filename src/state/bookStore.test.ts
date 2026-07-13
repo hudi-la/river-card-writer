@@ -504,6 +504,88 @@ describe('bookStore — 拖拽重排 action（moveBox / moveCardInBox / moveCard
   })
 })
 
+// updateBoxCard：卡片弹窗编辑（Google-Keep 式展开编辑）落盘的 action。DATA-SAFETY
+// 铁律——原地替换内容、强制沿用原 cardId、盒子卡片总数守恒、不动任何别的卡、
+// 找不到盒子/卡片一律安全 no-op（绝不新增/丢弃卡片）。
+describe('bookStore — updateBoxCard（卡片弹窗编辑落盘）', () => {
+  it('替换本书盒子里指定卡片的内容，cardId 不变，盒子卡数不变，兄弟卡原样不动', () => {
+    const book = useBookStore.getState().addBook('A')
+    useBookStore.getState().openBook(book.id)
+    const box = useBookStore.getState().addBox('素材')!
+    const c1 = { type: 'card', attrs: { cardId: 'c1' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '旧内容' }] }] }
+    const c2 = { type: 'card', attrs: { cardId: 'c2' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '别的卡' }] }] }
+    useBookStore.getState().parkCard(box.id, c1)
+    useBookStore.getState().parkCard(box.id, c2)
+
+    const newContent = { type: 'card', attrs: { cardId: 'c1' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '新内容' }] }] }
+    useBookStore.getState().updateBoxCard(box.id, 'c1', newContent)
+
+    const s = useBookStore.getState()
+    const cards = s.getBox(box.id)!.cards
+    expect(cards).toHaveLength(2)
+    expect(cards[0].attrs.cardId).toBe('c1')
+    expect(cards[0].content[0].content[0].text).toBe('新内容')
+    expect(cards[1]).toEqual(c2) // 兄弟卡原样不动（同一引用/同一内容）
+
+    const raw = JSON.parse(localStorage.getItem('card-writer:library')!)
+    const rawBook = raw.books.find((b: any) => b.id === book.id)
+    const rawBox = rawBook.boxes.find((b: any) => b.id === box.id)
+    expect(rawBox.cards[0].attrs.cardId).toBe('c1')
+    expect(rawBox.cards[0].content[0].content[0].text).toBe('新内容')
+  })
+
+  it('也支持通用盒子', () => {
+    const box = useBookStore.getState().addUniversalBox('灵感')
+    const u1 = { type: 'card', attrs: { cardId: 'u1' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'old' }] }] }
+    useBookStore.getState().parkCard(box.id, u1)
+
+    useBookStore.getState().updateBoxCard(box.id, 'u1', { type: 'card', attrs: { cardId: 'u1' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'new' }] }] })
+
+    const cards = useBookStore.getState().getBox(box.id)!.cards
+    expect(cards).toHaveLength(1)
+    expect(cards[0].attrs.cardId).toBe('u1')
+    expect(cards[0].content[0].content[0].text).toBe('new')
+  })
+
+  it('强制沿用原 cardId：即便传入的 cardJSON.attrs.cardId 是别的值/缺失，也不会改成那个值', () => {
+    const book = useBookStore.getState().addBook('A')
+    useBookStore.getState().openBook(book.id)
+    const box = useBookStore.getState().addBox('素材')!
+    useBookStore.getState().parkCard(box.id, { type: 'card', attrs: { cardId: 'c1' }, content: [] })
+
+    // 传一个 attrs.cardId 被改乱/丢失的 JSON（模拟从单卡文档 editor.getJSON() 拿到的、
+    // cardId 可能对不上或被清空的场景）
+    useBookStore.getState().updateBoxCard(box.id, 'c1', { type: 'card', attrs: { cardId: 'someone-else' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'x' }] }] })
+    let cards = useBookStore.getState().getBox(box.id)!.cards
+    expect(cards.map((c) => c.attrs.cardId)).toEqual(['c1'])
+
+    useBookStore.getState().updateBoxCard(box.id, 'c1', { type: 'card', attrs: {}, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'y' }] }] })
+    cards = useBookStore.getState().getBox(box.id)!.cards
+    expect(cards.map((c) => c.attrs.cardId)).toEqual(['c1'])
+    expect(cards[0].content[0].content[0].text).toBe('y')
+  })
+
+  it('盒子不存在时安全 no-op，不抛出、不新增盒子/卡片', () => {
+    const book = useBookStore.getState().addBook('A')
+    useBookStore.getState().openBook(book.id)
+    expect(() => useBookStore.getState().updateBoxCard('not-exist', 'c1', { type: 'card', attrs: { cardId: 'c1' }, content: [] })).not.toThrow()
+    expect(useBookStore.getState().activeBook()!.boxes).toHaveLength(0)
+  })
+
+  it('卡片在盒子里找不到时安全 no-op，盒子卡数不变', () => {
+    const book = useBookStore.getState().addBook('A')
+    useBookStore.getState().openBook(book.id)
+    const box = useBookStore.getState().addBox('素材')!
+    const c1 = { type: 'card', attrs: { cardId: 'c1' }, content: [] }
+    useBookStore.getState().parkCard(box.id, c1)
+
+    expect(() => useBookStore.getState().updateBoxCard(box.id, 'nope', { type: 'card', attrs: { cardId: 'nope' }, content: [] })).not.toThrow()
+
+    const cards = useBookStore.getState().getBox(box.id)!.cards
+    expect(cards).toEqual([c1])
+  })
+})
+
 describe('bookStore — 迁移 & normalizeLibrary', () => {
   it('load() 优先读 card-writer:library', () => {
     localStorage.clear()

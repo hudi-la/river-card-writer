@@ -114,6 +114,13 @@ type BookState = {
   // 瞬间重复）。目标盒子找不到、或源盒子里找不到这张卡时，安全放弃、原样不动
   // （卡片留在源盒子，绝不凭空消失）。targetIndex 省略时追加到目标盒末尾。
   moveCardToBox: (fromBoxId: string, cardId: string, toBoxId: string, targetIndex?: number) => void
+  // 卡片弹窗编辑（打开一张盒子卡片、展开成可编辑大窗，仿 Google Keep 展开笔记）落盘用：
+  // boxId 可以是本书盒子也可以是通用盒子（跟 getBox/moveCardInBox 一样两边都认）。按
+  // cardId 原地替换这张卡的内容，但强制沿用原 cardId（哪怕传入的 cardJSON.attrs.cardId
+  // 是别的值/缺失——编辑器可能吐出一个跟原卡不一致的 attrs，这里统一收口，绝不会让
+  // 一次内容编辑意外顶替/新增了 cardId），不新增、不删除任何卡片，盒子卡片总数守恒。
+  // 盒子不存在、或盒子里找不到这个 cardId 时安全 no-op（原样不动，绝不凭空插入一张卡）。
+  updateBoxCard: (boxId: string, cardId: string, cardJSON: any) => void
   carry: (boxId: string, cardId: string) => void
   cancelCarry: () => void
   dropCarried: () => void
@@ -502,6 +509,35 @@ export const useBookStore = create<BookState>((set, get) => {
         persist(library)
         set({ library })
       }
+    },
+    updateBoxCard: (boxId, cardId, cardJSON) => {
+      const cur = get().library
+      const uniIdx = cur.universalBoxes.findIndex((b) => b.id === boxId)
+      if (uniIdx !== -1) {
+        const box = cur.universalBoxes[uniIdx]
+        const idx = box.cards.findIndex((c) => c?.attrs?.cardId === cardId)
+        if (idx === -1) return // 通用盒子里没有这张卡：安全 no-op
+        const updatedCard = { ...cardJSON, attrs: { ...cardJSON.attrs, cardId } }
+        const universalBoxes = cur.universalBoxes.map((b, i) =>
+          i === uniIdx ? { ...b, cards: b.cards.map((c, j) => (j === idx ? updatedCard : c)) } : b
+        )
+        const library = { ...cur, universalBoxes }
+        persist(library)
+        set({ library })
+        return
+      }
+      const book = get().activeBook()
+      const box = book?.boxes.find((b) => b.id === boxId)
+      const idx = box?.cards.findIndex((c) => c?.attrs?.cardId === cardId) ?? -1
+      if (!box || idx === -1) return // 盒子不存在，或盒子里没有这张卡：安全 no-op
+      const updatedCard = { ...cardJSON, attrs: { ...cardJSON.attrs, cardId } }
+      withActiveBook((b) => ({
+        book: {
+          ...b,
+          boxes: b.boxes.map((x) => (x.id === boxId ? { ...x, cards: x.cards.map((c, j) => (j === idx ? updatedCard : c)) } : x)),
+        },
+        result: undefined,
+      }))
     },
     carry: (boxId, cardId) => {
       // Non-destructive: the card stays in the box until the moment of drop.

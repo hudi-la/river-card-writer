@@ -13,11 +13,16 @@ export function Modal({
   title,
   onClose,
   children,
+  className = '',
 }: {
   open: boolean
   title: string
   onClose: () => void
   children: React.ReactNode
+  // 额外挂在 .modal-backdrop 上的 class——目前只用来给"卡片编辑大窗"叠一个更高的
+  // z-index（见 styles.css .modal-backdrop--card-edit），保证它在通用盒子悬浮大窗
+  // 之上，不依赖两个 Modal 实例挂载到 document.body 的先后顺序。
+  className?: string
 }) {
   // Esc 关闭：只在打开时挂监听，避免关闭状态下也占着一个全局 keydown。
   useEffect(() => {
@@ -33,7 +38,7 @@ export function Modal({
 
   return createPortal(
     <div
-      className="modal-backdrop"
+      className={className ? `modal-backdrop ${className}` : 'modal-backdrop'}
       onClick={onClose}
     >
       <div

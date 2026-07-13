@@ -521,7 +521,7 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 .box-count { font-size:12px; color:var(--muted); }
 .box-empty { color:var(--muted); font-size:13px; padding:24px 0; text-align:center; }
 .box-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap:16px; }
-.tcard { position:relative; border:1px solid var(--hair); border-radius:8px; padding:14px 14px 44px 34px; min-height:120px; background:var(--paper); }
+.tcard { position:relative; border:1px solid var(--hair); border-radius:8px; padding:14px 14px 44px 34px; min-height:120px; background:var(--paper); cursor:pointer; }
 .tcard-text { margin:0; font-size:14px; line-height:1.75; color:var(--ink); display:-webkit-box; -webkit-line-clamp:6; -webkit-box-orient:vertical; overflow:hidden; white-space:pre-wrap; }
 .tcard [data-box-action="insert"] { position:absolute; right:8px; bottom:8px; display:inline-flex; align-items:center; gap:4px; border:1px solid var(--faint); background:none; color:var(--muted); border-radius:5px; padding:4px 8px; font-size:11px; cursor:pointer; }
 .tcard [data-box-action="insert"]:hover { color:var(--ink); border-color:var(--hair); }
@@ -550,6 +550,32 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
    跟着 modal-panel 走满宽即可；默认盒子额外带的 UniversalBoxControls 隔开一点。 */
 .modal-body .box-view { width: auto; }
 .universal-box-controls { margin-bottom: 18px; }
+
+/* 卡片展开编辑大窗（CardEditModal，仿 Google Keep 点开一张便签）。它可能叠在
+   通用盒子悬浮大窗（.modal-backdrop，z-index:2000）之上——挂载顺序本身已经保证
+   它排在后面（后插入的 DOM 节点画在上层），这里再加一档更高的 z-index 兜底，
+   不依赖两个 Modal 实例先后挂载的顺序。 */
+.modal-backdrop--card-edit { z-index: 2010; }
+/* 复用正文编辑器同一套 .river/.card 样式（背景色、段落缩进、标题字号……），
+   卡片读起来跟正文里一模一样；外面套一层可滚动的边框容器，保证再长的卡片
+   也能看到完整内容而不撑爆弹窗。 */
+.card-edit-body { max-height: min(60vh, 640px); overflow-y: auto; border: 1px solid var(--hair); border-radius: 8px; }
+.card-edit-body .river { padding: 2px 0; }
+/* 这个大窗不支持拖拽排序（BoxView 的盒内拖拽把手是给外面缩略卡片用的），继承自
+   .river .card 节点视图的拖拽把手图标在这里只会造成"看起来能拖"的误导，隐藏掉。 */
+.card-edit-body .river .card .card-drag-handle { display: none; }
+.card-edit-footer { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 14px; }
+.card-edit-close {
+  border: 1px solid var(--faint); background: none; color: var(--muted);
+  border-radius: 6px; padding: 6px 14px; font-size: 12px; cursor: pointer;
+}
+.card-edit-close:hover { color: var(--ink); border-color: var(--hair); }
+.card-edit-insert {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: 1px solid var(--hair); background: color-mix(in srgb, var(--thread, #7fa3c4) 14%, var(--paper));
+  color: var(--ink); border-radius: 6px; padding: 6px 14px; font-size: 12px; cursor: pointer;
+}
+.card-edit-insert:hover { border-color: var(--thread, #7fa3c4); }
 
 .auth-loading { display:flex; align-items:center; justify-content:center; height:100vh; color:var(--muted); font-size:13px; }
 

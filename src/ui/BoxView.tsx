@@ -1,8 +1,9 @@
-import { useEffect, useRef, type RefObject } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { GripVertical, CornerDownRight } from 'lucide-react'
 import { useBookStore, UNIVERSAL_BOX_ID } from '../state/bookStore'
 import { Modal } from './Modal'
 import { UniversalBoxControls } from './UniversalBoxControls'
+import { CardEditModal } from './CardEditModal'
 
 // 导出给 LeftNav 复用（盒子卡片一行预览），避免两处各写一份文本抽取逻辑。
 export function cardText(cardJSON: any): string {
@@ -99,6 +100,11 @@ function useTcardDrag({
   const dragRef = useRef<TcardDragState | null>(null)
   const boxIdRef = useRef(boxId)
   boxIdRef.current = boxId
+  // 真拖拽（越过移动阈值）松手之后，浏览器有时仍会在原释放点合成一个 click 事件
+  // （尤其是 pointerup 落在拖拽起点那张卡自己身上时）——这个标记让紧跟在一次真拖拽
+  // 后面的第一个 click 被吞掉，避免"拖一下卡片"意外被当成"点开卡片编辑大窗"。
+  // 没发生真拖拽（纯点击/点了把手但没移动）时这个标记始终是 false，不影响正常点击。
+  const suppressClickRef = useRef(false)
 
   useEffect(() => {
     const gridEl = gridRef.current
@@ -122,6 +128,7 @@ function useTcardDrag({
       if (!drag) return
       dragRef.current = null
       if (drag.moved) {
+        suppressClickRef.current = true
         if (drag.targetBoxId && drag.targetBoxId !== drag.fromBoxId) {
           moveCardToBox(drag.fromBoxId, drag.cardId, drag.targetBoxId)
         } else if (drag.pendingReorderIndex !== null) {
@@ -129,6 +136,15 @@ function useTcardDrag({
         }
       }
       cleanupVisuals(drag)
+    }
+
+    // 见上面 suppressClickRef 的注释：吞掉真拖拽之后紧跟着的第一个 click，且只吞
+    // 这一次——不管它落在哪张卡上。用 capture 阶段拦截，确保比 .tcard 自己的
+    // onClick（React 走 bubble 阶段）先执行。
+    const onClickCapture = (e: MouseEvent) => {
+      if (!suppressClickRef.current) return
+      suppressClickRef.current = false
+      e.stopPropagation()
     }
 
     const abortDrag = () => {
@@ -245,6 +261,7 @@ function useTcardDrag({
     window.addEventListener('pointerup', finishDrag)
     window.addEventListener('pointercancel', finishDrag)
     window.addEventListener('lostpointercapture', finishDrag)
+    gridEl.addEventListener('click', onClickCapture, true)
     document.addEventListener('dragstart', onDragStart, true)
     document.addEventListener('selectstart', onSelectStart, true)
     return () => {
@@ -256,6 +273,7 @@ function useTcardDrag({
       window.removeEventListener('pointerup', finishDrag)
       window.removeEventListener('pointercancel', finishDrag)
       window.removeEventListener('lostpointercapture', finishDrag)
+      gridEl.removeEventListener('click', onClickCapture, true)
       document.removeEventListener('dragstart', onDragStart, true)
       document.removeEventListener('selectstart', onSelectStart, true)
       abortDrag()
@@ -275,6 +293,26 @@ export function BoxView({ boxId, readOnly = false }: { boxId: string | null; rea
   const gridRef = useRef<HTMLDivElement | null>(null)
   useTcardDrag({ gridRef, boxId, moveCardInBox, moveCardToBox })
 
+  // 点开某张卡的展开编辑大窗（仿 Google Keep）。只存 cardId，内容每次从 cards 里
+  // 现取——这样 store 落盘之后 editingCard 也跟着刷新，不会拿着一份过期的引用。
+  // 切换 boxId（比如换了一个不同的盒子）时清掉，避免带着上一个盒子的 cardId
+  // 误开一张不相关的卡。
+  const [editingCardId, setEditingCardId] = useState<string | null>(null)
+  useEffect(() => {
+    setEditingCardId(null)
+  }, [boxId])
+  const editingCard = editingCardId ? cards.find((c) => c?.attrs?.cardId === editingCardId) : undefined
+
+  // 点卡片正文打开编辑大窗——但点在拖拽把手或"插入正文"按钮上时不算（那两个
+  // 各自有自己的行为：拖排序/移盒子、直接插入正文），用 closest 排除掉，不管
+  // 点击落在图标本身还是按钮内的文字上都能排除干净。
+  const onCardClick = (e: React.MouseEvent<HTMLDivElement>, cardId: string) => {
+    const target = e.target as HTMLElement
+    if (target.closest('[data-tcard-drag-handle]')) return
+    if (target.closest('[data-box-action]')) return
+    setEditingCardId(cardId)
+  }
+
   return (
     <div className="box-view">
       <header className="box-header">
@@ -288,7 +326,12 @@ export function BoxView({ boxId, readOnly = false }: { boxId: string | null; rea
           {cards.map((card, i) => {
             const cardId = card?.attrs?.cardId ?? String(i)
             return (
-              <div className="tcard" key={cardId} data-card-id={cardId}>
+              <div
+                className="tcard"
+                key={cardId}
+                data-card-id={cardId}
+                onClick={(e) => onCardClick(e, cardId)}
+              >
                 <span className="tcard-drag-handle" data-tcard-drag-handle aria-hidden="true" title="拖动排序/移到另一个盒子">
                   <GripVertical size={14} strokeWidth={1.75} />
                 </span>
@@ -306,6 +349,16 @@ export function BoxView({ boxId, readOnly = false }: { boxId: string | null; rea
             )
           })}
         </div>
+      )}
+      {boxId && editingCardId && editingCard && (
+        <CardEditModal
+          key={editingCardId}
+          boxId={boxId}
+          card={editingCard}
+          boxName={box?.name ?? ''}
+          onClose={() => setEditingCardId(null)}
+          readOnly={readOnly}
+        />
       )}
     </div>
   )
