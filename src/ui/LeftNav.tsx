@@ -815,10 +815,19 @@ export function LeftNav() {
   return (
     <>
     <nav className="rail" ref={(el) => { railRef.current = el }} onScroll={closeHoverForScroll}>
-      <p className="rlabel nav-group">目录</p>
-      <button type="button" className="outline-detail-open-btn" onClick={() => setDetailOpen(true)}>
-        详细 / 排列大纲
-      </button>
+      {/* 目录头做成 sticky：栏内大纲很长往下滚时，这条「目录 + 排列」始终吸在
+          栏顶。「排列」是缩小版的原"详细 / 排列大纲"按钮，挪到标题右侧省地方。 */}
+      <div className="rail-outline-head">
+        <p className="rlabel nav-group">目录</p>
+        <button
+          type="button"
+          className="outline-arrange-btn"
+          title="详细 / 排列大纲"
+          onClick={() => setDetailOpen(true)}
+        >
+          排列
+        </button>
+      </div>
       {!hasHeadings ? (
         <>
           <p className="outline-hint">还没有章节标题</p>

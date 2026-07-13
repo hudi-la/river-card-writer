@@ -121,15 +121,21 @@ export function Workspace() {
         onPointerCancel={onHandlePointerUp}
       />
       <main className="page">
-        <button className="back-to-shelf" onClick={goToShelf}>
-          ← 书柜
-        </button>
-        {/* key 加前缀——RiverEditor/BoxView 兄弟节点已经用 activeBookId/activeBoxId
-            当 key，book.id 原样用会跟它们撞车（React 会警告"两个子节点同一个
-            key"）。这里的 key 只是为了切书时强制重挂载、重置本地 draft/editing
-            状态，值本身不需要跟别处的 key 语义一致，加前缀避免撞车即可。 */}
-        <WorkspaceTitle key={`title-${book.id}`} book={book} renameBook={renameBook} />
-        <ReadingSettings />
+        {/* 顶栏做成 sticky：往下滚正文时这条始终吸在视口顶部，← 书柜 / 书名 / ⚙
+            一直够得着（见 .workspace-topbar）。三栏网格 1fr auto 1fr 让书名无论
+            两侧按钮多宽都精确居中，且书名保持紧凑——点击区只落在书名本身，不会
+            误触整条中缝进改名。 */}
+        <div className="workspace-topbar">
+          <button className="back-to-shelf" onClick={goToShelf}>
+            ← 书柜
+          </button>
+          {/* key 加前缀——RiverEditor/BoxView 兄弟节点已经用 activeBookId/activeBoxId
+              当 key，book.id 原样用会跟它们撞车（React 会警告"两个子节点同一个
+              key"）。这里的 key 只是为了切书时强制重挂载、重置本地 draft/editing
+              状态，值本身不需要跟别处的 key 语义一致，加前缀避免撞车即可。 */}
+          <WorkspaceTitle key={`title-${book.id}`} book={book} renameBook={renameBook} />
+          <ReadingSettings />
+        </div>
         {viewKind === 'box' ? (
           <BoxView key={activeBoxId} boxId={activeBoxId} />
         ) : (

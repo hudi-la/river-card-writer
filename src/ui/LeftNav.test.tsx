@@ -331,7 +331,7 @@ describe('LeftNav 侧栏只留简略树 + 详细按钮开悬浮大窗（Phase 14
     useBookStore.getState().updateDoc(docWithNote())
     render(<LeftNav />)
     expect(screen.queryByText('详细大纲')).toBeNull()
-    await userEvent.click(screen.getByText('详细 / 排列大纲'))
+    await userEvent.click(screen.getByRole('button', { name: '排列' }))
     expect(screen.getByText('详细大纲')).toBeTruthy()
     expect(screen.getByDisplayValue('讲主角出发')).toBeTruthy()
   })
@@ -339,7 +339,7 @@ describe('LeftNav 侧栏只留简略树 + 详细按钮开悬浮大窗（Phase 14
   it('大窗内编辑某条 note，失焦后调 editorBridge.setHeadingNote(index, value)', async () => {
     useBookStore.getState().updateDoc(docWithNote())
     render(<LeftNav />)
-    await userEvent.click(screen.getByText('详细 / 排列大纲'))
+    await userEvent.click(screen.getByRole('button', { name: '排列' }))
     const textarea = screen.getByDisplayValue('讲主角出发')
     await userEvent.clear(textarea)
     await userEvent.type(textarea, '改过的说明')
@@ -350,7 +350,7 @@ describe('LeftNav 侧栏只留简略树 + 详细按钮开悬浮大窗（Phase 14
   it('按 Esc 关闭大窗', async () => {
     useBookStore.getState().updateDoc(docWithNote())
     render(<LeftNav />)
-    await userEvent.click(screen.getByText('详细 / 排列大纲'))
+    await userEvent.click(screen.getByRole('button', { name: '排列' }))
     expect(screen.getByText('详细大纲')).toBeTruthy()
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByText('详细大纲')).toBeNull()
@@ -359,7 +359,7 @@ describe('LeftNav 侧栏只留简略树 + 详细按钮开悬浮大窗（Phase 14
   it('点遮罩关闭大窗', async () => {
     useBookStore.getState().updateDoc(docWithNote())
     render(<LeftNav />)
-    await userEvent.click(screen.getByText('详细 / 排列大纲'))
+    await userEvent.click(screen.getByRole('button', { name: '排列' }))
     const backdrop = document.querySelector('.modal-backdrop') as HTMLElement
     await userEvent.click(backdrop)
     expect(screen.queryByText('详细大纲')).toBeNull()
