@@ -520,9 +520,12 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 .box-header h2 { margin:0; font-size:18px; font-weight:600; }
 .box-count { font-size:12px; color:var(--muted); }
 .box-empty { color:var(--muted); font-size:13px; padding:24px 0; text-align:center; }
-.box-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap:16px; }
-.tcard { position:relative; border:1px solid var(--hair); border-radius:8px; padding:14px 14px 44px 34px; min-height:120px; background:var(--paper); cursor:pointer; }
-.tcard-text { margin:0; font-size:14px; line-height:1.75; color:var(--ink); display:-webkit-box; -webkit-line-clamp:6; -webkit-box-orient:vertical; overflow:hidden; white-space:pre-wrap; }
+/* 瀑布流（CSS 多列）：卡片按内容高度紧密排列、多分几列，尽量多显示。字调小、
+   不截断（显示全文）——用户要"字可以小，尽量多显示"。拖动重排是按"落在目标卡
+   左半/右半"判断的、跟布局无关，换成多列不影响。 */
+.box-grid { columns: 260px; column-gap: 16px; }
+.tcard { position:relative; break-inside:avoid; margin:0 0 16px; border:1px solid var(--hair); border-radius:8px; padding:12px 12px 40px 30px; background:var(--paper); cursor:pointer; }
+.tcard-text { margin:0; font-size:13px; line-height:1.65; color:var(--ink); white-space:pre-wrap; overflow-wrap:anywhere; }
 .tcard [data-box-action="insert"] { position:absolute; right:8px; bottom:8px; display:inline-flex; align-items:center; gap:4px; border:1px solid var(--faint); background:none; color:var(--muted); border-radius:5px; padding:4px 8px; font-size:11px; cursor:pointer; }
 .tcard [data-box-action="insert"]:hover { color:var(--ink); border-color:var(--hair); }
 .tcard [data-box-action="insert"]:disabled { opacity:.4; cursor:default; }

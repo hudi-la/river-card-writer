@@ -156,6 +156,13 @@ function useTcardDrag({
 
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 0) return
+      // 一次新的按下＝一次新交互，先清掉上一次拖拽遗留的 suppress 旗标。真拖拽
+      // 移动很大、浏览器根本不会补发 trailing click，若只靠"下一次 click 消费"
+      // 来清旗标，那个旗标会一直挂着、把用户随后想点开卡片的第一次 click 吞掉
+      // （表现为"点一下没反应、要点两下"）。改成按下即清：拖拽自己的 pointerup
+      // 之后若真有 trailing click（小位移场景），它前面没有新的 pointerdown，仍
+      // 会被吞；而用户另起一次点击必然先 pointerdown，旗标此刻已清，点击照常放行。
+      suppressClickRef.current = false
       const target = e.target as HTMLElement
       const handle = target.closest<HTMLElement>('[data-tcard-drag-handle]')
       if (!handle) return
