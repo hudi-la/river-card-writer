@@ -1,8 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Plus } from 'lucide-react'
 import { useEditor, EditorContent } from '@tiptap/react'
-import type { Node as PMNode } from '@tiptap/pm/model'
-import { baseExtensions } from './schema'
+import { baseExtensions, findCardInDoc } from './schema'
 import { useBookStore, EMPTY_DOC } from '../state/bookStore'
 import { useEditorBridge } from '../state/editorBridge'
 import { SelectionToolbar } from './SelectionToolbar'
@@ -32,7 +31,10 @@ type DragState = {
   lastY: number
 }
 
-const DROP_TARGET_CLASS = 'drop-target'
+// 盒子悬停高亮的类名——导出给大纲块行拖拽（LeftNav.tsx 的 useOutlineRowDrag）
+// 复用，两条拖拽路径（正文卡片拖到盒子 / 大纲块行拖到盒子）共用同一份视觉反馈，
+// 不各自定义一份容易漂移的同名 class 字符串。
+export const DROP_TARGET_CLASS = 'drop-target'
 
 // 左栏/侧栏容器的选择器——LeftNav 渲染的 <nav className="rail">，盒子条目（[data-box-id]）
 // 都是它的子元素。sticky 悬停判定（见 onPointerMove）用它来区分"指针只是从盒子行边缘
@@ -76,17 +78,10 @@ function indicatorRectAt(dom: HTMLElement, dragCardId: string, clientY: number):
   return { top: (prev.bottom + next.top) / 2, left: next.left, width: next.width }
 }
 
-// 在（当前）doc 的顶层子节点里找 cardId 匹配的那张卡，返回它的起始 pos 与 JSON——
-// 拖到盒子（park）和普通拖拽重排都要先定位这张卡。
-export function findCardInDoc(doc: PMNode, cardId: string): { pos: number; node: PMNode } | null {
-  let found: { pos: number; node: PMNode } | null = null
-  doc.forEach((node, offset) => {
-    if (!found && node.type.name === 'card' && node.attrs.cardId === cardId) {
-      found = { pos: offset, node }
-    }
-  })
-  return found
-}
+// findCardInDoc 现在定义在 schema.ts（editorBridge.ts 也要用它，放在 schema.ts
+// 里避免跟这个文件产生循环 import）——这里 re-export 一份，保持既有调用方/
+// 测试（`import { findCardInDoc } from './RiverEditor'`）不用改。
+export { findCardInDoc }
 
 export function RiverEditor() {
   // 只在挂载时读一次当前书的 doc 当初始内容——之后的改动全走 onUpdate→updateDoc，

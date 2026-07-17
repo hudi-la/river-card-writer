@@ -5,6 +5,7 @@ import { useBookStore, type Box } from '../state/bookStore'
 import { useEditorBridge } from '../state/editorBridge'
 import { cardText, UniversalBoxModal } from './BoxView'
 import { autoCardColor } from '../editor/schema'
+import { DROP_TARGET_CLASS } from '../editor/RiverEditor'
 import { Modal } from './Modal'
 import { OutlineDetail } from './OutlineDetail'
 
@@ -291,6 +292,11 @@ type OutlineDragState = {
   moved: boolean
   pointerId: number
   pendingTargetIndex: number | null
+  // 悬停在哪个盒子条目上——跟 RiverEditor.tsx 的 DragState 同名字段同一个用途
+  // （见那边的注释）：只有 kind==='block' 的行才会把这两个字段设成非 null（拖一整段
+  // 到盒子明确不支持，见 useOutlineRowDrag 里 onPointerMove 的判断）。
+  targetBoxId: string | null
+  targetBoxEl: HTMLElement | null
 }
 
 // 复刻 LeftNav 渲染时 headingIndices 数组的算法（该标题在"所有 heading 行"里
@@ -463,6 +469,7 @@ export function useOutlineRowDrag({
   moveCardTo,
   openDoc,
   onDragBegin,
+  parkCardToBox,
 }: {
   containerRef: RefObject<HTMLElement | null>
   rowsRef: MutableRefObject<OutlineRow[]>
@@ -470,6 +477,10 @@ export function useOutlineRowDrag({
   moveCardTo: (cardIndex: number, targetIndex: number) => void
   openDoc: () => void
   onDragBegin?: () => void
+  // 大纲块行拖到盒子（镜像 RiverEditor 的正文卡片拖到盒子）——可选：详细大纲
+  // 大窗（OutlineDetail）没有盒子可拖，不传即可，那边 elementFromPoint 天然
+  // 永远找不到 [data-box-id]，box-drop 分支自然不会触发。
+  parkCardToBox?: (cardIndex: number, boxId: string) => boolean
 }) {
   const outlineDragRef = useRef<OutlineDragState | null>(null)
   // 拖拽真的发生过（越过阈值）之后，紧跟着的那次原生 click 要被吞掉——不然
@@ -499,12 +510,26 @@ export function useOutlineRowDrag({
       drag.ghostEl.remove()
       drag.indicatorEl.remove()
       drag.sourceEls.forEach((el) => el.classList.remove('outline-row-dragging'))
+      // 盒子高亮在每一条退出路径（成功 park、abort、pointercancel）都要摘掉，
+      // 不留残留——跟 RiverEditor.tsx 的 cleanupDragVisuals 同一个理由。
+      drag.targetBoxEl?.classList.remove(DROP_TARGET_CLASS)
       document.documentElement.classList.remove(OUTLINE_DRAG_ACTIVE_CLASS)
       try {
         railEl.releasePointerCapture(drag.pointerId)
       } catch {
         // 指针早已释放时会抛，忽略即可
       }
+    }
+
+    // 更新当前悬停命中的盒子——跟 RiverEditor.tsx 的 setDropTarget 同一份逻辑
+    // （相同 boxId 提前返回，换目标时先摘旧高亮再加新高亮）。
+    const setDropTarget = (drag: OutlineDragState, boxEl: HTMLElement | null) => {
+      const boxId = boxEl?.dataset.boxId ?? null
+      if (drag.targetBoxId === boxId) return
+      drag.targetBoxEl?.classList.remove(DROP_TARGET_CLASS)
+      drag.targetBoxId = boxId
+      drag.targetBoxEl = boxEl
+      boxEl?.classList.add(DROP_TARGET_CLASS)
     }
 
     // 落地收尾——dragRef 立刻置空做幂等闸门，pointerup/pointercancel/
@@ -524,7 +549,12 @@ export function useOutlineRowDrag({
       const drag = outlineDragRef.current
       if (!drag) return
       outlineDragRef.current = null
-      if (drag.moved && drag.pendingTargetIndex !== null) {
+      if (drag.moved && drag.targetBoxId) {
+        // 命中盒子——只有 block 行能走到这（onPointerMove 里只给 block 行设
+        // targetBoxId），park 之后不再做重排，也不做点击定位兜底。
+        parkCardToBox?.(drag.startIndex, drag.targetBoxId)
+        suppressClickRef.current = true
+      } else if (drag.moved && drag.pendingTargetIndex !== null) {
         if (drag.kind === 'heading') moveSection(drag.startIndex, drag.pendingTargetIndex)
         else moveCardTo(drag.startIndex, drag.pendingTargetIndex)
         suppressClickRef.current = true
@@ -599,6 +629,8 @@ export function useOutlineRowDrag({
         moved: false,
         pointerId: e.pointerId,
         pendingTargetIndex: null,
+        targetBoxId: null,
+        targetBoxEl: null,
       }
       try {
         railEl.setPointerCapture(e.pointerId)
@@ -638,6 +670,24 @@ export function useOutlineRowDrag({
         onDragBeginRef.current?.() // 拖起来之后 hover 便签（如果有）没意义，交给调用方关掉
       }
       drag.ghostEl.style.transform = `translate(${e.clientX + 12}px, ${e.clientY + 12}px)`
+
+      // 拖到盒子（block 行专属）：跟 RiverEditor.tsx 的 onPointerMove 同一份
+      // elementFromPoint 命中判定，用 ?. 兜底——jsdom 没有实现 elementFromPoint
+      // （不是"返回 null"而是压根没有这个方法），不打桩的既有重排测试因此会
+      // 走 undefined?.() 短路成 undefined，行为等价于"没悬停在任何盒子上"，
+      // 不会抛错、也不影响它们本来就没有盒子要测的重排断言。heading 行整段拖到
+      // 盒子明确不支持（挪一整段进盒子语义不清）——即便指针悬停在盒子上也不当
+      // box-drop 处理，直接清空目标、走下面的重排落点计算。
+      const boxEl =
+        drag.kind === 'block'
+          ? (document.elementFromPoint?.(e.clientX, e.clientY)?.closest<HTMLElement>('[data-box-id]') ?? null)
+          : null
+      setDropTarget(drag, boxEl)
+      if (boxEl) {
+        // 悬停在盒子上时，重排落点线没有意义，隐藏掉避免视觉打架（同 RiverEditor）。
+        drag.indicatorEl.style.display = 'none'
+        return
+      }
 
       const rows = rowsRef.current
       const others = otherOutlineRowEls(railEl, drag.sectionStart, drag.sectionEnd)
@@ -688,7 +738,7 @@ export function useOutlineRowDrag({
     // 读最新值，若把它放进来，效果跟旧 bug 一样：hover 引发的重渲染会在拖拽
     // 进行到一半时把这个 effect 卸载重挂，销毁尚未 pointerup 的拖拽态。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [containerRef, rowsRef, moveCardTo, moveSection, openDoc])
+  }, [containerRef, rowsRef, moveCardTo, moveSection, openDoc, parkCardToBox])
 }
 
 // ---- 盒子行拖动重排（书内盒子，即 book.boxes）----
@@ -926,6 +976,7 @@ export function LeftNav() {
   const bridgeMoveCardTo = useEditorBridge((s) => s.moveCardTo)
   const bridgeMoveSection = useEditorBridge((s) => s.moveSection)
   const bridgeToggleCollapsed = useEditorBridge((s) => s.toggleCollapsed)
+  const bridgeParkOutlineCardToBox = useEditorBridge((s) => s.parkOutlineCardToBox)
 
   const rows = outlineTreeFromDoc(book?.doc)
   // 折叠态过滤（Phase 13 Task 2）：collapsed 的标题行不渲染它管辖的后代行——
@@ -1028,6 +1079,7 @@ export function LeftNav() {
     moveCardTo: bridgeMoveCardTo,
     openDoc,
     onDragBegin: () => setHover(null),
+    parkCardToBox: bridgeParkOutlineCardToBox,
   })
   useBoxRowDrag({ containerRef: railRef, moveBox })
 

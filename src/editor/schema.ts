@@ -265,6 +265,22 @@ function cardHeadingLevel(card: PMNode): 1 | 2 | 3 | null {
   return level
 }
 
+// 在（当前）doc 的顶层子节点里找 cardId 匹配的那张卡，返回它的起始 pos 与 JSON——
+// 拖到盒子（park，包括从正文河流拖、从大纲块行拖两条路径）和普通拖拽重排都要先
+// 定位这张卡。定义在这里（而不是 RiverEditor.tsx）是为了让 editorBridge.ts 也能
+// 直接引用，不必反过来 import RiverEditor.tsx（会形成 editorBridge <-> RiverEditor
+// 的循环依赖）；RiverEditor.tsx 继续 re-export 一份，保持既有调用方/测试的 import
+// 路径不变。
+export function findCardInDoc(doc: PMNode, cardId: string): { pos: number; node: PMNode } | null {
+  let found: { pos: number; node: PMNode } | null = null
+  doc.forEach((node, offset) => {
+    if (!found && node.type.name === 'card' && node.attrs.cardId === cardId) {
+      found = { pos: offset, node }
+    }
+  })
+  return found
+}
+
 // 标题卡 headingCardIndex 的"段正文"范围——它自己之后、直到下一张 level ≤ 它的
 // 标题卡之前的所有卡下标（含中间夹着的更深层子节/正文块，不含标题卡自己）。
 // [startExclusive, endExclusive) 左闭右开，跟 Array.slice 一致。非标题卡（没有

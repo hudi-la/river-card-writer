@@ -14,6 +14,9 @@ const addChapter = vi.fn()
 const moveCardTo = vi.fn()
 const moveSection = vi.fn()
 const toggleCollapsed = vi.fn()
+// 大纲块行拖到盒子（park）——默认返回 true（模拟 park 成功），个别测试按需覆写
+// mockReturnValueOnce 来断言"park 失败时不做额外动作"之类的分支。
+const parkOutlineCardToBox = vi.fn(() => true)
 vi.mock('../state/editorBridge', () => ({
   useEditorBridge: (selector: (s: any) => any) =>
     selector({
@@ -25,6 +28,7 @@ vi.mock('../state/editorBridge', () => ({
       moveCardTo,
       moveSection,
       toggleCollapsed,
+      parkOutlineCardToBox,
     }),
 }))
 
@@ -63,6 +67,7 @@ beforeEach(() => {
   moveCardTo.mockClear()
   moveSection.mockClear()
   toggleCollapsed.mockClear()
+  parkOutlineCardToBox.mockClear()
   useBookStore.getState().__resetForTest()
   useBookStore.getState().openBook(useBookStore.getState().library.books[0].id)
   usePrefsStore.getState().__resetForTest()
@@ -484,6 +489,25 @@ function dragRow(row: HTMLElement, fromY: number, toY: number) {
   window.dispatchEvent(new PointerEvent('pointerup', { clientX: 5, clientY: toY, pointerId: 1, bubbles: true }))
 }
 
+// 拖一行的把手到某个盒子行上——跟 RiverEditor.test.tsx 里 park 到盒子的测试同一个
+// 手法：jsdom 没有真实布局/elementFromPoint，直接把 document.elementFromPoint 打桩
+// 成固定返回目标盒子元素，等价于"真实鼠标最后悬停在这个盒子行上"。落点 y 坐标本身
+// 在这里不重要（box 命中判定发生在 outlineDropAt 算重排落点之前，见 onPointerMove），
+// 只要跨过拖拽阈值即可。
+function dragRowOntoBox(row: HTMLElement, boxEl: HTMLElement) {
+  const originalElementFromPoint = document.elementFromPoint?.bind(document)
+  document.elementFromPoint = () => boxEl
+  try {
+    const handle = dragHandleOf(row)
+    handle.dispatchEvent(new PointerEvent('pointerdown', { clientX: 5, clientY: 45, pointerId: 1, button: 0, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 5, clientY: 200, pointerId: 1, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: 5, clientY: 200, pointerId: 1, bubbles: true }))
+  } finally {
+    if (originalElementFromPoint) document.elementFromPoint = originalElementFromPoint
+    else delete (document as any).elementFromPoint
+  }
+}
+
 // 回归测试（Phase 15）：拖拽改成只认专用把手当起点之后，行本身的 pointerdown
 // 不再 setPointerCapture，原生 click 不会被重定向——点击行（不经过把手）就应该
 // 直接靠 onClick 触发 click-to-scroll，不需要再靠"未越阈值的 pointerup"这个
@@ -626,6 +650,82 @@ describe('LeftNav 目录内拖动重排（Phase 12 Task 3）', () => {
     rows.forEach((row) => {
       expect(row.querySelector('[data-outline-drag-handle]')).toBeTruthy()
     })
+  })
+})
+
+describe('LeftNav 大纲块行拖到盒子（镜像正文卡片拖到盒子的 park 交互）', () => {
+  it('拖动块行的把手到盒子行上——调 editorBridge.parkOutlineCardToBox(cardIndex, boxId)，不触发重排/点击定位', () => {
+    useBookStore.getState().updateDoc(docTwoChaptersWithSection())
+    const box = useBookStore.getState().addBox('素材盒')!
+    const { container } = render(<LeftNav />)
+    stubOutlineRowRects(container)
+    const cardARow = container.querySelector('[data-outline-row-index="1"]') as HTMLElement
+    const boxRow = container.querySelector(`[data-box-id="${box.id}"]`) as HTMLElement
+    expect(boxRow).toBeTruthy()
+
+    dragRowOntoBox(cardARow, boxRow)
+
+    expect(parkOutlineCardToBox).toHaveBeenCalledTimes(1)
+    expect(parkOutlineCardToBox).toHaveBeenCalledWith(1, box.id)
+    expect(moveCardTo).not.toHaveBeenCalled()
+    expect(moveSection).not.toHaveBeenCalled()
+  })
+
+  it('松手落在盒子上时给盒子行加悬停高亮 class，松手（park）后清掉，不留残留', () => {
+    useBookStore.getState().updateDoc(docTwoChaptersWithSection())
+    const box = useBookStore.getState().addBox('素材盒')!
+    const { container } = render(<LeftNav />)
+    stubOutlineRowRects(container)
+    const cardARow = container.querySelector('[data-outline-row-index="1"]') as HTMLElement
+    const boxRow = container.querySelector(`[data-box-id="${box.id}"]`) as HTMLElement
+
+    const originalElementFromPoint = document.elementFromPoint?.bind(document)
+    document.elementFromPoint = () => boxRow
+    try {
+      const handle = dragHandleOf(cardARow)
+      handle.dispatchEvent(new PointerEvent('pointerdown', { clientX: 5, clientY: 45, pointerId: 1, button: 0, bubbles: true }))
+      window.dispatchEvent(new PointerEvent('pointermove', { clientX: 5, clientY: 200, pointerId: 1, bubbles: true }))
+      // 拖拽悬停在盒子上的这一刻，盒子行应该已经带上高亮 class。
+      expect(boxRow.classList.contains('drop-target')).toBe(true)
+      window.dispatchEvent(new PointerEvent('pointerup', { clientX: 5, clientY: 200, pointerId: 1, bubbles: true }))
+    } finally {
+      if (originalElementFromPoint) document.elementFromPoint = originalElementFromPoint
+      else delete (document as any).elementFromPoint
+    }
+
+    // 松手完成 park 之后，高亮必须被摘掉——不能留着一个"卡在悬停态"的盒子行。
+    expect(boxRow.classList.contains('drop-target')).toBe(false)
+  })
+
+  it('拖到目录内两行之间（不悬停在任何盒子上）——照常走重排，不误触发 park', () => {
+    useBookStore.getState().updateDoc(docTwoChaptersWithSection())
+    useBookStore.getState().addBox('素材盒')
+    const { container } = render(<LeftNav />)
+    stubOutlineRowRects(container)
+    const cardARow = container.querySelector('[data-outline-row-index="1"]') as HTMLElement
+    dragRow(cardARow, 45, 500) // 沿用普通重排的 dragRow——没有 stub elementFromPoint，box 检测天然拿不到命中
+
+    expect(parkOutlineCardToBox).not.toHaveBeenCalled()
+    expect(moveCardTo).toHaveBeenCalledTimes(1)
+    expect(moveCardTo).toHaveBeenCalledWith(1, 6)
+  })
+
+  it('拖动标题（章）行的把手到盒子行上——不 park（整段拖进盒子明确不支持），也不误触发重排', () => {
+    useBookStore.getState().updateDoc(docTwoChaptersWithSection())
+    const box = useBookStore.getState().addBox('素材盒')!
+    const { container } = render(<LeftNav />)
+    stubOutlineRowRects(container)
+    const chap1Row = container.querySelector('[data-outline-row-index="0"]') as HTMLElement
+    const boxRow = container.querySelector(`[data-box-id="${box.id}"]`) as HTMLElement
+
+    dragRowOntoBox(chap1Row, boxRow)
+
+    expect(parkOutlineCardToBox).not.toHaveBeenCalled()
+    expect(boxRow.classList.contains('drop-target')).toBe(false)
+    // 悬停在盒子上时被当成"不算命中盒子"，重排逻辑接手——落点计算会在 200
+    // 这个纵坐标下走到目录末尾（跟纯重排测试同样的落点，见上面章行拖到末尾的用例）。
+    expect(moveSection).toHaveBeenCalledTimes(1)
+    expect(moveSection).toHaveBeenCalledWith(0, 6)
   })
 })
 

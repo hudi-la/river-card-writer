@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import type { Editor } from '@tiptap/core'
+import { findCardInDoc } from '../editor/schema'
+import { useBookStore } from './bookStore'
 
 // 让不在编辑器树里的组件（比如左栏 sidebar 的 note 编辑框）也能拿到当前挂载的
 // TipTap Editor 实例、发命令过去。RiverEditor 挂载时 setEditor(editor)，卸载
@@ -20,6 +22,10 @@ type EditorBridgeState = {
   // doc.content 里的下标，直接转发给 toggleCollapsed 命令（schema.ts 里定位它的
   // heading 段落、翻转 collapsed 属性）。
   toggleCollapsed: (headingCardIndex: number) => void
+  // 大纲块行拖到盒子（"park"）——镜像 RiverEditor.tsx 里正文卡片拖到盒子的
+  // finishDrag 逻辑（先落袋、后摘除，含只剩一张卡的边界情况），入口从"哪张卡的
+  // DOM"换成"doc.content 第 cardIndex 张卡"。见下方实现的注释。
+  parkOutlineCardToBox: (cardIndex: number, boxId: string) => boolean
 }
 
 export const useEditorBridge = create<EditorBridgeState>((set, get) => ({
@@ -69,5 +75,39 @@ export const useEditorBridge = create<EditorBridgeState>((set, get) => ({
     const editor = get().editor
     if (!editor) return
     editor.commands.toggleCollapsed(headingCardIndex)
+  },
+  // 数据安全铁律：先落袋（parkCard 把卡的 JSON 写进盒子），再从文档摘除——任何
+  // 一步失败，卡最坏也只是"两边都有"或"哪边都没动"，绝不会出现"从文档消失但
+  // 没进盒子"的悬空态。逻辑原样照抄 RiverEditor.tsx 的 finishDrag box-drop 分支
+  // （唯一区别：那边先用 DOM ⠿ 拖出 cardId，这里直接用 doc.content 的下标）：
+  //   - 文档里不止这一张卡：先 removeCard()，成功了再 parkCard()——多卡时
+  //     removeCard 本身不会因为"文档不能空"而拒绝，正常先摘后放。
+  //   - 文档里只剩这一张卡：removeCard 会拒绝（文档不能空），所以反过来先
+  //     parkCard()（内容先安全存进盒子），再 appendCard() 撑住"文档非空"这条
+  //     不变量，最后再把原卡摘掉——全程卡的内容至少在文档或盒子之一，从不悬空。
+  parkOutlineCardToBox: (cardIndex, boxId) => {
+    const editor = get().editor
+    if (!editor) return false
+    const doc = editor.state.doc
+    if (cardIndex < 0 || cardIndex >= doc.childCount) return false
+    const node = doc.child(cardIndex)
+    const cardId: string | undefined = node.attrs.cardId
+    if (!cardId) return false
+    const found = findCardInDoc(doc, cardId)
+    if (!found) return false
+    const json = found.node.toJSON()
+    const parkCard = useBookStore.getState().parkCard
+    if (doc.childCount > 1) {
+      const removed = editor.chain().focus().setTextSelection(found.pos + 2).removeCard().run()
+      if (!removed) return false
+      parkCard(boxId, json)
+      return true
+    }
+    // 只剩这一张卡：先落袋，追加一张空卡撑住"文档非空"，再摘掉原卡。
+    parkCard(boxId, json)
+    editor.commands.appendCard()
+    const again = findCardInDoc(editor.state.doc, cardId)
+    if (again) editor.chain().focus().setTextSelection(again.pos + 2).removeCard().run()
+    return true
   },
 }))
