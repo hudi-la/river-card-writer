@@ -18,6 +18,10 @@ export type AuthClient = {
       email: string
       options?: { emailRedirectTo?: string }
     }) => Promise<{ data: unknown; error: { message: string } | null }>
+    signInWithOAuth: (credentials: {
+      provider: 'google'
+      options?: { redirectTo?: string }
+    }) => Promise<{ data: unknown; error: { message: string } | null }>
     signOut: () => Promise<{ error: { message: string } | null }>
   }
 }
@@ -28,6 +32,7 @@ export type AuthState = {
   localOnly: boolean
   init: () => void
   signInWithEmail: (email: string) => Promise<{ sent: boolean; error?: string }>
+  signInWithGoogle: () => Promise<{ error?: string }>
   signOut: () => Promise<void>
   continueLocalOnly: () => void
   // Cmd+S 未登录时 toast 上"点此登录"用：只在内存里把 localOnly 翻回 false，
@@ -80,6 +85,18 @@ export function createAuthStore(client: AuthClient | null = defaultClient, enabl
       })
       if (error) return { sent: false, error: error.message }
       return { sent: true }
+    },
+
+    // Google 登录：跳转 OAuth。回来后 onAuthStateChange 会把 session 接上（与邮箱登录同一套 auth，
+    // 同一个 Supabase 项目 + 同一个 auth UUID，跨 app 账号统一）。
+    signInWithGoogle: async () => {
+      if (!enabled || !client) return { error: '云同步未配置，暂不能登录' }
+      const { error } = await client.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin },
+      })
+      if (error) return { error: error.message }
+      return {}
     },
 
     signOut: async () => {

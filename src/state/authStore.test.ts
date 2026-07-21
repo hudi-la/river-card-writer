@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createAuthStore } from './authStore'
 
-function makeMockClient(overrides: Partial<Record<'getSession' | 'onAuthStateChange' | 'signInWithOtp' | 'signOut', any>> = {}) {
+function makeMockClient(
+  overrides: Partial<Record<'getSession' | 'onAuthStateChange' | 'signInWithOtp' | 'signInWithOAuth' | 'signOut', any>> = {}
+) {
   return {
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session: null }, error: null }),
       onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }),
       signInWithOtp: vi.fn().mockResolvedValue({ data: {}, error: null }),
+      signInWithOAuth: vi.fn().mockResolvedValue({ data: {}, error: null }),
       signOut: vi.fn().mockResolvedValue({ error: null }),
       ...overrides,
     },
@@ -66,6 +69,30 @@ describe('authStore', () => {
     const store = createAuthStore(null, false)
     const res = await store.getState().signInWithEmail('a@b.com')
     expect(res.sent).toBe(false)
+    expect(res.error).toBeTruthy()
+  })
+
+  it('signInWithGoogle 成功：以 google + redirectTo 调 signInWithOAuth', async () => {
+    const client = makeMockClient()
+    const store = createAuthStore(client as any, true)
+    const res = await store.getState().signInWithGoogle()
+    expect(client.auth.signInWithOAuth).toHaveBeenCalledWith({
+      provider: 'google',
+      options: { redirectTo: window.location.origin },
+    })
+    expect(res).toEqual({})
+  })
+
+  it('signInWithGoogle 失败：返回 { error }', async () => {
+    const client = makeMockClient({ signInWithOAuth: vi.fn().mockResolvedValue({ data: null, error: { message: '登录失败' } }) })
+    const store = createAuthStore(client as any, true)
+    const res = await store.getState().signInWithGoogle()
+    expect(res).toEqual({ error: '登录失败' })
+  })
+
+  it('cloudEnabled=false 时 signInWithGoogle 返回 error，不崩', async () => {
+    const store = createAuthStore(null, false)
+    const res = await store.getState().signInWithGoogle()
     expect(res.error).toBeTruthy()
   })
 
