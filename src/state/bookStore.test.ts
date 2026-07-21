@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Editor } from '@tiptap/core'
 import { baseExtensions } from '../editor/schema'
-import { useBookStore, EMPTY_DOC, load, normalizeBook, normalizeLibrary, UNIVERSAL_BOX_ID, isValidCover, type Cover } from './bookStore'
+import { useBookStore, EMPTY_DOC, STARTER_TITLE, STARTER_DOC, isPristineStarter, load, normalizeBook, normalizeLibrary, UNIVERSAL_BOX_ID, isValidCover, type Cover } from './bookStore'
 
 beforeEach(() => {
   localStorage.clear()
@@ -607,11 +607,12 @@ describe('bookStore — 迁移 & normalizeLibrary', () => {
     expect(loaded.activeBookId).toBeNull()
   })
 
-  it('都无 → 空 library：一本新的空书，activeBookId 为 null', () => {
+  it('都无 → 空 library：一本新手教程起始书，activeBookId 为 null', () => {
     localStorage.clear()
     const loaded = load()
     expect(loaded.books).toHaveLength(1)
-    expect(loaded.books[0].doc).toEqual(EMPTY_DOC)
+    expect(loaded.books[0].title).toBe(STARTER_TITLE)
+    expect(isPristineStarter(loaded.books[0])).toBe(true)
     expect(loaded.books[0].boxes).toEqual([])
     expect(loaded.activeBookId).toBeNull()
   })
@@ -624,7 +625,24 @@ describe('bookStore — 迁移 & normalizeLibrary', () => {
       lib = load()
     }).not.toThrow()
     expect(lib!.books).toHaveLength(1)
-    expect(lib!.books[0].doc).toEqual(EMPTY_DOC)
+    expect(lib!.books[0].title).toBe(STARTER_TITLE)
+  })
+
+  it('新手教程起始书：doc 是合法 ProseMirror 文档（能被编辑器 schema 加载）', () => {
+    const editor = new Editor({ extensions: baseExtensions, content: STARTER_DOC })
+    // 能实例化即通过 schema 校验；再确认往返 JSON 结构没塌
+    expect(editor.getJSON().type).toBe('doc')
+    expect(editor.getJSON().content!.length).toBe(STARTER_DOC.content.length)
+    editor.destroy()
+  })
+
+  it('isPristineStarter：未改的教程书为 true；改了标题/正文即为 false', () => {
+    localStorage.clear()
+    const b = load().books[0]
+    expect(isPristineStarter(b)).toBe(true)
+    expect(isPristineStarter({ ...b, title: '我的书' })).toBe(false)
+    expect(isPristineStarter({ ...b, doc: EMPTY_DOC })).toBe(false)
+    expect(isPristineStarter({ ...b, boxes: [{ id: 'x', name: '盒', cards: [] }] })).toBe(false)
   })
 
   it('normalizeLibrary 补全缺失的 books/activeBookId', () => {

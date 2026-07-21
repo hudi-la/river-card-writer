@@ -131,6 +131,43 @@ function freshBook(title?: string): Book {
   return { id: nanoid(), title: title ?? '未命名', doc: structuredClone(EMPTY_DOC), boxes: [], updatedAt: new Date().toISOString() }
 }
 
+// 空库时的默认起始书：不是空白"未命名"，而是一本讲"怎么用"的教程。
+// 用 chapter 段落当小标题——右侧大纲能直接展示，顺带演示了"章节标题"功能。
+export const STARTER_TITLE = '新手教程'
+function starterCard(heading: string, body: string) {
+  return {
+    type: 'card',
+    content: [
+      { type: 'paragraph', attrs: { style: 'chapter' }, content: [{ type: 'text', text: heading }] },
+      { type: 'paragraph', content: [{ type: 'text', text: body }] },
+    ],
+  }
+}
+export const STARTER_DOC = {
+  type: 'doc',
+  content: [
+    starterCard('👋 这是新手教程', '这是一本示范书，随便改、随便删。真正要写时，回书柜点「＋ 新书」新建自己的。'),
+    starterCard('✍️ 一段就是一张卡片', '在这里写字，每一段自成一张卡片。卡片可以拖动排序、涂色，或单独搬进盒子。'),
+    starterCard('🧭 章节标题 → 自动大纲', '把某张卡设成「章节标题」，右侧就自动生成大纲；长文里跳转、整段挪位置都靠它。'),
+    starterCard('🗂 盒子 & 通用盒子', '想暂时挪走又舍不得删的卡片，拖进「盒子」存着。「通用盒子」跨所有书共享，放你反复要用的素材。'),
+    starterCard('☁️ 登录同步 & 删掉这本', '用 Google 登录，书会同步到云端、换设备不丢。看完这本教程，点「删除这本书」清掉它就好。'),
+  ],
+}
+function starterBook(): Book {
+  return { id: nanoid(), title: STARTER_TITLE, doc: structuredClone(STARTER_DOC), boxes: [], updatedAt: new Date().toISOString() }
+}
+// 是不是"一本从没被动过的默认教程书"——sync 用它来判断该不该把这本剔掉，
+// 避免每次在新设备/无痕里登录都把这本空教程又传进你的账号。用户一旦改了标题/
+// 正文/盒子/封面，JSON 就跟 STARTER_DOC 不一致了，立刻当成真书正常同步、绝不丢。
+export function isPristineStarter(b: Book): boolean {
+  return (
+    b.title === STARTER_TITLE &&
+    (!b.boxes || b.boxes.length === 0) &&
+    !b.cover &&
+    JSON.stringify(b.doc) === JSON.stringify(STARTER_DOC)
+  )
+}
+
 // 把一章的段落文本拼成一张"章标题卡"：card > paragraph(style:'chapter', text: chapter.title)。
 function chapterTitleCard(title: string) {
   return {
@@ -210,7 +247,7 @@ export function load(): Library {
   const migrated = loadOldSingleBookAsLibrary()
   if (migrated) return migrated
 
-  return { books: [freshBook()], activeBookId: null, universalBoxes: defaultUniversalBoxes() }
+  return { books: [starterBook()], activeBookId: null, universalBoxes: defaultUniversalBoxes() }
 }
 
 // 自动本地快照的最后一道保险（snapshots.ts）挂在这里：每次真正落盘之后，顺手判断

@@ -1,8 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
 import { rowToBook, bookToRow, mergeBooksPlan, startSync, rowToUniversal, universalToRow, mergeUniversal, mergeUniversalBoxes, flushToCloud } from './sync'
 import type { CwBookRow, CwUniversalRow, SyncSupabaseClient, SyncableBookStore } from './sync'
-import { EMPTY_DOC, UNIVERSAL_BOX_ID } from './bookStore'
+import { EMPTY_DOC, STARTER_TITLE, STARTER_DOC, UNIVERSAL_BOX_ID } from './bookStore'
 import type { Book, Box, Library } from './bookStore'
+
+function makeStarter(id = 'starter-1'): Book {
+  return { id, title: STARTER_TITLE, doc: structuredClone(STARTER_DOC), boxes: [] }
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -276,6 +280,34 @@ describe('mergeBooksPlan（非破坏性合并：按 book id union，一本都不
     const localBook = makeBook('uuid-cover-same')
     const plan = mergeBooksPlan([localBook], [row])
     expect(plan.toUpload).toEqual([])
+  })
+
+  // 没动过的默认教程起始书不该污染账号（登录/换设备时反复被塞进云端）
+  it('没动过的教程书 + 云端有真书 → 教程被剔除（不保留、不上传）', () => {
+    const row = bookToRow(makeBook('uuid-cloud', '云端书'), 'owner-1', 0)
+    const plan = mergeBooksPlan([makeStarter()], [row])
+    expect(plan.merged.map((b) => b.title)).toEqual(['云端书'])
+    expect(plan.toUpload).toEqual([])
+  })
+
+  it('没动过的教程书 + 本地另有真书（云空）→ 教程剔除，真书保留并上传', () => {
+    const plan = mergeBooksPlan([makeStarter(), makeBook('local-real', '真书')], [])
+    expect(plan.merged.map((b) => b.title)).toEqual(['真书'])
+    expect(plan.toUpload.map((b) => b.title)).toEqual(['真书'])
+  })
+
+  it('全空账号（云空 + 本地只有教程）→ 教程保留，用户至少有本书', () => {
+    const plan = mergeBooksPlan([makeStarter()], [])
+    expect(plan.merged).toHaveLength(1)
+    expect(plan.merged[0].title).toBe(STARTER_TITLE)
+  })
+
+  it('用户改过教程书（不再 pristine）+ 云端有书 → 当真书保留并上传', () => {
+    const edited = { ...makeStarter('starter-2'), title: '我的新书' }
+    const row = bookToRow(makeBook('uuid-cloud', '云端书'), 'owner-1', 0)
+    const plan = mergeBooksPlan([edited], [row])
+    expect(plan.merged.map((b) => b.title).sort()).toEqual(['云端书', '我的新书'].sort())
+    expect(plan.toUpload.map((b) => b.title)).toEqual(['我的新书'])
   })
 })
 

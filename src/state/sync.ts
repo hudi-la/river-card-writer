@@ -1,5 +1,5 @@
 import type { Book, Box, Cover, Library } from './bookStore'
-import { UNIVERSAL_BOX_ID, isValidCover } from './bookStore'
+import { UNIVERSAL_BOX_ID, isValidCover, isPristineStarter } from './bookStore'
 import { mergeUniversalCards } from './backup'
 
 // cw_books 表行形状：id uuid, owner uuid, title text, data jsonb({doc,boxes}), position int,
@@ -154,13 +154,18 @@ function parseUpdatedAt(ts: string | undefined): number | null {
 // 空云端、空本地都是这条通用规则的自然特例（分别退化成"全部本地 upload"、
 // "全部云端 download"），不需要再单独判空。
 export function mergeBooksPlan(localBooks: Book[], cloudRows: CwBookRow[]): BookMergePlan {
+  // 没动过的默认教程书不该污染账号：只要云端或本地还有别的书，就把它从合并里剔掉
+  // （既不保留、也不上传）。全空账号（云空 + 本地只有这本教程）时保留它，用户至少有本书看。
+  const hasOtherContent = cloudRows.length > 0 || localBooks.some((b) => !isPristineStarter(b))
+  const effectiveLocal = hasOtherContent ? localBooks.filter((b) => !isPristineStarter(b)) : localBooks
+
   const cloudById = new Map(cloudRows.map((r) => [r.id, r]))
   const idRemap: Record<string, string> = {}
   const merged: Book[] = []
   const toUpload: Book[] = []
   const consumedCloudIds = new Set<string>()
 
-  for (const local of localBooks) {
+  for (const local of effectiveLocal) {
     const cloudRow = cloudById.get(local.id)
     if (cloudRow) {
       consumedCloudIds.add(local.id)
@@ -381,9 +386,12 @@ export function startSync(
     const plan = mergeBooksPlan(localBooks, cloudRows)
 
     const remappedActiveId = cur.activeBookId ? plan.idRemap[cur.activeBookId] ?? cur.activeBookId : cur.activeBookId
+    // 若当前打开的正是被剔掉的教程书，活动书已不在合并结果里 → 退回书柜（null），
+    // 免得 activeBook() 指向一本不存在的书。
+    const finalActiveId = remappedActiveId && plan.merged.some((b) => b.id === remappedActiveId) ? remappedActiveId : null
     const booksChanged = plan.merged.length !== localBooks.length || plan.merged.some((b, i) => b !== localBooks[i])
-    if (booksChanged || remappedActiveId !== cur.activeBookId) {
-      setLibraryLocally({ ...cur, books: plan.merged, activeBookId: remappedActiveId })
+    if (booksChanged || finalActiveId !== cur.activeBookId) {
+      setLibraryLocally({ ...cur, books: plan.merged, activeBookId: finalActiveId })
     }
 
     if (plan.toUpload.length > 0) {
