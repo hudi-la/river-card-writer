@@ -165,13 +165,14 @@ html.box-row-drag-active, html.box-row-drag-active * { user-select:none !importa
 /* 正文排版：间距全用 padding（量高时 rect 已含间距，分页才准） */
 .ts-flow { font-family: Georgia,'Songti SC','Noto Serif',serif; color: var(--ink); font-size: 15px; line-height: 1.9; }
 .ts-body { margin: 0; padding: 0 0 10px; text-align: justify; text-indent: 2em; }
-.ts-body.ts-dropcap { text-indent: 0; }
+.ts-body.ts-dropcap { text-indent: 0; padding-top: 18px; } /* 章名下分隔线与首段之间留白 */
 .ts-body.ts-dropcap::first-letter {
   float: left; font-size: 3.1em; line-height: .82; font-weight: 700; padding: 0.04em 0.1em 0 0;
   font-family: Georgia,'Songti SC',serif;
 }
 .ts-head { margin: 0; padding: 6px 0 8px; font-weight: 700; color: var(--ink); line-height: 1.3; }
-.ts-chapter { font-size: 1.5em; padding-top: 16px; }
+/* 章名：另起一页（分页逻辑保证），上面多留白、下面一条分隔线 */
+.ts-chapter { font-size: 1.55em; padding: 12px 0 14px; border-bottom: 1.5px solid var(--hair); }
 .ts-h1 { font-size: 1.24em; padding-top: 12px; }
 .ts-h2 { font-size: 1.06em; }
 .ts-card-start { padding-top: 18px; }
