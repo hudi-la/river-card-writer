@@ -6,6 +6,7 @@ import { exportBook, sanitizeFilename } from '../state/backup'
 import { downloadTextFile, todayStamp } from './download'
 import { UniversalBoxModal } from './BoxView'
 import { CoverEditorModal, coverToCss } from './CoverEditor'
+import { UserCenter } from './UserCenter'
 
 // 纯函数：书 id 哈希出两三个低饱和柔色，拼一个 linear-gradient 当封面——不碰真实
 // 图片，呼应"纹理+三色渐变"的封面审美（具体纹理叠层在 CSS ::after 里统一加，不
@@ -230,6 +231,7 @@ export function Bookshelf() {
 
   return (
     <div className="shelf">
+      <UserCenter />
       <BackupControls />
       <div className="shelf-grid">
         <ShelfAddBookTile />

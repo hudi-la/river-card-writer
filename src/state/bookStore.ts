@@ -134,23 +134,48 @@ function freshBook(title?: string): Book {
 // 空库时的默认起始书：不是空白"未命名"，而是一本讲"怎么用"的教程。
 // 用 chapter 段落当小标题——右侧大纲能直接展示，顺带演示了"章节标题"功能。
 export const STARTER_TITLE = '新手教程'
-function starterCard(heading: string, body: string) {
-  return {
-    type: 'card',
-    content: [
-      { type: 'paragraph', attrs: { style: 'chapter' }, content: [{ type: 'text', text: heading }] },
-      { type: 'paragraph', content: [{ type: 'text', text: body }] },
-    ],
-  }
+// 段落节点：不传 style（或传 'body'）就是正文，不写 attrs——跟 EMPTY_DOC 保持一致。
+function para(text: string, style?: 'chapter' | 'h1' | 'h2') {
+  const p: any = { type: 'paragraph', content: [{ type: 'text', text }] }
+  if (style) p.attrs = { style }
+  return p
+}
+function starterCard(...paragraphs: any[]) {
+  return { type: 'card', content: paragraphs }
 }
 export const STARTER_DOC = {
   type: 'doc',
   content: [
-    starterCard('👋 这是新手教程', '这是一本示范书，随便改、随便删。真正要写时，回书柜点「＋ 新书」新建自己的。'),
-    starterCard('✍️ 一段就是一张卡片', '在这里写字，每一段自成一张卡片。卡片可以拖动排序、涂色，或单独搬进盒子。'),
-    starterCard('🧭 章节标题 → 自动大纲', '把某张卡设成「章节标题」，右侧就自动生成大纲；长文里跳转、整段挪位置都靠它。'),
-    starterCard('🗂 盒子 & 通用盒子', '想暂时挪走又舍不得删的卡片，拖进「盒子」存着。「通用盒子」跨所有书共享，放你反复要用的素材。'),
-    starterCard('☁️ 登录同步 & 删掉这本', '用 Google 登录，书会同步到云端、换设备不丢。看完这本教程，点「删除这本书」清掉它就好。'),
+    starterCard(
+      para('🌊 河流-卡片写作系统', 'chapter'),
+      para('名字里是两样东西。河流——你的正文，像水一样流动、能随时调整；卡片——把想法切成一张张，方便重新谋篇布局、也能先搁一边。让「流动地写」和「可摆布的结构」并存，就是这套系统的主意。'),
+    ),
+    starterCard(
+      para('🌊 河流：让正文流起来', 'chapter'),
+      para('别把正文当成一次写死的石头，把它当水。句子、段落随时能重排、增删、搬动；写到哪、卡在哪都能回头调。先让它流，再来收拾——写作的顺序不必等于思考的顺序。'),
+    ),
+    starterCard(
+      para('🃏 卡片：切块，好摆布', 'chapter'),
+      para('每一段自成一张卡片。把长文切成卡片，你就能像摊开牌一样重排布局（谋篇）；某张暂时不要，先拖到一边搁着（暂存），不用删掉。结构因此可以反复试。'),
+    ),
+    starterCard(
+      para('🔤 四种文字样式', 'chapter'),
+      para('大标题（H1）', 'h1'),
+      para('小标题（H2）', 'h2'),
+      para('上面依次是 章 / 大标题 / 小标题，这一行是正文。选中任意一段，在工具栏切换它的样式；章、大、小标题都会自动进右侧大纲。'),
+    ),
+    starterCard(
+      para('🗂 盒子：这本书的临时抽屉', 'chapter'),
+      para('把一张卡拖进「盒子」，它就从正文里挪出来、存进这本书的抽屉；想用了再拖回去。用来搁置某段、腾挪结构，而不是删除——盒子只属于当前这本书。'),
+    ),
+    starterCard(
+      para('🌐 通用盒子：还不知道归哪篇的想法', 'chapter'),
+      para('通用盒子跨所有书共享。它不是放「反复要用的素材」，而是接住那些随笔、灵光、随手记——你还没想好该归到哪篇文章的想法。先扔进来；将来哪篇用得上，再从这儿拖过去。'),
+    ),
+    starterCard(
+      para('🗑 看完就删掉这本', 'chapter'),
+      para('这是一本教程示范书。懂了就点上方「删除这本书」清掉它，去书柜「＋ 新书」开始写你自己的。'),
+    ),
   ],
 }
 function starterBook(): Book {
