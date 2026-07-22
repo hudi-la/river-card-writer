@@ -28,7 +28,7 @@ function paraText(p: any): string {
 function buildBlocks(doc: any): Block[] {
   const blocks: Block[] = []
   const cards = doc?.content || []
-  let pendingDropcap = true // 开篇第一段正文也来个首字下沉
+  let pendingDropcap = false // 只有「章(chapter)」之后的第一段正文首字下沉；节(h1/h2)不下沉
   cards.forEach((card: any, ci: number) => {
     const paras = card?.content || []
     paras.forEach((p: any, pi: number) => {
@@ -37,7 +37,7 @@ function buildBlocks(doc: any): Block[] {
       const cardStart = pi === 0 && ci > 0
       if (style !== 'body') {
         blocks.push({ kind: 'heading', level: style, text, cardStart })
-        if (style === 'chapter' || style === 'h1') pendingDropcap = true
+        if (style === 'chapter') pendingDropcap = true
       } else {
         const dropcap = pendingDropcap && !!text.trim()
         if (dropcap) pendingDropcap = false
