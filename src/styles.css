@@ -98,6 +98,8 @@ html.box-row-drag-active, html.box-row-drag-active * { user-select:none !importa
 }
 .outline-heading .outline-row-text { flex:1; min-width:0; }
 .outline-row-text.faint { opacity:.55; font-style:italic; }
+/* 大纲行：显示「说明/章节题目」的用黑字，显示「卡片开头预览」的保持淡色（继承 .chap/.outline-block 的 --muted） */
+.outline-row-text.outline-row-strong { color: var(--ink); }
 /* 统色（Phase 14 Task 1 #2）：每个目录行读它对应卡片的颜色（手动 color 或
    autoCardColor(cardId)），透明度跟正文 .river .card 的两档一致——没手动设色
    13%，手动设色 16%（--row-bg 由 LeftNav.tsx 内联设置，一路继承到子元素）。目
