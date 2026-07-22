@@ -94,6 +94,22 @@ describe('rowToBook / bookToRow', () => {
     expect(rowToBook(row)).toEqual(book)
   })
 
+  it('副标题/作者存活云同步往返（存在 data 里，doc/boxes 不受影响）', () => {
+    const book = { ...makeBook('uuid-meta', '有副标题的书'), subtitle: 'AI 时代的投射', author: 'di hu', updatedAt: '2024-06-01T00:00:00.000Z' }
+    const row = bookToRow(book, 'owner-1', 0)
+    expect((row.data as any).subtitle).toBe('AI 时代的投射')
+    expect((row.data as any).author).toBe('di hu')
+    expect(rowToBook(row)).toEqual(book)
+  })
+
+  it('没有副标题/作者的书 → data 里不写这两个字段，rowToBook 读回来也没有', () => {
+    const book = makeBook('uuid-nometa', '没副标题的书')
+    const row = bookToRow(book, 'owner-1', 0)
+    expect((row.data as any).subtitle).toBeUndefined()
+    expect((row.data as any).author).toBeUndefined()
+    expect(rowToBook(row)).toEqual({ ...book, updatedAt: row.updated_at })
+  })
+
   it('book 没有 updatedAt 时，bookToRow 兜底用当前时间；round-trip 出来的 book 会带上这个兜底时间', () => {
     const book = makeBook('uuid-2', '没有时间戳的书')
     expect(book.updatedAt).toBeUndefined()

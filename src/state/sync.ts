@@ -10,7 +10,7 @@ export type CwBookRow = {
   id: string
   owner: string
   title: string
-  data: { doc: any; boxes: Book['boxes'] }
+  data: { doc: any; boxes: Book['boxes']; subtitle?: string; author?: string }
   position: number
   updated_at: string
   cover?: Cover | null
@@ -24,6 +24,8 @@ export function rowToBook(row: CwBookRow): Book {
     boxes: row.data.boxes ?? [],
     updatedAt: row.updated_at,
     cover: isValidCover(row.cover) ? row.cover : undefined,
+    ...(typeof row.data.subtitle === 'string' ? { subtitle: row.data.subtitle } : {}),
+    ...(typeof row.data.author === 'string' ? { author: row.data.author } : {}),
   }
 }
 
@@ -32,7 +34,12 @@ export function bookToRow(book: Book, ownerId: string, position: number): CwBook
     id: book.id,
     owner: ownerId,
     title: book.title,
-    data: { doc: book.doc, boxes: book.boxes },
+    data: {
+      doc: book.doc,
+      boxes: book.boxes,
+      ...(book.subtitle ? { subtitle: book.subtitle } : {}),
+      ...(book.author ? { author: book.author } : {}),
+    },
     position,
     // 优先用本书自己的 updatedAt（改动发生的真实时间），这样即使这次 upsert
     // 因为网络问题延后了几秒才发出，云端记的还是"用户实际改动"的时间，不会
@@ -200,7 +207,9 @@ export function mergeBooksPlan(localBooks: Book[], cloudRows: CwBookRow[]): Book
           local.title === cloudAsBook.title &&
           JSON.stringify(local.doc) === JSON.stringify(cloudAsBook.doc) &&
           JSON.stringify(local.boxes) === JSON.stringify(cloudAsBook.boxes) &&
-          JSON.stringify(local.cover ?? null) === JSON.stringify(cloudAsBook.cover ?? null)
+          JSON.stringify(local.cover ?? null) === JSON.stringify(cloudAsBook.cover ?? null) &&
+          (local.subtitle ?? '') === (cloudAsBook.subtitle ?? '') &&
+          (local.author ?? '') === (cloudAsBook.author ?? '')
         if (!contentIdentical) toUpload.push(local)
       }
     } else if (isUuid(local.id)) {

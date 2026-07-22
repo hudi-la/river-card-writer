@@ -1,11 +1,12 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, BookOpen, Pencil } from 'lucide-react'
 import { useBookStore, type Book } from '../state/bookStore'
 import { usePrefsStore } from '../state/prefsStore'
 import { LeftNav } from './LeftNav'
 import { RiverEditor } from '../editor/RiverEditor'
 import { BoxView } from './BoxView'
 import { ReadingSettings } from './ReadingSettings'
+import { TypesetView } from './TypesetView'
 
 const FONT_STACK: Record<'serif' | 'sans', string> = {
   serif: "Georgia,'Songti SC','Noto Serif',serif",
@@ -70,6 +71,8 @@ export function Workspace() {
   const prefs = usePrefsStore((s) => s.prefs)
   const setRailWidth = usePrefsStore((s) => s.setRailWidth)
   const railDragRef = useRef<RailDragState | null>(null)
+  // 阅读/排版视图：本地开关（离开这本书自然重置）。开着时隐藏目录栏、正文换成只读排版。
+  const [readMode, setReadMode] = useState(false)
 
   // useLayoutEffect (not useEffect) so persisted prefs are applied to the
   // CSS vars before the browser paints the first frame — otherwise a user
@@ -112,15 +115,17 @@ export function Workspace() {
   if (!book) return null
 
   return (
-    <div className="app">
-      <LeftNav />
-      <div
-        className="rail-resize-handle"
-        onPointerDown={onHandlePointerDown}
-        onPointerMove={onHandlePointerMove}
-        onPointerUp={onHandlePointerUp}
-        onPointerCancel={onHandlePointerUp}
-      />
+    <div className={readMode ? 'read-shell' : 'app'}>
+      {!readMode && <LeftNav />}
+      {!readMode && (
+        <div
+          className="rail-resize-handle"
+          onPointerDown={onHandlePointerDown}
+          onPointerMove={onHandlePointerMove}
+          onPointerUp={onHandlePointerUp}
+          onPointerCancel={onHandlePointerUp}
+        />
+      )}
       <main className="page">
         {/* 顶栏做成 sticky：往下滚正文时这条始终吸在视口顶部，← 书柜 / 书名 / ⚙
             一直够得着（见 .workspace-topbar）。三栏网格 1fr auto 1fr 让书名无论
@@ -131,14 +136,18 @@ export function Workspace() {
             <ArrowLeft size={14} strokeWidth={1.75} aria-hidden="true" />
             书柜
           </button>
-          {/* key 加前缀——RiverEditor/BoxView 兄弟节点已经用 activeBookId/activeBoxId
-              当 key，book.id 原样用会跟它们撞车（React 会警告"两个子节点同一个
-              key"）。这里的 key 只是为了切书时强制重挂载、重置本地 draft/editing
-              状态，值本身不需要跟别处的 key 语义一致，加前缀避免撞车即可。 */}
           <WorkspaceTitle key={`title-${book.id}`} book={book} renameBook={renameBook} />
-          <ReadingSettings />
+          <div className="topbar-right">
+            <button className="read-toggle" onClick={() => setReadMode((v) => !v)} title={readMode ? '回到编辑' : '排版预览'}>
+              {readMode ? <Pencil size={14} strokeWidth={1.75} aria-hidden="true" /> : <BookOpen size={14} strokeWidth={1.75} aria-hidden="true" />}
+              {readMode ? '编辑' : '阅读'}
+            </button>
+            {!readMode && <ReadingSettings />}
+          </div>
         </div>
-        {viewKind === 'box' ? (
+        {readMode ? (
+          <TypesetView book={book} />
+        ) : viewKind === 'box' ? (
           <BoxView key={activeBoxId} boxId={activeBoxId} />
         ) : (
           <RiverEditor key={activeBookId} />

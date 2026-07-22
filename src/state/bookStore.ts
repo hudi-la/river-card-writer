@@ -31,7 +31,7 @@ export function isValidCover(raw: any): raw is Cover {
 // 那边的合并规则去处理（该规则选择在缺失/无法比较时优先本地，绝不因为不确定
 // 就丢本地改动）。可选字段，而不是给个假的哨兵日期——不确定就是不确定，别装
 // 出一个"很旧"的确定值来源，那样反而可能在别的比较逻辑里被误用。
-export type Book = { id: string; title: string; doc: any; boxes: Box[]; updatedAt?: string; cover?: Cover }
+export type Book = { id: string; title: string; doc: any; boxes: Box[]; updatedAt?: string; cover?: Cover; subtitle?: string; author?: string }
 export type Library = { books: Book[]; activeBookId: string | null; universalBoxes: Box[] }
 
 // 库级通用盒子：不属于任何一本书，跨所有书共享同一份实例。Phase 14 起支持
@@ -76,6 +76,9 @@ type BookState = {
   setBookCover: (id: string, cover: Cover) => void
   // 封面"恢复默认"：清掉 cover 字段，回退到 coverGradient(id) 那个自动渐变。
   clearBookCover: (id: string) => void
+  // 副标题 / 作者（排版视图 Hero 用；空字符串=清除）。跟 setBookCover 一样重新盖 updatedAt。
+  setBookSubtitle: (id: string, subtitle: string) => void
+  setBookAuthor: (id: string, author: string) => void
   // 供 sync 模块使用：整体替换 library 并落盘（首登下载/上传回填 uuid 时用），
   // 绕开各 action 自己的局部更新逻辑，最小侵入地把云同步挂进 store。
   setLibrary: (library: Library) => void
@@ -678,6 +681,22 @@ export const useBookStore = create<BookState>((set, get) => {
       const library = {
         ...get().library,
         books: get().library.books.map((b) => (b.id === id ? { ...b, cover, updatedAt: new Date().toISOString() } : b)),
+      }
+      persist(library)
+      set({ library })
+    },
+    setBookSubtitle: (id, subtitle) => {
+      const library = {
+        ...get().library,
+        books: get().library.books.map((b) => (b.id === id ? { ...b, subtitle: subtitle || undefined, updatedAt: new Date().toISOString() } : b)),
+      }
+      persist(library)
+      set({ library })
+    },
+    setBookAuthor: (id, author) => {
+      const library = {
+        ...get().library,
+        books: get().library.books.map((b) => (b.id === id ? { ...b, author: author || undefined, updatedAt: new Date().toISOString() } : b)),
       }
       persist(library)
       set({ library })
