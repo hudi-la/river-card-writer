@@ -166,6 +166,7 @@ html.box-row-drag-active, html.box-row-drag-active * { user-select:none !importa
 .ts-flow { font-family: Georgia,'Songti SC','Noto Serif',serif; color: var(--ink); font-size: 15px; line-height: 1.9; }
 .ts-body { margin: 0; padding: 0 0 10px; text-align: justify; text-indent: 2em; }
 .ts-body.ts-dropcap { text-indent: 0; padding-top: 18px; } /* 章名下分隔线与首段之间留白 */
+.ts-body.ts-cont { text-indent: 0; } /* 跨页续接的半截段落不缩进 */
 .ts-body.ts-dropcap::first-letter {
   float: left; font-size: 3.1em; line-height: .82; font-weight: 700; padding: 0.04em 0.1em 0 0;
   font-family: Georgia,'Songti SC',serif;

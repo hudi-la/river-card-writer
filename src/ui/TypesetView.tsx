@@ -182,7 +182,9 @@ export function TypesetView({ book }: { book: Book }) {
         const cls =
           'ts-body' +
           (dropcap && firstPiece ? ' ts-dropcap' : '') +
-          (it.cardStart && firstPiece ? ' ts-card-start' : '')
+          (it.cardStart && firstPiece ? ' ts-card-start' : '') +
+          // 段落被翻页切开后，续接的那一截不是新段落，不该首行缩进
+          (firstPiece ? '' : ' ts-cont')
         // 这一页剩太少（连一行都放不下）→ 先翻页
         if (remaining < heightOf(cls, '一') && cur.length) {
           flush()
