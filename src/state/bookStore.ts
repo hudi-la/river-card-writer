@@ -131,53 +131,346 @@ function freshBook(title?: string): Book {
   return { id: nanoid(), title: title ?? '未命名', doc: structuredClone(EMPTY_DOC), boxes: [], updatedAt: new Date().toISOString() }
 }
 
-// 空库时的默认起始书：不是空白"未命名"，而是一本讲"怎么用"的教程。
-// 用 chapter 段落当小标题——右侧大纲能直接展示，顺带演示了"章节标题"功能。
+// 空库时的默认起始书：不是空白"未命名"，而是一本讲"怎么用"的教程（河流/卡片/盒子…）。
 export const STARTER_TITLE = '新手教程'
-// 段落节点：不传 style（或传 'body'）就是正文，不写 attrs——跟 EMPTY_DOC 保持一致。
-function para(text: string, style?: 'chapter' | 'h1' | 'h2') {
-  const p: any = { type: 'paragraph', content: [{ type: 'text', text }] }
-  if (style) p.attrs = { style }
-  return p
-}
-function starterCard(...paragraphs: any[]) {
-  return { type: 'card', content: paragraphs }
-}
+// STARTER_DOC 内容以用户在 app 里编辑并导出的版本为准——勿手改 doc，改了就跟
+// isPristineStarter 的精确比较对不上，"没动过的教程不污染账号"那条就会失效。
 export const STARTER_DOC = {
-  type: 'doc',
-  content: [
-    starterCard(
-      para('🌊 河流-卡片写作系统', 'chapter'),
-      para('名字里是两样东西。河流——你的正文，像水一样流动、能随时调整；卡片——把想法切成一张张，方便重新谋篇布局、也能先搁一边。让「流动地写」和「可摆布的结构」并存，就是这套系统的主意。'),
-    ),
-    starterCard(
-      para('🌊 河流：让正文流起来', 'chapter'),
-      para('别把正文当成一次写死的石头，把它当水。句子、段落随时能重排、增删、搬动；写到哪、卡在哪都能回头调。先让它流，再来收拾——写作的顺序不必等于思考的顺序。'),
-    ),
-    starterCard(
-      para('🃏 卡片：切块，好摆布', 'chapter'),
-      para('每一段自成一张卡片。把长文切成卡片，你就能像摊开牌一样重排布局（谋篇）；某张暂时不要，先拖到一边搁着（暂存），不用删掉。结构因此可以反复试。'),
-    ),
-    starterCard(
-      para('🔤 四种文字样式', 'chapter'),
-      para('大标题（H1）', 'h1'),
-      para('小标题（H2）', 'h2'),
-      para('上面依次是 章 / 大标题 / 小标题，这一行是正文。选中任意一段，在工具栏切换它的样式；章、大、小标题都会自动进右侧大纲。'),
-    ),
-    starterCard(
-      para('🗂 盒子：这本书的临时抽屉', 'chapter'),
-      para('把一张卡拖进「盒子」，它就从正文里挪出来、存进这本书的抽屉；想用了再拖回去。用来搁置某段、腾挪结构，而不是删除——盒子只属于当前这本书。'),
-    ),
-    starterCard(
-      para('🌐 通用盒子：还不知道归哪篇的想法', 'chapter'),
-      para('通用盒子跨所有书共享。它不是放「反复要用的素材」，而是接住那些随笔、灵光、随手记——你还没想好该归到哪篇文章的想法。先扔进来；将来哪篇用得上，再从这儿拖过去。'),
-    ),
-    starterCard(
-      para('🗑 看完就删掉这本', 'chapter'),
-      para('这是一本教程示范书。懂了就点上方「删除这本书」清掉它，去书柜「＋ 新书」开始写你自己的。'),
-    ),
-  ],
+  "type": "doc",
+  "content": [
+    {
+      "type": "card",
+      "attrs": {
+        "cardId": "wlVBv3GWXxMVOJlC-NSDf",
+        "color": null,
+        "note": ""
+      },
+      "content": [
+        {
+          "type": "paragraph",
+          "attrs": {
+            "style": "chapter",
+            "note": "",
+            "collapsed": false
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "🌊 河流卡片写作系统"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "card",
+      "attrs": {
+        "cardId": "fejfsR_FBHF9vKesDc2MB",
+        "color": null,
+        "note": ""
+      },
+      "content": [
+        {
+          "type": "paragraph",
+          "attrs": {
+            "style": "body",
+            "note": "",
+            "collapsed": false
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "河流——你的正文，像水一样流动、能随时调整；卡片——把想法切成一张张，方便重新谋篇布局、也能先搁一边。让「流动地写」和「可摆布的结构」并存。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "card",
+      "attrs": {
+        "cardId": "OlPvpZRqR083qZilAqsZl",
+        "color": null,
+        "note": ""
+      },
+      "content": [
+        {
+          "type": "paragraph",
+          "attrs": {
+            "style": "h1",
+            "note": "",
+            "collapsed": false
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "🌊 河流：让正文流起来"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "card",
+      "attrs": {
+        "cardId": "xTahkwB0fXmbY0VwenLVe",
+        "color": "#6bb0ad",
+        "note": ""
+      },
+      "content": [
+        {
+          "type": "paragraph",
+          "attrs": {
+            "style": "body",
+            "note": "",
+            "collapsed": false
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "别把正文当成一次写死的石头，把它当水。句子、段落随时能重排、增删、搬动；写到哪、卡在哪都能回头调。先让它流，再来收拾——写作的顺序不必等于思考的顺序。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "card",
+      "attrs": {
+        "cardId": "2kNOXfqRqmR5vFNtdTAOO",
+        "color": null,
+        "note": ""
+      },
+      "content": [
+        {
+          "type": "paragraph",
+          "attrs": {
+            "style": "h1",
+            "note": "",
+            "collapsed": false
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "🃏 卡片：切块，好摆布"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "card",
+      "attrs": {
+        "cardId": "AACh-Tk4TvCSWf_LTPmxR",
+        "color": "#d8b46a",
+        "note": ""
+      },
+      "content": [
+        {
+          "type": "paragraph",
+          "attrs": {
+            "style": "body",
+            "note": "",
+            "collapsed": false
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "每一段自成一张卡片。把长文切成卡片，你就能像摊开牌一样重排布局（谋篇）；某张暂时不要，先拖到盒子暂存，不用删掉。结构因此可以反复试。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "card",
+      "attrs": {
+        "cardId": "jW5HekeYD77_b9HQ893Yd",
+        "color": null,
+        "note": ""
+      },
+      "content": [
+        {
+          "type": "paragraph",
+          "attrs": {
+            "style": "h1",
+            "note": "",
+            "collapsed": false
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "🗂 盒子：这本书的临时抽屉"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "card",
+      "attrs": {
+        "cardId": "n0NyjXLV4W46mg8UzcDGm",
+        "color": null,
+        "note": ""
+      },
+      "content": [
+        {
+          "type": "paragraph",
+          "attrs": {
+            "style": "body",
+            "note": "",
+            "collapsed": false
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "把一张卡拖进「盒子」，它就从正文里挪出来、存进这本书的抽屉；想用了再拖回去。用来搁置某段、腾挪结构，而不是删除——盒子只属于当前这本书。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "card",
+      "attrs": {
+        "cardId": "Wb1PahRqW_J5ZF8JoFnmF",
+        "color": null,
+        "note": ""
+      },
+      "content": [
+        {
+          "type": "paragraph",
+          "attrs": {
+            "style": "h1",
+            "note": "",
+            "collapsed": false
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "🌐 通用盒子：还不知道归哪篇的想法"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "card",
+      "attrs": {
+        "cardId": "LXAYHFJ580uITyhbEvpIC",
+        "color": null,
+        "note": ""
+      },
+      "content": [
+        {
+          "type": "paragraph",
+          "attrs": {
+            "style": "body",
+            "note": "",
+            "collapsed": false
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "通用盒子跨所有书共享。它不是放「反复要用的素材」，而是接住那些随笔、灵光、随手记——你还没想好该归到哪篇文章的想法。先扔进来；将来哪篇用得上，再从这儿拖过去。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "card",
+      "attrs": {
+        "cardId": "Z9DhZlwHmsl7QXk7TRiud",
+        "color": null,
+        "note": ""
+      },
+      "content": [
+        {
+          "type": "paragraph",
+          "attrs": {
+            "style": "h1",
+            "note": "",
+            "collapsed": false
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "🔤 文字样式"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "card",
+      "attrs": {
+        "cardId": "9kpjckTJdrMk1D6ZUo1cR",
+        "color": "#a98cc4",
+        "note": ""
+      },
+      "content": [
+        {
+          "type": "paragraph",
+          "attrs": {
+            "style": "chapter",
+            "note": "",
+            "collapsed": false
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "章（H1）"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "style": "h1",
+            "note": "",
+            "collapsed": false
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "节（H2）"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "style": "h2",
+            "note": "",
+            "collapsed": false
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "二级（H3）"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "style": "body",
+            "note": "",
+            "collapsed": false
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "上面依次是 章 / 大标题 / 小标题，这一行是正文。选中任意一段，在工具栏切换它的样式；章、大、小标题都会自动进右侧大纲。"
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }
+
 function starterBook(): Book {
   return { id: nanoid(), title: STARTER_TITLE, doc: structuredClone(STARTER_DOC), boxes: [], updatedAt: new Date().toISOString() }
 }
