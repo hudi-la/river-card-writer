@@ -198,9 +198,10 @@ function outlineRowTextClassName(row: OutlineRow, faint: boolean): string {
   let cls = 'outline-row-text'
   if (faint) cls += ' faint'
   if (row.kind === 'block') cls += ' outline-preview-ellipsis'
-  // 显示的是「说明(note)」或「章节题目(heading)」→ 用黑字；显示的是「卡片开头(preview)」→ 保持淡色。
-  // 判定跟 outlineRowLabel 的取值优先级一致：有 note 就在显示 note，否则 heading 显示标题、block 显示预览。
-  if (row.note || row.kind === 'heading') cls += ' outline-row-strong'
+  // 显示的是「章节题目(heading)」或「卡片开头(preview)」→ 用黑字；显示的是「说明(note)」→ 保持淡色。
+  // 判定跟 outlineRowLabel 的取值优先级一致：有 note 就在显示 note（→浅），否则 heading 显示标题、
+  // block 显示预览（→黑）。删掉说明后 row.note 变空，自然回落到显示预览、跟着变黑。
+  if (!row.note && (row.kind === 'heading' || row.preview)) cls += ' outline-row-strong'
   return cls
 }
 
