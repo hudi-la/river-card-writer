@@ -1,9 +1,8 @@
 import { useRef, useState } from 'react'
-import { Download, Upload, History } from 'lucide-react'
+import { Download, Upload } from 'lucide-react'
 import { useBookStore } from '../state/bookStore'
 import { exportLibrary, parseBackup, mergeUniversalBoxes } from '../state/backup'
 import { downloadTextFile, todayStamp } from './download'
-import { listSnapshots, getSnapshot, booksMissingFromCurrent, type SnapshotSummary } from '../state/snapshots'
 
 // 用户完全掌控的本地备份：导出全部书到一个 JSON 文件，导入时只增不减地并入书柜
 // （合并逻辑见 state/backup.ts 的 mergeImported，id 撞车会给导入书换新 id，绝不
@@ -67,78 +66,7 @@ export function BackupControls() {
         className="backup-file-input"
         onChange={handleFileChosen}
       />
-      <LocalSnapshots onMessage={setMessage} />
       {message && <span className={message.error ? 'backup-msg backup-msg-error' : 'backup-msg'}>{message.text}</span>}
-    </div>
-  )
-}
-
-function formatSnapshotTime(ts: number): string {
-  const d = new Date(ts)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getMonth() + 1}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-// 自动本地快照的恢复入口：每次改动都可能悄悄落一份滚动快照（见 state/snapshots.ts
-// 里 bookStore.persist() 挂的那段逻辑），完全不需要用户操作。这里只负责"万一真出
-// 事了，把某个时间点的样子非破坏性地找补回来"——只增不减，从不覆盖/丢弃当前的书
-// （跟备份导入是同一条"绝不丢用户的书"的原则，只是数据源换成了自动快照而不是
-// 用户手动导出的文件）。低调地放在导出/导入按钮旁边，平时几乎不会被注意到。
-function LocalSnapshots({ onMessage }: { onMessage: (m: { text: string; error?: boolean } | null) => void }) {
-  const importBooks = useBookStore((s) => s.importBooks)
-  const setLibrary = useBookStore((s) => s.setLibrary)
-  const [open, setOpen] = useState(false)
-  const [snapshots, setSnapshots] = useState<SnapshotSummary[]>([])
-
-  const handleToggle = () => {
-    if (!open) setSnapshots(listSnapshots())
-    setOpen(!open)
-  }
-
-  const handleRestore = (ts: number) => {
-    const snap = getSnapshot(ts)
-    if (!snap) {
-      onMessage({ text: '这份快照已经不在了（可能被更新的快照滚动替换掉了）', error: true })
-      return
-    }
-    const cur = useBookStore.getState().library
-    const missingBooks = booksMissingFromCurrent(snap, cur)
-    if (missingBooks.length > 0) importBooks(missingBooks)
-
-    let boxSuffix = ''
-    if (Array.isArray(snap.universalBoxes) && snap.universalBoxes.length > 0) {
-      const latest = useBookStore.getState().library
-      const universalBoxes = mergeUniversalBoxes(latest.universalBoxes, snap.universalBoxes)
-      setLibrary({ ...latest, universalBoxes })
-      boxSuffix = '，通用盒子也已非破坏性合并'
-    }
-
-    onMessage({ text: `已从快照恢复：找回了 ${missingBooks.length} 本书（当前的书一本都没动）${boxSuffix}` })
-    setOpen(false)
-  }
-
-  return (
-    <div className="local-snapshots">
-      <button className="backup-btn" onClick={handleToggle}>
-        <History size={16} strokeWidth={1.75} aria-hidden="true" />
-        本地快照
-      </button>
-      {open && (
-        <div className="local-snapshots-menu">
-          {snapshots.length === 0 && <p className="local-snapshots-empty">还没有自动快照</p>}
-          {snapshots.map((s) => (
-            <div key={s.ts} className="local-snapshots-row">
-              <span className="local-snapshots-time">{formatSnapshotTime(s.ts)}</span>
-              <span className="local-snapshots-desc" title={s.bookTitles.join('、')}>
-                {s.bookCount} 本书：{s.bookTitles.join('、') || '（空）'}
-              </span>
-              <button className="local-snapshots-restore" onClick={() => handleRestore(s.ts)}>
-                恢复
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

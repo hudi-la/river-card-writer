@@ -118,7 +118,7 @@ describe('Bookshelf', () => {
       render(<Bookshelf />)
       const nameEl = screen.getByText('通用盒子')
       await userEvent.dblClick(nameEl)
-      const input = document.querySelector('.universal-box-name-edit') as HTMLInputElement
+      const input = document.querySelector('.box-tile-name-edit') as HTMLInputElement
       expect(input).toBeTruthy()
       await userEvent.clear(input)
       await userEvent.type(input, '新名字{Enter}')
@@ -126,28 +126,55 @@ describe('Bookshelf', () => {
       expect(screen.getByText('新名字')).toBeTruthy()
     })
 
-    it('点击某通用盒子入口（非标题文字）：打开该盒子的悬浮大窗，展示它的卡片；插入按钮禁用（书柜没有当前 doc）', async () => {
+    it('点击某通用盒子入口（非标题文字）：打开该盒子的悬浮大窗，展示它的卡片；插入按钮是"插入到文章…"（书柜没有当前 doc，改成选书插入）', async () => {
       useBookStore.getState().parkCard(UNIVERSAL_BOX_ID, {
         type: 'card',
         attrs: { cardId: 'u1' },
         content: [{ type: 'paragraph', content: [{ type: 'text', text: '通用卡内容' }] }],
       })
       render(<Bookshelf />)
-      const entry = screen.getByText('通用盒子').closest('.universal-box-entry')!
+      const entry = screen.getByText('通用盒子').closest('.box-tile')!
       await userEvent.click(within(entry).getByText(/张/))
       expect(screen.getByRole('dialog')).toBeTruthy()
       expect(screen.getByText('通用卡内容')).toBeTruthy()
       const insertBtn = document.querySelector('[data-box-action="insert"]') as HTMLButtonElement
-      expect(insertBtn.disabled).toBe(true)
+      expect(insertBtn.disabled).toBe(false)
+      expect(insertBtn.textContent).toContain('插入到文章')
     })
 
     it('关闭悬浮大窗（Esc）：dialog 消失', async () => {
       render(<Bookshelf />)
-      const entry = screen.getByText('通用盒子').closest('.universal-box-entry')!
+      const entry = screen.getByText('通用盒子').closest('.box-tile')!
       await userEvent.click(within(entry).getByText(/张/))
       expect(screen.getByRole('dialog')).toBeTruthy()
       await userEvent.keyboard('{Escape}')
       expect(screen.queryByRole('dialog')).toBeNull()
+    })
+
+    it('从书柜插入到文章：点"插入到文章…"→出现选书条→选一本书，打开那本书并把这张卡带在手上（carry）', async () => {
+      useBookStore.setState({
+        library: {
+          books: [{ id: 'bk1', title: '目标书', doc: EMPTY_DOC, boxes: [] }],
+          activeBookId: null,
+          universalBoxes: [{ id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [] }],
+        },
+        shell: 'shelf',
+      })
+      useBookStore.getState().parkCard(UNIVERSAL_BOX_ID, {
+        type: 'card',
+        attrs: { cardId: 'u1' },
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: '通用卡内容' }] }],
+      })
+      render(<Bookshelf />)
+      const entry = screen.getByText('通用盒子').closest('.box-tile')!
+      await userEvent.click(within(entry).getByText(/张/))
+      await userEvent.click(document.querySelector('[data-box-action="insert"]') as HTMLButtonElement)
+      expect(screen.getByText('插入到哪本书？')).toBeTruthy()
+      await userEvent.click(screen.getByRole('button', { name: '目标书' }))
+      const st = useBookStore.getState()
+      expect(st.shell).toBe('book')
+      expect(st.library.activeBookId).toBe('bk1')
+      expect(st.carried).toEqual({ boxId: UNIVERSAL_BOX_ID, cardId: 'u1' })
     })
   })
 

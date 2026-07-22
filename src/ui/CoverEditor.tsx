@@ -46,20 +46,32 @@ export function coverToCss(cover: Cover): string {
   return `linear-gradient(${angle}deg, ${c1}, ${c2}, ${c3})`
 }
 
+// 书柜自动封面（Bookshelf.coverGradient(id)）对应的 Cover。没设过自定义封面的书，
+// 打开编辑器时以"它此刻显示的那个自动渐变"为起点微调，而不是跳到某个预设。
+// 用同一套哈希公式（h*31 + charCode），保证起点颜色跟书柜上看到的一致。
+export function autoCover(id: string): Cover {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
+  const hue1 = h % 360
+  const hue2 = (hue1 + 40 + ((h >> 3) % 60)) % 360
+  const hue3 = (hue1 + 160 + ((h >> 7) % 60)) % 360
+  return { colors: [hslToHex(hue1, 38, 78), hslToHex(hue2, 32, 70), hslToHex(hue3, 30, 82)], angle: 135, texture: true }
+}
+
 export function CoverEditorModal({ book, open, onClose }: { book: Book; open: boolean; onClose: () => void }) {
   const setBookCover = useBookStore((s) => s.setBookCover)
   const clearBookCover = useBookStore((s) => s.clearBookCover)
   // 草稿状态：打开时以"这本书当前的封面"为起点，没有的话拿第一个预设当起点，
   // 方便一开门就有个好看的预览可以直接改，而不是空白。取消/关闭不落盘，只有
   // 点"保存"才会调用 setBookCover。
-  const [draft, setDraft] = useState<Cover>(() => book.cover ?? COVER_PRESETS[0].cover)
+  const [draft, setDraft] = useState<Cover>(() => book.cover ?? autoCover(book.id))
 
   // open 从 false→true 时重新以当前 book.cover 为起点——避免上次编辑另一本书
   // （或这本书上次取消编辑）时留下的草稿串场。
   const [lastOpen, setLastOpen] = useState(open)
   if (open !== lastOpen) {
     setLastOpen(open)
-    if (open) setDraft(book.cover ?? COVER_PRESETS[0].cover)
+    if (open) setDraft(book.cover ?? autoCover(book.id))
   }
 
   const setColor = (i: 0 | 1 | 2, value: string) => {

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Palette, Trash2, Download, Package } from 'lucide-react'
+import { Plus, Palette, Trash2, Download } from 'lucide-react'
 import { useBookStore, isValidCover, type Book, type Box } from '../state/bookStore'
 import { BackupControls } from './BackupControls'
 import { exportBook, sanitizeFilename } from '../state/backup'
@@ -150,10 +150,9 @@ function ShelfAddBookTile() {
   )
 }
 
-// 书柜里的一个通用盒子入口：跨所有书共享的同一个实例（不是某本书的盒子），带
-// 名字+张数。单击（点行背景/图标/张数，标题文字自己挡住单击冒泡）打开它的
-// 悬浮大窗；双击标题改名——跟 BookCard 的单击开书/双击改名是同一套手感。
-function UniversalBoxEntry({ box, onOpen }: { box: Box; onOpen: (id: string) => void }) {
+// 书柜里的一个通用盒子瓦片：跟书卡同宽、正方形，画面是"一个盒子里立着几张卡片"，
+// 一眼看出它是装卡片的容器。名字+张数在下面，双击名字改名（跟 BookCard 同手感）。
+function UniversalBoxTile({ box, onOpen }: { box: Box; onOpen: (id: string) => void }) {
   const renameUniversalBox = useBookStore((s) => s.renameUniversalBox)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(box.name)
@@ -165,13 +164,18 @@ function UniversalBoxEntry({ box, onOpen }: { box: Box; onOpen: (id: string) => 
   }
 
   return (
-    <div className="universal-box-entry" onClick={() => !editing && onOpen(box.id)}>
-      <span className="universal-box-icon" aria-hidden="true">
-        <Package size={14} strokeWidth={1.75} />
-      </span>
+    <div className="box-tile" onClick={() => !editing && onOpen(box.id)}>
+      <div className="box-face" aria-hidden="true">
+        <div className="box-cards">
+          <i />
+          <i />
+          <i />
+        </div>
+        <div className="box-front" />
+      </div>
       {editing ? (
         <input
-          className="universal-box-name-edit"
+          className="box-tile-name-edit"
           value={draft}
           autoFocus
           onClick={(e) => e.stopPropagation()}
@@ -186,39 +190,50 @@ function UniversalBoxEntry({ box, onOpen }: { box: Box; onOpen: (id: string) => 
           }}
         />
       ) : (
-        <span
-          className="universal-box-entry-name"
-          onClick={(e) => e.stopPropagation()}
-          onDoubleClick={(e) => {
-            e.stopPropagation()
-            setDraft(box.name)
-            setEditing(true)
-          }}
-        >
-          {box.name}
-        </span>
+        <p className="box-tile-name">
+          <span
+            className="box-tile-name-text"
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => {
+              e.stopPropagation()
+              setDraft(box.name)
+              setEditing(true)
+            }}
+          >
+            {box.name}
+          </span>
+          <span className="box-tile-count">{box.cards.length} 张</span>
+        </p>
       )}
-      <span className="universal-box-entry-count">{box.cards.length} 张</span>
     </div>
   )
 }
 
-// 所有通用盒子的入口列表 + "＋ 新通用盒子"。新盒子默认名"通用盒子"（跟老的
-// 默认盒子同名，用户可以立刻双击改名），加完不自动打开——留在书柜上让用户
-// 看清楚新盒子已经出现在列表里。
+// "＋ 新通用盒子"瓦片：跟盒子瓦片同尺寸，虚线方框 + 大"＋"，永远排在最前面。
+function UniversalBoxAddTile() {
+  const addUniversalBox = useBookStore((s) => s.addUniversalBox)
+  return (
+    <div className="box-tile box-tile-add" onClick={() => addUniversalBox('通用盒子')}>
+      <div className="box-face box-face-add" aria-hidden="true">
+        <Plus size={26} strokeWidth={1.75} />
+      </div>
+      <p className="box-tile-name box-tile-add-label">
+        <Plus size={13} strokeWidth={1.75} aria-hidden="true" />
+        新通用盒子
+      </p>
+    </div>
+  )
+}
+
+// 所有通用盒子：跟书一样铺在网格里（同宽），"＋ 新通用盒子"排最前面。
 function UniversalBoxSection({ onOpen }: { onOpen: (id: string) => void }) {
   const universalBoxes = useBookStore((s) => s.library.universalBoxes)
-  const addUniversalBox = useBookStore((s) => s.addUniversalBox)
-
   return (
-    <div className="universal-box-section">
+    <div className="shelf-grid">
+      <UniversalBoxAddTile />
       {universalBoxes.map((box) => (
-        <UniversalBoxEntry key={box.id} box={box} onOpen={onOpen} />
+        <UniversalBoxTile key={box.id} box={box} onOpen={onOpen} />
       ))}
-      <div className="universal-box-add" onClick={() => addUniversalBox('通用盒子')}>
-        <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
-        新通用盒子
-      </div>
     </div>
   )
 }
@@ -240,6 +255,7 @@ export function Bookshelf() {
         ))}
       </div>
       {books.length === 0 && <p className="shelf-hint">书柜还是空的，点上面「＋ 新书」开始写第一本</p>}
+      <div className="shelf-divider" aria-hidden="true" />
       <UniversalBoxSection onOpen={setOpenUniversalBoxId} />
       <UniversalBoxModal boxId={openUniversalBoxId} onClose={() => setOpenUniversalBoxId(null)} readOnly />
     </div>

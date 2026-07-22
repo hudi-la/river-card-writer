@@ -493,6 +493,66 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
   color: var(--muted); cursor: pointer; font-size: 13px;
 }
 .universal-box-add:hover { color: var(--ink); border-color: var(--hair); }
+
+/* ===== 书区/盒子区分割线 ===== */
+.shelf-divider { height: 1px; background: var(--faint); margin: 0 2px 30px; }
+
+/* ===== 通用盒子瓦片：跟书卡同宽（同一个 .shelf-grid）、正方形，画"盒子里立着几张卡片" ===== */
+.box-tile { position: relative; cursor: pointer; }
+.box-face {
+  position: relative; aspect-ratio: 1 / 1; border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--hair); background: rgba(120,158,196,.06);
+  box-shadow: 0 6px 16px rgba(0,0,0,.06); transition: transform .15s ease, box-shadow .15s ease;
+}
+.box-tile:hover .box-face { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0,0,0,.12); }
+/* 立在盒子里的三张卡（露出上半截，下半截被前壁挡住） */
+.box-cards { position: absolute; left: 0; right: 0; top: 20%; height: 46%; }
+.box-cards i {
+  position: absolute; left: 50%; top: 0; width: 30%; height: 100%; margin-left: -15%;
+  background: #fff; border: 1px solid var(--hair); border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.08); transform-origin: bottom center;
+}
+.box-cards i:nth-child(1) { transform: translateX(-52%) rotate(-11deg); }
+.box-cards i:nth-child(2) { z-index: 2; }
+.box-cards i:nth-child(3) { transform: translateX(52%) rotate(11deg); }
+/* 盒子前壁：挡住卡片下半截，顶边线=盒子开口 */
+.box-front {
+  position: absolute; left: 12%; right: 12%; bottom: 14%; height: 30%; border-radius: 4px; z-index: 3;
+  background: linear-gradient(180deg, rgba(120,158,196,.30), rgba(120,158,196,.20));
+  border: 1px solid rgba(120,158,196,.42); box-shadow: 0 2px 6px rgba(0,0,0,.06);
+}
+.box-front::before {
+  content: ""; position: absolute; left: -1px; right: -1px; top: -4px; height: 4px;
+  background: rgba(120,158,196,.42); border-radius: 3px 3px 0 0;
+}
+/* "＋ 新通用盒子"瓦片 */
+.box-face-add {
+  display: flex; align-items: center; justify-content: center; color: var(--muted);
+  border-style: dashed; background: none; box-shadow: none;
+}
+.box-tile-add:hover .box-face-add { color: var(--ink); border-color: var(--hair); transform: translateY(-3px); }
+.box-tile-add-label { color: var(--muted); justify-content: center; }
+.box-tile-add:hover .box-tile-add-label { color: var(--ink); }
+/* 名字 + 张数（封面下面，跟 .book-title 一档） */
+.box-tile-name { display: flex; align-items: center; gap: 6px; margin: 10px 2px 0; font-size: 13px; color: var(--ink); overflow: hidden; }
+.box-tile-name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.box-tile-count { color: var(--muted); font-size: 12px; flex: none; }
+.box-tile-name-edit {
+  width: 100%; margin: 10px 0 0; font: inherit; font-size: 13px; border: 1px solid var(--hair);
+  border-radius: 4px; padding: 3px 5px; background: var(--paper); color: var(--ink);
+}
+
+/* ===== 从书柜打开盒子时"插入到哪本书"选择条 ===== */
+.box-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; margin-bottom: 14px; border: 1px solid var(--hair); border-radius: 8px; background: rgba(120,158,196,.08); }
+.box-pick-label { font-size: 13px; color: var(--ink); font-weight: 600; }
+.box-pick-empty { font-size: 13px; color: var(--muted); }
+.box-pick-book { border: 1px solid var(--hair); background: var(--paper); color: var(--ink); border-radius: 6px; padding: 5px 10px; font-size: 13px; cursor: pointer; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.box-pick-book:hover { border-color: var(--muted); }
+.box-pick-cancel { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 5px 6px; }
+.box-pick-cancel:hover { color: var(--ink); }
+
+/* ===== 通用盒子大窗更大，多显示卡片 ===== */
+.modal-backdrop--box .modal-panel { width: min(1200px, 95vw); max-height: min(90vh, 1100px); }
 .back-to-shelf {
   justify-self: start;
   border: 1px solid var(--faint); background: var(--paper); color: var(--muted);

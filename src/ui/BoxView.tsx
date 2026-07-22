@@ -296,6 +296,18 @@ export function BoxView({ boxId, readOnly = false }: { boxId: string | null; rea
   const carry = useBookStore((s) => s.carry)
   const moveCardInBox = useBookStore((s) => s.moveCardInBox)
   const moveCardToBox = useBookStore((s) => s.moveCardToBox)
+  // 从书柜（readOnly）打开通用盒子时，没有"当前正文"可插——改成让用户先选一本书：
+  // 打开那本书 + 把这张卡"带在手上"（carry），进书里点一下就落定。openBook 会先把
+  // carried 清空，所以顺序必须是先 openBook 再 carry。
+  const books = useBookStore((s) => s.library.books)
+  const openBook = useBookStore((s) => s.openBook)
+  const [pickCardId, setPickCardId] = useState<string | null>(null)
+  const insertIntoBook = (bookId: string) => {
+    if (!boxId || !pickCardId) return
+    openBook(bookId)
+    carry(boxId, pickCardId)
+    setPickCardId(null) // 窗随后由 UniversalBoxModal 的 carried effect 自动关闭
+  }
   const cards = box?.cards ?? []
   const gridRef = useRef<HTMLDivElement | null>(null)
   useTcardDrag({ gridRef, boxId, moveCardInBox, moveCardToBox })
@@ -326,6 +338,23 @@ export function BoxView({ boxId, readOnly = false }: { boxId: string | null; rea
         <h2>{box?.name ?? ''}</h2>
         <span className="box-count">{cards.length} 张</span>
       </header>
+      {readOnly && pickCardId && (
+        <div className="box-pick">
+          <span className="box-pick-label">插入到哪本书？</span>
+          {books.length === 0 ? (
+            <span className="box-pick-empty">还没有书</span>
+          ) : (
+            books.map((b) => (
+              <button key={b.id} type="button" className="box-pick-book" onClick={() => insertIntoBook(b.id)}>
+                {b.title}
+              </button>
+            ))
+          )}
+          <button type="button" className="box-pick-cancel" onClick={() => setPickCardId(null)}>
+            取消
+          </button>
+        </div>
+      )}
       {cards.length === 0 ? (
         <p className="box-empty">这个盒子还是空的</p>
       ) : (
@@ -346,11 +375,12 @@ export function BoxView({ boxId, readOnly = false }: { boxId: string | null; rea
                 <button
                   data-box-action="insert"
                   data-card-id={cardId}
-                  disabled={readOnly}
-                  title={readOnly ? '在书里打开通用盒子才能插入正文' : undefined}
-                  onClick={() => !readOnly && boxId && carry(boxId, cardId)}
+                  onClick={() => {
+                    if (readOnly) setPickCardId(cardId)
+                    else if (boxId) carry(boxId, cardId)
+                  }}
                 >
-                  <CornerDownRight size={13} strokeWidth={1.75} aria-hidden="true" /> 插入正文
+                  <CornerDownRight size={13} strokeWidth={1.75} aria-hidden="true" /> {readOnly ? '插入到文章…' : '插入正文'}
                 </button>
               </div>
             )
@@ -400,7 +430,7 @@ export function UniversalBoxModal({
   }, [carried, boxId, onClose])
 
   return (
-    <Modal open={boxId !== null} title={box?.name ?? ''} onClose={onClose}>
+    <Modal open={boxId !== null} title={box?.name ?? ''} onClose={onClose} className="modal-backdrop--box">
       {boxId === UNIVERSAL_BOX_ID && <UniversalBoxControls />}
       <BoxView boxId={boxId} readOnly={readOnly} />
     </Modal>
