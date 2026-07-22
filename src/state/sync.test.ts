@@ -146,10 +146,11 @@ describe('universalToRow / rowToUniversal', () => {
     expect(boxes).toEqual([{ id: UNIVERSAL_BOX_ID, name: '通用盒子', cards: [cardWithId('legacy')] }])
   })
 
-  it('盒子 emoji 存活云同步往返（universalToRow -> rowToUniversal 不丢 emoji）', () => {
-    const boxes = [{ ...makeUniversalBox([], 'box-e', '灵感'), emoji: '💡' }]
+  it('盒子 emoji + 颜色存活云同步往返（universalToRow -> rowToUniversal 不丢）', () => {
+    const boxes = [{ ...makeUniversalBox([], 'box-e', '灵感'), emoji: '💡', color: '#7fa3c4' }]
     const row = universalToRow(boxes, 'owner-1')
     expect((row.data as any[])[0].emoji).toBe('💡')
+    expect((row.data as any[])[0].color).toBe('#7fa3c4')
     expect(rowToUniversal(row)).toEqual(boxes)
   })
 })

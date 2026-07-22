@@ -180,11 +180,22 @@ describe('Bookshelf', () => {
       expect(st.carried).toEqual({ boxId: UNIVERSAL_BOX_ID, cardId: 'u1' })
     })
 
-    it('盒子瓦片换 emoji：点右上角笑脸→选一个 emoji，写进 box.emoji', async () => {
+    it('盒子瓦片换 emoji：⋯ 菜单→换 icon→选一个 emoji，写进 box.emoji', async () => {
       render(<Bookshelf />)
-      await userEvent.click(screen.getByRole('button', { name: '换 emoji' }))
+      const tile = screen.getByText('通用盒子').closest('.box-tile')!
+      await userEvent.click(within(tile).getByRole('button', { name: '更多' }))
+      await userEvent.click(screen.getByRole('button', { name: /换 icon/ }))
       await userEvent.click(screen.getByRole('button', { name: '💡' }))
       expect(useBookStore.getState().library.universalBoxes.find((b) => b.id === UNIVERSAL_BOX_ID)?.emoji).toBe('💡')
+    })
+
+    it('盒子瓦片换颜色：⋯ 菜单→换颜色→选一个色，写进 box.color', async () => {
+      render(<Bookshelf />)
+      const tile = screen.getByText('通用盒子').closest('.box-tile')!
+      await userEvent.click(within(tile).getByRole('button', { name: '更多' }))
+      await userEvent.click(screen.getByRole('button', { name: /换颜色/ }))
+      await userEvent.click(screen.getByTitle('#7fa3c4'))
+      expect(useBookStore.getState().library.universalBoxes.find((b) => b.id === UNIVERSAL_BOX_ID)?.color).toBe('#7fa3c4')
     })
   })
 

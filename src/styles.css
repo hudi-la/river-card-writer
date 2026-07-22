@@ -534,14 +534,14 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 }
 .box-tile:hover .box-face { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0,0,0,.12); }
 .box-emoji { font-size: 60px; line-height: 1; user-select: none; }
-.box-emoji-edit {
+.box-menu-btn {
   position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 6px;
   border: 1px solid var(--hair); background: var(--paper); color: var(--muted);
   display: flex; align-items: center; justify-content: center; cursor: pointer;
   opacity: 0; transition: opacity .15s ease;
 }
-.box-tile:hover .box-emoji-edit { opacity: 1; }
-.box-emoji-edit:hover { color: var(--ink); border-color: var(--muted); }
+.box-tile:hover .box-menu-btn { opacity: 1; }
+.box-menu-btn:hover { color: var(--ink); border-color: var(--muted); }
 /* emoji 选择器弹层 */
 .emoji-picker {
   position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%);
@@ -551,6 +551,16 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 }
 .emoji-picker-item { border: none; background: none; cursor: pointer; font-size: 20px; line-height: 1; padding: 6px; border-radius: 6px; }
 .emoji-picker-item:hover { background: #f4f4f6; }
+/* 盒子颜色选择器：一排色块 + 默认（清除） */
+.color-picker {
+  position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 40;
+  display: flex; flex-wrap: wrap; gap: 6px; width: 200px; padding: 10px;
+  background: #fff; border: 1px solid var(--hair); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.16);
+}
+.color-swatch { width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(0,0,0,.08); cursor: pointer; padding: 0; }
+.color-swatch:hover { transform: scale(1.1); }
+.color-swatch-none { background: #fff; position: relative; }
+.color-swatch-none::after { content: "／"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 14px; }
 /* "＋ 新通用盒子"瓦片 */
 .box-face-add {
   display: flex; align-items: center; justify-content: center; color: var(--muted);

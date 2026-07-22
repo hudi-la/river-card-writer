@@ -224,14 +224,60 @@ function EmojiPicker({ onPick, onClose }: { onPick: (e: string) => void; onClose
   )
 }
 
+// 一组柔色供盒子选底色（呼应卡片/封面那套低饱和调）。
+const BOX_COLORS = ['#7fa3c4', '#8bad86', '#d8b46a', '#d98b7a', '#c98bb0', '#a98cc4', '#6bb0ad', '#9aa0a6']
+
+// 小颜色选择器：一排色块 + 一个"默认"（清除）；点外面 / Esc 关闭。
+function ColorPicker({ onPick, onClose }: { onPick: (c: string) => void; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [onClose])
+  return (
+    <div className="color-picker" ref={ref} onClick={(e) => e.stopPropagation()}>
+      <button type="button" className="color-swatch color-swatch-none" title="默认" onClick={() => onPick('')} />
+      {BOX_COLORS.map((c) => (
+        <button key={c} type="button" className="color-swatch" style={{ background: c }} title={c} onClick={() => onPick(c)} />
+      ))}
+    </div>
+  )
+}
+
 // 书柜里的一个通用盒子瓦片：跟书卡同宽、正方形，封面是一个 emoji（默认 🗂️，可像
 // Notion 一样自己换）。名字+张数在下面，双击名字改名（跟 BookCard 同手感）。
 function UniversalBoxTile({ box, onOpen }: { box: Box; onOpen: (id: string) => void }) {
   const renameUniversalBox = useBookStore((s) => s.renameUniversalBox)
   const setUniversalBoxEmoji = useBookStore((s) => s.setUniversalBoxEmoji)
+  const setUniversalBoxColor = useBookStore((s) => s.setUniversalBoxColor)
+  const deleteUniversalBox = useBookStore((s) => s.deleteUniversalBox)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(box.name)
-  const [pickerOpen, setPickerOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [picker, setPicker] = useState<null | 'emoji' | 'color'>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMenuOpen(false)
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [menuOpen])
 
   const commitRename = () => {
     const name = draft.trim()
@@ -240,28 +286,67 @@ function UniversalBoxTile({ box, onOpen }: { box: Box; onOpen: (id: string) => v
   }
 
   return (
-    <div className="box-tile" onClick={() => !editing && !pickerOpen && onOpen(box.id)}>
-      <div className="box-face">
+    <div className="box-tile" onClick={() => !editing && !menuOpen && !picker && onOpen(box.id)}>
+      <div className="box-face" style={box.color ? { background: `${box.color}2e` } : undefined}>
         <span className="box-emoji" aria-hidden="true">
           {box.emoji || DEFAULT_BOX_EMOJI}
         </span>
         <button
-          className="box-emoji-edit"
-          title="换 emoji"
+          className="box-menu-btn"
+          title="更多"
+          aria-label="更多"
           onClick={(e) => {
             e.stopPropagation()
-            setPickerOpen((v) => !v)
+            setMenuOpen((v) => !v)
           }}
         >
-          <Smile size={14} strokeWidth={1.75} />
+          <MoreHorizontal size={15} strokeWidth={2} aria-hidden="true" />
         </button>
-        {pickerOpen && (
+        {menuOpen && (
+          <div className="book-menu" ref={menuRef} onClick={(e) => e.stopPropagation()}>
+            <button
+              className="book-menu-item"
+              onClick={() => {
+                setMenuOpen(false)
+                setDraft(box.name)
+                setEditing(true)
+              }}
+            >
+              <Pencil size={14} strokeWidth={1.75} aria-hidden="true" /> 重命名
+            </button>
+            <button className="book-menu-item" onClick={() => { setMenuOpen(false); setPicker('emoji') }}>
+              <Smile size={14} strokeWidth={1.75} aria-hidden="true" /> 换 icon
+            </button>
+            <button className="book-menu-item" onClick={() => { setMenuOpen(false); setPicker('color') }}>
+              <Palette size={14} strokeWidth={1.75} aria-hidden="true" /> 换颜色
+            </button>
+            <button
+              className="book-menu-item book-menu-danger"
+              onClick={() => {
+                setMenuOpen(false)
+                if (window.confirm(`删除盒子「${box.name}」？盒子里的卡片会一起删掉。`)) deleteUniversalBox(box.id)
+              }}
+            >
+              <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" /> 删除
+            </button>
+          </div>
+        )}
+        {picker === 'emoji' && (
           <EmojiPicker
             onPick={(em) => {
               setUniversalBoxEmoji(box.id, em)
-              setPickerOpen(false)
+              setPicker(null)
             }}
-            onClose={() => setPickerOpen(false)}
+            onClose={() => setPicker(null)}
+          />
+        )}
+        {picker === 'color' && (
+          <ColorPicker
+            onPick={(c) => {
+              setUniversalBoxColor(box.id, c)
+              setPicker(null)
+            }}
+            onClose={() => setPicker(null)}
           />
         )}
       </div>

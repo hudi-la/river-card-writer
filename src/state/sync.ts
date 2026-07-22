@@ -51,8 +51,8 @@ export function bookToRow(book: Book, ownerId: string, position: number): CwBook
 export type CwUniversalRow = {
   owner: string
   data:
-    | Array<{ id: string; name: string; cards: any[]; emoji?: string }>
-    | { id: string; name: string; cards: any[]; emoji?: string }
+    | Array<{ id: string; name: string; cards: any[]; emoji?: string; color?: string }>
+    | { id: string; name: string; cards: any[]; emoji?: string; color?: string }
   updated_at: string
 }
 
@@ -61,11 +61,25 @@ export function rowToUniversal(row: CwUniversalRow): Box[] {
   if (Array.isArray(raw)) {
     return raw
       .filter((b) => b && typeof b === 'object' && typeof b.id === 'string' && typeof b.name === 'string')
-      .map((b) => ({ id: b.id, name: b.name, cards: Array.isArray(b.cards) ? b.cards : [], ...(typeof b.emoji === 'string' ? { emoji: b.emoji } : {}) }))
+      .map((b) => ({
+        id: b.id,
+        name: b.name,
+        cards: Array.isArray(b.cards) ? b.cards : [],
+        ...(typeof b.emoji === 'string' ? { emoji: b.emoji } : {}),
+        ...(typeof b.color === 'string' ? { color: b.color } : {}),
+      }))
   }
-  // 老格式：单个 box 对象，不是数组——包成单元素数组，原样保留 id/name/cards/emoji。
+  // 老格式：单个 box 对象，不是数组——包成单元素数组，原样保留 id/name/cards/emoji/color。
   if (raw && typeof raw === 'object') {
-    return [{ id: raw.id, name: raw.name, cards: Array.isArray(raw.cards) ? raw.cards : [], ...(typeof raw.emoji === 'string' ? { emoji: raw.emoji } : {}) }]
+    return [
+      {
+        id: raw.id,
+        name: raw.name,
+        cards: Array.isArray(raw.cards) ? raw.cards : [],
+        ...(typeof raw.emoji === 'string' ? { emoji: raw.emoji } : {}),
+        ...(typeof raw.color === 'string' ? { color: raw.color } : {}),
+      },
+    ]
   }
   return []
 }
@@ -73,7 +87,7 @@ export function rowToUniversal(row: CwUniversalRow): Box[] {
 export function universalToRow(universalBoxes: Box[], ownerId: string): CwUniversalRow {
   return {
     owner: ownerId,
-    data: universalBoxes.map((b) => ({ id: b.id, name: b.name, cards: b.cards, ...(b.emoji ? { emoji: b.emoji } : {}) })),
+    data: universalBoxes.map((b) => ({ id: b.id, name: b.name, cards: b.cards, ...(b.emoji ? { emoji: b.emoji } : {}), ...(b.color ? { color: b.color } : {}) })),
     updated_at: new Date().toISOString(),
   }
 }
