@@ -7,7 +7,7 @@ export const EMPTY_DOC = { type: 'doc', content: [{ type: 'card', content: [{ ty
 const OLD_BOOK_KEY = 'card-writer:book'
 const LIBRARY_KEY = 'card-writer:library'
 
-export type Box = { id: string; name: string; cards: any[] }
+export type Box = { id: string; name: string; cards: any[]; emoji?: string }
 
 // 自定义封面（可选）：三色渐变 + 可调角度 + 可选纹理开关。缺失时封面回退到
 // coverGradient(id) 那个自动哈希渐变——这是唯一的新增可选属性，绝不影响
@@ -94,6 +94,8 @@ type BookState = {
   addUniversalBox: (name: string) => Box
   // 重命名指定 id 的通用盒子；id 不存在时 no-op。
   renameUniversalBox: (id: string, name: string) => void
+  // 给指定 id 的通用盒子设一个 emoji（书柜瓦片的图标）；id 不存在时 no-op。
+  setUniversalBoxEmoji: (id: string, emoji: string) => void
   // 删除指定 id 的通用盒子；id 不存在时 no-op。允许删到只剩 0 个（跟 deleteBook 对
   // books 的语义一致，不强行兜底一个默认盒子）。
   deleteUniversalBox: (id: string) => void
@@ -743,6 +745,11 @@ export const useBookStore = create<BookState>((set, get) => {
     },
     renameUniversalBox: (id, name) => {
       const library = { ...get().library, universalBoxes: get().library.universalBoxes.map((b) => (b.id === id ? { ...b, name } : b)) }
+      persist(library)
+      set({ library })
+    },
+    setUniversalBoxEmoji: (id, emoji) => {
+      const library = { ...get().library, universalBoxes: get().library.universalBoxes.map((b) => (b.id === id ? { ...b, emoji } : b)) }
       persist(library)
       set({ library })
     },

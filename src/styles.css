@@ -390,6 +390,11 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 .backup-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .backup-msg { font-size: 12px; color: var(--muted); }
 .backup-msg-error { color: #b5533c; }
+/* 备份操作挪进头像下拉：竖排、像菜单项（覆盖上面的横排样式） */
+.user-menu .backup-controls { flex-direction: column; align-items: stretch; gap: 0; margin: 0; }
+.user-menu .backup-btn { border: none; background: transparent; justify-content: flex-start; width: 100%; padding: 9px 10px; border-radius: 8px; color: var(--ink); }
+.user-menu .backup-btn:hover { background: #f4f4f6; border-color: transparent; }
+.user-menu .backup-msg { padding: 4px 10px 2px; }
 .local-snapshots { position: relative; }
 .local-snapshots-menu {
   position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 320px; max-width: 420px;
@@ -457,6 +462,28 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
   display: inline-flex; align-items: center; gap: 4px;
 }
 .book-card:hover .book-cover-edit { opacity: 1; }
+/* 书卡右上角「⋯」菜单：合并 重命名/自定义封面/导出/删除 */
+.book-menu-btn {
+  position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; border-radius: 7px;
+  border: 1px solid rgba(255,255,255,.5); background: rgba(30,26,20,.35); color: #fff;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  opacity: 0; transition: opacity .15s ease; z-index: 4;
+}
+.book-card:hover .book-menu-btn { opacity: 1; }
+.book-menu-btn:hover { background: rgba(30,26,20,.55); }
+.book-menu {
+  position: absolute; top: 36px; right: 6px; z-index: 10; min-width: 150px;
+  background: #fff; border: 1px solid var(--hair); border-radius: 10px; padding: 5px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.18);
+}
+.book-menu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  border: none; background: none; color: var(--ink); font-size: 13px;
+  padding: 8px 10px; border-radius: 7px; cursor: pointer;
+}
+.book-menu-item:hover { background: #f4f4f6; }
+.book-menu-danger { color: #b5533c; }
+.book-menu-danger:hover { background: #fbece8; }
 .shelf-add {
   display: inline-block; padding: 10px 18px; border: 1px dashed var(--faint); border-radius: 6px;
   color: var(--muted); cursor: pointer; font-size: 13px;
@@ -500,31 +527,30 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 /* ===== 通用盒子瓦片：跟书卡同宽（同一个 .shelf-grid）、正方形，画"盒子里立着几张卡片" ===== */
 .box-tile { position: relative; cursor: pointer; }
 .box-face {
-  position: relative; aspect-ratio: 1 / 1; border-radius: 8px; overflow: hidden;
+  position: relative; aspect-ratio: 1 / 1; border-radius: 8px;
   border: 1px solid var(--hair); background: rgba(120,158,196,.06);
   box-shadow: 0 6px 16px rgba(0,0,0,.06); transition: transform .15s ease, box-shadow .15s ease;
+  display: flex; align-items: center; justify-content: center;
 }
 .box-tile:hover .box-face { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0,0,0,.12); }
-/* 立在盒子里的三张卡（露出上半截，下半截被前壁挡住） */
-.box-cards { position: absolute; left: 0; right: 0; top: 20%; height: 46%; }
-.box-cards i {
-  position: absolute; left: 50%; top: 0; width: 30%; height: 100%; margin-left: -15%;
-  background: #fff; border: 1px solid var(--hair); border-radius: 4px;
-  box-shadow: 0 2px 6px rgba(0,0,0,.08); transform-origin: bottom center;
+.box-emoji { font-size: 60px; line-height: 1; user-select: none; }
+.box-emoji-edit {
+  position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 6px;
+  border: 1px solid var(--hair); background: var(--paper); color: var(--muted);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  opacity: 0; transition: opacity .15s ease;
 }
-.box-cards i:nth-child(1) { transform: translateX(-52%) rotate(-11deg); }
-.box-cards i:nth-child(2) { z-index: 2; }
-.box-cards i:nth-child(3) { transform: translateX(52%) rotate(11deg); }
-/* 盒子前壁：挡住卡片下半截，顶边线=盒子开口 */
-.box-front {
-  position: absolute; left: 12%; right: 12%; bottom: 14%; height: 30%; border-radius: 4px; z-index: 3;
-  background: linear-gradient(180deg, rgba(120,158,196,.30), rgba(120,158,196,.20));
-  border: 1px solid rgba(120,158,196,.42); box-shadow: 0 2px 6px rgba(0,0,0,.06);
+.box-tile:hover .box-emoji-edit { opacity: 1; }
+.box-emoji-edit:hover { color: var(--ink); border-color: var(--muted); }
+/* emoji 选择器弹层 */
+.emoji-picker {
+  position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  width: 264px; max-height: 220px; overflow-y: auto; z-index: 40;
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 8px;
+  background: #fff; border: 1px solid var(--hair); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.16);
 }
-.box-front::before {
-  content: ""; position: absolute; left: -1px; right: -1px; top: -4px; height: 4px;
-  background: rgba(120,158,196,.42); border-radius: 3px 3px 0 0;
-}
+.emoji-picker-item { border: none; background: none; cursor: pointer; font-size: 20px; line-height: 1; padding: 6px; border-radius: 6px; }
+.emoji-picker-item:hover { background: #f4f4f6; }
 /* "＋ 新通用盒子"瓦片 */
 .box-face-add {
   display: flex; align-items: center; justify-content: center; color: var(--muted);

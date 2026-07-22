@@ -4,6 +4,11 @@ import userEvent from '@testing-library/user-event'
 import { Bookshelf, coverGradient } from './Bookshelf'
 import { useBookStore, EMPTY_DOC, UNIVERSAL_BOX_ID } from '../state/bookStore'
 
+// 书卡的 导出/删除/重命名/自定义封面 都收进右上角「⋯」菜单——测试统一先点开菜单。
+async function openBookMenu(card: HTMLElement) {
+  await userEvent.click(within(card).getByRole('button', { name: '更多' }))
+}
+
 // jsdom 的 CSSOM 会把 style.backgroundImage 里的颜色（hex/hsl）规范化成
 // rgb(...)——跟真实浏览器渲染出的实际颜色完全一致，只是字符串表示不同。直接
 // 拿 hex/hsl 字面量去 toBe 会误报。统一"过一遍 DOM"再比较，两边都走同一套
@@ -79,10 +84,8 @@ describe('Bookshelf', () => {
     const book = useBookStore.getState().addBook('目标书')
     render(<Bookshelf />)
     const card = screen.getByText('目标书').closest('.book-card')!
-    const exportBtn = card.querySelector('.book-export') as HTMLButtonElement
-    expect(exportBtn).toBeTruthy()
-
-    await userEvent.click(exportBtn)
+    await openBookMenu(card)
+    await userEvent.click(screen.getByRole('button', { name: /导出/ }))
 
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1)
@@ -176,6 +179,13 @@ describe('Bookshelf', () => {
       expect(st.library.activeBookId).toBe('bk1')
       expect(st.carried).toEqual({ boxId: UNIVERSAL_BOX_ID, cardId: 'u1' })
     })
+
+    it('盒子瓦片换 emoji：点右上角笑脸→选一个 emoji，写进 box.emoji', async () => {
+      render(<Bookshelf />)
+      await userEvent.click(screen.getByRole('button', { name: '换 emoji' }))
+      await userEvent.click(screen.getByRole('button', { name: '💡' }))
+      expect(useBookStore.getState().library.universalBoxes.find((b) => b.id === UNIVERSAL_BOX_ID)?.emoji).toBe('💡')
+    })
   })
 
   describe('自定义封面', () => {
@@ -190,8 +200,8 @@ describe('Bookshelf', () => {
       const book = useBookStore.getState().addBook('要换封面的书')
       render(<Bookshelf />)
       const card = screen.getByText('要换封面的书').closest('.book-card')!
-      const editBtn = within(card).getByRole('button', { name: '编辑封面' })
-      await userEvent.click(editBtn)
+      await openBookMenu(card)
+      await userEvent.click(screen.getByRole('button', { name: /自定义封面/ }))
 
       expect(screen.getByRole('dialog')).toBeTruthy()
       expect(screen.getByText(/封面 · 要换封面的书/)).toBeTruthy()
@@ -215,7 +225,8 @@ describe('Bookshelf', () => {
       useBookStore.getState().addBook('自定义封面的书')
       render(<Bookshelf />)
       const card = screen.getByText('自定义封面的书').closest('.book-card')!
-      await userEvent.click(within(card).getByRole('button', { name: '编辑封面' }))
+      await openBookMenu(card)
+      await userEvent.click(screen.getByRole('button', { name: /自定义封面/ }))
 
       const colorInputs = screen.getAllByLabelText(/封面颜色/) as HTMLInputElement[]
       fireEvent.change(colorInputs[0], { target: { value: '#101010' } })
@@ -234,7 +245,8 @@ describe('Bookshelf', () => {
       useBookStore.getState().addBook('随机封面')
       render(<Bookshelf />)
       const card = screen.getByText('随机封面').closest('.book-card')!
-      await userEvent.click(within(card).getByRole('button', { name: '编辑封面' }))
+      await openBookMenu(card)
+      await userEvent.click(screen.getByRole('button', { name: /自定义封面/ }))
 
       const preview = document.querySelector('.cover-editor-preview') as HTMLElement
       const before = preview.style.backgroundImage
@@ -256,7 +268,8 @@ describe('Bookshelf', () => {
         normalizeGradient('linear-gradient(45deg, #111111, #222222, #333333)'),
       )
 
-      await userEvent.click(within(card).getByRole('button', { name: '编辑封面' }))
+      await openBookMenu(card)
+      await userEvent.click(screen.getByRole('button', { name: /自定义封面/ }))
       await userEvent.click(screen.getByText('恢复默认'))
 
       expect(screen.queryByRole('dialog')).toBeNull()
@@ -271,7 +284,8 @@ describe('Bookshelf', () => {
       useBookStore.getState().setBookCover(book.id, { colors: ['#aaaaaa', '#bbbbbb', '#cccccc'], angle: 77, texture: true })
       render(<Bookshelf />)
       const card = screen.getByText('已有封面').closest('.book-card')!
-      await userEvent.click(within(card).getByRole('button', { name: '编辑封面' }))
+      await openBookMenu(card)
+      await userEvent.click(screen.getByRole('button', { name: /自定义封面/ }))
       const preview = document.querySelector('.cover-editor-preview') as HTMLElement
       expect(preview.style.backgroundImage).toBe(normalizeGradient('linear-gradient(77deg, #aaaaaa, #bbbbbb, #cccccc)'))
     })

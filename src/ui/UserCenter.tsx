@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useAuthStore } from '../state/authStore'
 import { cloudEnabled } from '../lib/supabase'
+import { BackupControls } from './BackupControls'
 
 // 邮箱哈希出一个柔和色，给没有 Google 头像时的首字母底色用（呼应封面那套低饱和调）。
 function hashHue(s: string): number {
@@ -103,11 +104,12 @@ export function UserCenter() {
         {open && (
           <div
             role="menu"
+            className="user-menu"
             style={{
               position: 'absolute',
               top: 42,
               right: 0,
-              minWidth: 220,
+              minWidth: 230,
               background: '#fff',
               borderRadius: 12,
               boxShadow: '0 8px 28px rgba(0,0,0,0.16)',
@@ -124,6 +126,8 @@ export function UserCenter() {
                 {email}
               </div>
             </div>
+            <div style={{ height: 1, background: 'rgba(0,0,0,0.06)', margin: '2px 0' }} />
+            <BackupControls />
             <div style={{ height: 1, background: 'rgba(0,0,0,0.06)', margin: '2px 0' }} />
             <button
               type="button"

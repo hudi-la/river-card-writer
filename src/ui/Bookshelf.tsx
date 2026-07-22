@@ -1,7 +1,6 @@
-import { useState } from 'react'
-import { Plus, Palette, Trash2, Download } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Plus, Palette, Trash2, Download, Smile, MoreHorizontal, Pencil } from 'lucide-react'
 import { useBookStore, isValidCover, type Book, type Box } from '../state/bookStore'
-import { BackupControls } from './BackupControls'
 import { exportBook, sanitizeFilename } from '../state/backup'
 import { downloadTextFile, todayStamp } from './download'
 import { UniversalBoxModal } from './BoxView'
@@ -36,9 +35,25 @@ function BookCard({ book }: { book: Book }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(book.title)
   const [coverEditorOpen, setCoverEditorOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
   // 有自定义封面、且没被明确关掉纹理时才叠加那层细纹理；自动渐变封面维持老样子
   // （一直都带纹理），不需要额外判断。
   const hasTexture = !isValidCover(book.cover) || book.cover.texture !== false
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMenuOpen(false)
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [menuOpen])
 
   const commitRename = () => {
     const title = draft.trim()
@@ -46,47 +61,72 @@ function BookCard({ book }: { book: Book }) {
     setEditing(false)
   }
 
-  const handleExportBook = (e: React.MouseEvent) => {
-    e.stopPropagation()
+  const doExport = () => {
     const json = exportBook(book, new Date().toISOString())
     downloadTextFile(`card-writer-${sanitizeFilename(book.title)}-${todayStamp()}.json`, json)
   }
 
   return (
-    <div className="book-card" onClick={() => !editing && openBook(book.id)}>
+    <div className="book-card" onClick={() => !editing && !menuOpen && openBook(book.id)}>
       <div
         className={`book-cover${hasTexture ? '' : ' book-cover--no-texture'}`}
         style={{ backgroundImage: coverBackground(book) }}
       >
-        {/* 贴底居中的封面编辑按钮必须嵌在 .book-cover 内部（不是跟它平级的
-            .book-card 子元素）——.book-card 还包着下面的书名文字，"bottom:8px"
-            要是相对 .book-card 算，会落到书名边上而不是封面底部。 */}
+        {/* 右上角「⋯」菜单：合并 重命名 / 自定义封面 / 导出 / 删除。嵌在 .book-cover
+            内部，绝对定位相对封面算，不会落到书名边上。 */}
         <button
-          className="book-cover-edit"
-          aria-label="编辑封面"
-          title="编辑封面"
+          className="book-menu-btn"
+          aria-label="更多"
+          title="更多"
           onClick={(e) => {
             e.stopPropagation()
-            setCoverEditorOpen(true)
+            setMenuOpen((v) => !v)
           }}
         >
-          <Palette size={13} strokeWidth={1.75} aria-hidden="true" />
-          封面
+          <MoreHorizontal size={16} strokeWidth={2} aria-hidden="true" />
         </button>
+        {menuOpen && (
+          <div className="book-menu" ref={menuRef} onClick={(e) => e.stopPropagation()}>
+            <button
+              className="book-menu-item"
+              onClick={() => {
+                setMenuOpen(false)
+                setDraft(book.title)
+                setEditing(true)
+              }}
+            >
+              <Pencil size={14} strokeWidth={1.75} aria-hidden="true" /> 重命名
+            </button>
+            <button
+              className="book-menu-item"
+              onClick={() => {
+                setMenuOpen(false)
+                setCoverEditorOpen(true)
+              }}
+            >
+              <Palette size={14} strokeWidth={1.75} aria-hidden="true" /> 自定义封面
+            </button>
+            <button
+              className="book-menu-item"
+              onClick={() => {
+                setMenuOpen(false)
+                doExport()
+              }}
+            >
+              <Download size={14} strokeWidth={1.75} aria-hidden="true" /> 导出
+            </button>
+            <button
+              className="book-menu-item book-menu-danger"
+              onClick={() => {
+                setMenuOpen(false)
+                if (window.confirm(`删除《${book.title}》？此操作不可撤销。`)) deleteBook(book.id)
+              }}
+            >
+              <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" /> 删除
+            </button>
+          </div>
+        )}
       </div>
-      <button className="book-export" aria-label="导出这本书" title="导出这本书" onClick={handleExportBook}>
-        <Download size={13} strokeWidth={1.75} aria-hidden="true" />
-      </button>
-      <button
-        className="book-delete"
-        aria-label="删除这本书"
-        onClick={(e) => {
-          e.stopPropagation()
-          if (window.confirm(`删除《${book.title}》？此操作不可撤销。`)) deleteBook(book.id)
-        }}
-      >
-        <Trash2 size={13} strokeWidth={1.75} aria-hidden="true" />
-      </button>
       <CoverEditorModal book={book} open={coverEditorOpen} onClose={() => setCoverEditorOpen(false)} />
       {editing ? (
         <input
@@ -150,12 +190,48 @@ function ShelfAddBookTile() {
   )
 }
 
-// 书柜里的一个通用盒子瓦片：跟书卡同宽、正方形，画面是"一个盒子里立着几张卡片"，
-// 一眼看出它是装卡片的容器。名字+张数在下面，双击名字改名（跟 BookCard 同手感）。
+const DEFAULT_BOX_EMOJI = '🗂️'
+// 一组耐看的 emoji 供选盒子图标——够用就好，不做全量搜索的大 picker。
+const BOX_EMOJIS = [
+  '🗂️', '📦', '🗃️', '📁', '📚', '📝', '💡', '✨', '⭐', '🔥', '❤️', '🌱', '🍀', '🌸',
+  '🌊', '🌙', '☀️', '🎯', '🧩', '🧠', '🎨', '🎵', '📌', '🔖', '🧵', '🪄', '🗺️', '🧭',
+  '⚙️', '🔬', '🐚', '🦋', '🍂', '🏔️', '☕', '🕯️', '🎁', '🌈', '🐣', '🪺', '🍎', '🧪',
+]
+
+// 小 emoji 选择器：点盒子右上角的笑脸按钮弹出，点一个即设为盒子图标；点外面 / Esc 关闭。
+function EmojiPicker({ onPick, onClose }: { onPick: (e: string) => void; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [onClose])
+  return (
+    <div className="emoji-picker" ref={ref} onClick={(e) => e.stopPropagation()}>
+      {BOX_EMOJIS.map((em) => (
+        <button key={em} type="button" className="emoji-picker-item" onClick={() => onPick(em)}>
+          {em}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// 书柜里的一个通用盒子瓦片：跟书卡同宽、正方形，封面是一个 emoji（默认 🗂️，可像
+// Notion 一样自己换）。名字+张数在下面，双击名字改名（跟 BookCard 同手感）。
 function UniversalBoxTile({ box, onOpen }: { box: Box; onOpen: (id: string) => void }) {
   const renameUniversalBox = useBookStore((s) => s.renameUniversalBox)
+  const setUniversalBoxEmoji = useBookStore((s) => s.setUniversalBoxEmoji)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(box.name)
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   const commitRename = () => {
     const name = draft.trim()
@@ -164,14 +240,30 @@ function UniversalBoxTile({ box, onOpen }: { box: Box; onOpen: (id: string) => v
   }
 
   return (
-    <div className="box-tile" onClick={() => !editing && onOpen(box.id)}>
-      <div className="box-face" aria-hidden="true">
-        <div className="box-cards">
-          <i />
-          <i />
-          <i />
-        </div>
-        <div className="box-front" />
+    <div className="box-tile" onClick={() => !editing && !pickerOpen && onOpen(box.id)}>
+      <div className="box-face">
+        <span className="box-emoji" aria-hidden="true">
+          {box.emoji || DEFAULT_BOX_EMOJI}
+        </span>
+        <button
+          className="box-emoji-edit"
+          title="换 emoji"
+          onClick={(e) => {
+            e.stopPropagation()
+            setPickerOpen((v) => !v)
+          }}
+        >
+          <Smile size={14} strokeWidth={1.75} />
+        </button>
+        {pickerOpen && (
+          <EmojiPicker
+            onPick={(em) => {
+              setUniversalBoxEmoji(box.id, em)
+              setPickerOpen(false)
+            }}
+            onClose={() => setPickerOpen(false)}
+          />
+        )}
       </div>
       {editing ? (
         <input
@@ -247,7 +339,6 @@ export function Bookshelf() {
   return (
     <div className="shelf">
       <UserCenter />
-      <BackupControls />
       <div className="shelf-grid">
         <ShelfAddBookTile />
         {books.map((book) => (
