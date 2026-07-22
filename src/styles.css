@@ -100,6 +100,17 @@ html.box-row-drag-active, html.box-row-drag-active * { user-select:none !importa
 .outline-row-text.faint { opacity:.55; font-style:italic; }
 /* 大纲行：显示「说明/章节题目」的用黑字，显示「卡片开头预览」的保持淡色（继承 .chap/.outline-block 的 --muted） */
 .outline-row-text.outline-row-strong { color: var(--ink); }
+/* 正文点卡片把手弹出的"预览 + 说明"小框 */
+.card-note-pop {
+  position: fixed; z-index: 60; width: 280px;
+  background: #fff; border: 1px solid var(--hair); border-radius: 10px; padding: 10px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 8px;
+}
+.card-note-pop-preview { font-size: 12px; color: var(--muted); max-height: 3.2em; overflow: hidden; line-height: 1.4; }
+.card-note-pop-note {
+  font: inherit; font-size: 13px; border: 1px solid var(--hair); border-radius: 6px;
+  padding: 6px 8px; background: var(--paper); color: var(--ink); resize: vertical; min-height: 62px;
+}
 /* 统色（Phase 14 Task 1 #2）：每个目录行读它对应卡片的颜色（手动 color 或
    autoCardColor(cardId)），透明度跟正文 .river .card 的两档一致——没手动设色
    13%，手动设色 16%（--row-bg 由 LeftNav.tsx 内联设置，一路继承到子元素）。目

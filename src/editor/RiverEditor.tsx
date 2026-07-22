@@ -1,10 +1,98 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { Plus } from 'lucide-react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { baseExtensions, findCardInDoc } from './schema'
 import { useBookStore, EMPTY_DOC } from '../state/bookStore'
 import { useEditorBridge } from '../state/editorBridge'
 import { SelectionToolbar } from './SelectionToolbar'
+
+const HEADING_STYLES = ['chapter', 'h1', 'h2']
+function cardPreviewText(card: any): string {
+  const out: string[] = []
+  const walk = (n: any) => {
+    if (n?.type === 'text' && n.text) out.push(n.text)
+    ;(n?.content || []).forEach(walk)
+  }
+  ;(card?.content || []).forEach(walk)
+  return out.join('').trim()
+}
+// 从 doc + cardId 解析出这张卡在大纲意义上的信息（kind/note/预览 + note 保存所需的序号），
+// 跟 outlineTreeFromDoc / setHeadingNote / setCardNote 的编号规则一致，但不 import LeftNav（避免 editor↔ui 环）。
+export function resolveCardRow(doc: any, cardId: string) {
+  const cards = doc?.content || []
+  const cardIndex = cards.findIndex((c: any) => c?.attrs?.cardId === cardId)
+  if (cardIndex < 0) return null
+  const card = cards[cardIndex]
+  const headingPara = (card?.content || []).find((p: any) => HEADING_STYLES.includes(p?.attrs?.style))
+  if (headingPara) {
+    let headingIndex = -1
+    for (let i = 0; i <= cardIndex; i++) {
+      if ((cards[i]?.content || []).some((p: any) => HEADING_STYLES.includes(p?.attrs?.style))) headingIndex++
+    }
+    return { kind: 'heading' as const, cardIndex, headingIndex, note: headingPara.attrs?.note || '', preview: cardPreviewText(card) || '（无标题）' }
+  }
+  return { kind: 'block' as const, cardIndex, headingIndex: -1, note: card?.attrs?.note || '', preview: cardPreviewText(card) || '（空卡）' }
+}
+
+// 点正文卡片左侧的拖动把手（没拖动、纯点击）时弹出的小框：上面一行卡片预览，下面写「说明」。
+// 说明按跟目录同一条路保存——标题卡走 setHeadingNote，普通卡走 setCardNote，两处看到的是同一份 note。
+function CardNotePopover({ cardId, x, y, onClose }: { cardId: string; x: number; y: number; onClose: () => void }) {
+  const setCardNote = useEditorBridge((s) => s.setCardNote)
+  const setHeadingNote = useEditorBridge((s) => s.setHeadingNote)
+  const doc = useBookStore((s) => s.activeBook()?.doc)
+  const info = useMemo(() => resolveCardRow(doc, cardId), [doc, cardId])
+  const [draft, setDraft] = useState(info?.note || '')
+  const ref = useRef<HTMLDivElement>(null)
+  const infoRef = useRef(info)
+  infoRef.current = info
+  const draftRef = useRef(draft)
+  draftRef.current = draft
+
+  useEffect(() => {
+    const save = () => {
+      const it = infoRef.current
+      if (!it) return
+      if (it.kind === 'heading') setHeadingNote(it.headingIndex, draftRef.current)
+      else setCardNote(it.cardIndex, draftRef.current)
+    }
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        save()
+        onClose()
+      }
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        save()
+        onClose()
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [onClose, setCardNote, setHeadingNote])
+
+  if (!info) return null
+  const left = Math.max(8, Math.min(x + 24, window.innerWidth - 296))
+  const top = Math.max(8, Math.min(y, window.innerHeight - 170))
+  return createPortal(
+    <div className="card-note-pop" ref={ref} style={{ left, top }}>
+      <div className="card-note-pop-preview">{info.preview}</div>
+      <textarea
+        className="card-note-pop-note"
+        value={draft}
+        placeholder="写点说明…"
+        autoFocus
+        onChange={(e) => setDraft(e.target.value)}
+      />
+    </div>,
+    document.body,
+  )
+}
 
 const HANDLE_ZONE_PX = 28 // .card 左内边距 40px 里，把手落在最左侧这一段
 const DRAG_MOVE_THRESHOLD_PX = 4 // 小于这个位移当作一次点击，不进入拖拽态
@@ -99,6 +187,15 @@ export function RiverEditor() {
   carriedRef.current = carried
   const setEditor = useEditorBridge((s) => s.setEditor)
 
+  // 点把手（没拖动）时弹出的"预览+说明"小框。openNoteRef 让命令式的 finishDrag（在
+  // useEffect 闭包里）能触发 React 侧的 setState——每次渲染刷新一次，读到的永远是最新 setter。
+  const [notePop, setNotePop] = useState<{ cardId: string; x: number; y: number } | null>(null)
+  const openNoteRef = useRef<(el: HTMLElement) => void>(() => {})
+  openNoteRef.current = (cardEl) => {
+    const r = cardEl.getBoundingClientRect()
+    setNotePop({ cardId: cardEl.dataset.cardId || '', x: r.left, y: r.top })
+  }
+
   const editor = useEditor({
     extensions: baseExtensions,
     content: book?.doc ?? EMPTY_DOC,
@@ -174,6 +271,9 @@ export function RiverEditor() {
           const targetIndex = dropIndexAt(dom, drag.cardId, drag.lastY)
           editor.commands.moveCardTo(drag.cardId, targetIndex)
         }
+      } else {
+        // 纯点击把手（没超过拖拽阈值）→ 弹出这张卡的"预览 + 说明"小框
+        openNoteRef.current(drag.sourceEl)
       }
       cleanupDragVisuals(drag)
     }
@@ -414,6 +514,15 @@ export function RiverEditor() {
       )}
       <EditorContent editor={editor} />
       <SelectionToolbar editor={editor} />
+      {notePop && (
+        <CardNotePopover
+          key={notePop.cardId}
+          cardId={notePop.cardId}
+          x={notePop.x}
+          y={notePop.y}
+          onClose={() => setNotePop(null)}
+        />
+      )}
       <button
         className="add-card"
         onMouseDown={(e) => {
