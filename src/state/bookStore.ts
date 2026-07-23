@@ -6,6 +6,7 @@ import { pushSnapshot, decideSnapshot } from './snapshots'
 export const EMPTY_DOC = { type: 'doc', content: [{ type: 'card', content: [{ type: 'paragraph' }] }] }
 const OLD_BOOK_KEY = 'card-writer:book'
 const LIBRARY_KEY = 'card-writer:library'
+const NAV_KEY = 'card-writer:nav'
 
 export type Box = { id: string; name: string; cards: any[]; emoji?: string; color?: string }
 
@@ -605,6 +606,33 @@ function persist(library: Library) {
   }
 }
 
+// 刷新恢复：把"当前在哪"（书柜 / 哪本书 / 正文还是盒子）存进 sessionStorage——
+// 刷新不再回书柜；新开标签页仍从书柜开始，也不会跨标签页互相抢位置。书本身在
+// library 里已持久化，这里只存位置。恢复时逐项校验（书还在吗、盒子还在吗），
+// 对不上就安全回书柜，绝不因为一条脏位置记录把 app 卡在打不开的页面上。
+type NavState = { shell: BookState['shell']; viewKind: BookState['viewKind']; activeBoxId: string | null }
+
+function loadNav(library: Library): NavState {
+  const fallback: NavState = { shell: 'shelf', viewKind: 'doc', activeBoxId: null }
+  try {
+    const raw = sessionStorage.getItem(NAV_KEY)
+    if (!raw) return fallback
+    const nav = JSON.parse(raw)
+    // 只恢复"在某本书里"这一种位置；'universal' 早已改成悬浮 Modal、'shelf' 本来就是默认
+    if (nav?.shell !== 'book') return fallback
+    const book = library.books.find((b) => b.id === library.activeBookId)
+    if (!book) return fallback
+    if (nav.viewKind === 'box' && typeof nav.activeBoxId === 'string') {
+      const boxOk =
+        book.boxes.some((x) => x.id === nav.activeBoxId) || library.universalBoxes.some((x) => x.id === nav.activeBoxId)
+      if (boxOk) return { shell: 'book', viewKind: 'box', activeBoxId: nav.activeBoxId }
+    }
+    return { shell: 'book', viewKind: 'doc', activeBoxId: null }
+  } catch {
+    return fallback
+  }
+}
+
 export const useBookStore = create<BookState>((set, get) => {
   // load() 内部做了不少形状迁移（老单本书→library、补 universalBoxes、chapters→doc
   // 等）。这些迁移只发生在内存里——如果迁移后的新形状一直没被写回
@@ -642,11 +670,13 @@ export const useBookStore = create<BookState>((set, get) => {
     return result
   }
 
+  const initialNav = loadNav(initialLibrary)
+
   return {
     library: initialLibrary,
-    shell: 'shelf',
-    viewKind: 'doc',
-    activeBoxId: null,
+    shell: initialNav.shell,
+    viewKind: initialNav.viewKind,
+    activeBoxId: initialNav.activeBoxId,
     carried: null,
 
     activeBook: () => get().library.books.find((b) => b.id === get().library.activeBookId),
@@ -951,5 +981,14 @@ export const useBookStore = create<BookState>((set, get) => {
       persist(library)
       set({ library, shell: 'shelf', viewKind: 'doc', activeBoxId: null, carried: null })
     },
+  }
+})
+
+// 位置一变就写一份（一条极小的 JSON，不需要节流）；loadNav 启动时读回来。
+useBookStore.subscribe((s) => {
+  try {
+    sessionStorage.setItem(NAV_KEY, JSON.stringify({ shell: s.shell, viewKind: s.viewKind, activeBoxId: s.activeBoxId }))
+  } catch {
+    // sessionStorage 不可用（隐私模式等）就静默放弃——只是刷新回书柜，不影响写作
   }
 })

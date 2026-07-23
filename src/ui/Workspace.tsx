@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowLeft, BookOpen, Pencil } from 'lucide-react'
 import { useBookStore, type Book } from '../state/bookStore'
 import { usePrefsStore } from '../state/prefsStore'
@@ -12,6 +12,8 @@ const FONT_STACK: Record<'serif' | 'sans', string> = {
   serif: "Georgia,'Songti SC','Noto Serif',serif",
   sans: "system-ui,'PingFang SC','Noto Sans',sans-serif",
 }
+
+const READ_MODE_KEY = 'card-writer:read-mode'
 
 // 拖拽状态用 useRef 而不是 useState：pointermove 期间不需要触发 Workspace
 // 重渲染——setRailWidth 改 prefsStore，prefs 变化本身会重渲染一次去更新 CSS
@@ -72,7 +74,35 @@ export function Workspace() {
   const setRailWidth = usePrefsStore((s) => s.setRailWidth)
   const railDragRef = useRef<RailDragState | null>(null)
   // 阅读/排版视图：本地开关（离开这本书自然重置）。开着时隐藏目录栏、正文换成只读排版。
-  const [readMode, setReadMode] = useState(false)
+  // 存一份到 sessionStorage：刷新不会跑卸载 cleanup，标记还在 → 恢复到阅读视图；
+  // 正常返回书柜时卸载 cleanup 清掉标记，保持"离开这本书自然重置"的原语义。
+  const [readMode, setReadModeRaw] = useState(() => {
+    try {
+      return sessionStorage.getItem(READ_MODE_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const setReadMode = (fn: (v: boolean) => boolean) =>
+    setReadModeRaw((v) => {
+      const next = fn(v)
+      try {
+        sessionStorage.setItem(READ_MODE_KEY, next ? '1' : '0')
+      } catch {
+        // 存不上就只是刷新后回编辑视图，不影响使用
+      }
+      return next
+    })
+  useEffect(
+    () => () => {
+      try {
+        sessionStorage.removeItem(READ_MODE_KEY)
+      } catch {
+        // 同上
+      }
+    },
+    [],
+  )
 
   // useLayoutEffect (not useEffect) so persisted prefs are applied to the
   // CSS vars before the browser paints the first frame — otherwise a user
