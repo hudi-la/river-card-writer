@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Palette, Trash2, Download, Smile, MoreHorizontal, Pencil } from 'lucide-react'
+import { Plus, Palette, Trash2, Download, Smile, MoreHorizontal, Pencil, Info } from 'lucide-react'
 import { useBookStore, isValidCover, type Book, type Box } from '../state/bookStore'
 import { exportBook, sanitizeFilename } from '../state/backup'
 import { downloadTextFile, todayStamp } from './download'
@@ -423,16 +423,46 @@ export function Bookshelf() {
 
   return (
     <div className="shelf">
-      <UserCenter />
-      <div className="shelf-grid">
-        <ShelfAddBookTile />
-        {books.map((book) => (
-          <BookCard key={book.id} book={book} />
-        ))}
+      {/* 头部：川 logo + 大标题 River + 中文副标（左）、头像/登录（右），对齐读书 app 的 Library 排版骨架，浅色。 */}
+      <div className="shelf-top">
+        <div className="shelf-lockup">
+          {/* 川：三道水流，三色各一股（蓝·绿·金），呼应彩色卡片。 */}
+          <svg className="shelf-logo" viewBox="0 0 48 48" role="img" aria-label="川 River">
+            <path d="M15 10 C 12 20, 18 28, 14 38" fill="none" stroke="#7fa3c4" strokeWidth="5" strokeLinecap="round" />
+            <path d="M24 9 C 21 19, 27 29, 24 39" fill="none" stroke="#8bad86" strokeWidth="5" strokeLinecap="round" />
+            <path d="M33 10 C 30 20, 36 28, 33 38" fill="none" stroke="#d8b46a" strokeWidth="5" strokeLinecap="round" />
+          </svg>
+          <div className="shelf-brand">
+            <h1 className="shelf-title">River</h1>
+            <p className="shelf-subtitle">卡片河流写作</p>
+          </div>
+        </div>
+        <UserCenter />
       </div>
-      {books.length === 0 && <p className="shelf-hint">书柜还是空的，点上面「＋ 新书」开始写第一本</p>}
-      <div className="shelf-divider" aria-hidden="true" />
-      <UniversalBoxSection onOpen={setOpenUniversalBoxId} />
+
+      {/* 栏目一：正在写的书 */}
+      <section className="shelf-section">
+        <h2 className="shelf-section-title">正在写的书</h2>
+        <div className="shelf-grid">
+          <ShelfAddBookTile />
+          {books.map((book) => (
+            <BookCard key={book.id} book={book} />
+          ))}
+        </div>
+        {books.length === 0 && <p className="shelf-hint">书柜还是空的，点上面「＋ 新书」开始写第一本</p>}
+      </section>
+
+      {/* 栏目二：通用盒子。标题后跟一个安静的 ⓘ，悬停/聚焦才提示"可在每本书中访问"。 */}
+      <section className="shelf-section">
+        <h2 className="shelf-section-title">
+          通用盒子
+          <span className="shelf-section-info" title="可在每本书中访问" tabIndex={0} role="note" aria-label="可在每本书中访问">
+            <Info size={14} strokeWidth={1.75} aria-hidden="true" />
+          </span>
+        </h2>
+        <UniversalBoxSection onOpen={setOpenUniversalBoxId} />
+      </section>
+
       <UniversalBoxModal boxId={openUniversalBoxId} onClose={() => setOpenUniversalBoxId(null)} readOnly />
     </div>
   )

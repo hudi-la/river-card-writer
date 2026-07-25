@@ -459,6 +459,24 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 }
 
 .shelf { max-width: 980px; margin: 0 auto; padding: 56px 24px; }
+/* 主页头部：大标题（左）+ 头像（右），对齐读书 app 的 .home-top 骨架，但浅色。 */
+.shelf-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 30px; }
+/* 川 logo + 品牌文字并成一组，整体靠左对齐 */
+.shelf-lockup { display: flex; align-items: center; gap: 13px; }
+.shelf-logo { width: 42px; height: 42px; flex: none; display: block; }
+.shelf-brand { display: flex; flex-direction: column; gap: 2px; }
+.shelf-title { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: .5px; line-height: 1.1; color: var(--ink); }
+/* River 大字下面的中文副标：小一号、muted，说清楚 River 是什么，又不喧宾夺主。 */
+.shelf-subtitle { margin: 0; font-size: 13px; color: var(--muted); letter-spacing: .04em; }
+/* 栏目：正在写的书 / 通用盒子。标题承担分区，替掉原来那条 shelf-divider 横线。 */
+.shelf-section { margin-bottom: 34px; }
+.shelf-section:last-of-type { margin-bottom: 0; }
+.shelf-section-title { display: flex; align-items: center; gap: 6px; margin: 0 2px 16px; font-size: 14px; font-weight: 600; letter-spacing: .02em; color: var(--ink); }
+/* 「通用盒子」后面的小 ⓘ：平时安静，悬停/聚焦才靠 title 显示"可在每本书中访问"。 */
+.shelf-section-info { display: inline-flex; align-items: center; color: var(--muted); cursor: help; }
+.shelf-section-info:hover, .shelf-section-info:focus-visible { color: var(--ink); outline: none; }
+/* 网格间距交给 .shelf-section，section 内的网格自己不再留底边距。 */
+.shelf-section .shelf-grid { margin-bottom: 0; }
 .backup-controls { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
 .backup-btn {
   border: 1px solid var(--faint); background: var(--paper); color: var(--muted);
@@ -599,9 +617,6 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
   color: var(--muted); cursor: pointer; font-size: 13px;
 }
 .universal-box-add:hover { color: var(--ink); border-color: var(--hair); }
-
-/* ===== 书区/盒子区分割线 ===== */
-.shelf-divider { height: 1px; background: var(--faint); margin: 0 2px 30px; }
 
 /* ===== 通用盒子瓦片：跟书卡同宽（同一个 .shelf-grid）、正方形，画"盒子里立着几张卡片" ===== */
 .box-tile { position: relative; cursor: pointer; }

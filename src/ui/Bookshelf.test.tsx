@@ -98,7 +98,8 @@ describe('Bookshelf', () => {
     it('列出 library.universalBoxes 里的所有通用盒子，各自显示名称与张数', () => {
       useBookStore.getState().addUniversalBox('灵感')
       render(<Bookshelf />)
-      expect(screen.getByText('通用盒子')).toBeTruthy()
+      // 「通用盒子」既是栏目标题也是默认盒子名，查询收窄到盒子瓦片的名字节点。
+      expect(screen.getByText('通用盒子', { selector: '.box-tile-name-text' })).toBeTruthy()
       expect(screen.getByText('灵感')).toBeTruthy()
       expect(screen.getAllByText('0 张')).toHaveLength(2)
     })
@@ -119,7 +120,7 @@ describe('Bookshelf', () => {
 
     it('双击某通用盒子的名字：进入改名态，输入新名字回车后 renameUniversalBox 生效', async () => {
       render(<Bookshelf />)
-      const nameEl = screen.getByText('通用盒子')
+      const nameEl = screen.getByText('通用盒子', { selector: '.box-tile-name-text' })
       await userEvent.dblClick(nameEl)
       const input = document.querySelector('.box-tile-name-edit') as HTMLInputElement
       expect(input).toBeTruthy()
@@ -136,7 +137,7 @@ describe('Bookshelf', () => {
         content: [{ type: 'paragraph', content: [{ type: 'text', text: '通用卡内容' }] }],
       })
       render(<Bookshelf />)
-      const entry = screen.getByText('通用盒子').closest('.box-tile')!
+      const entry = screen.getByText('通用盒子', { selector: '.box-tile-name-text' }).closest('.box-tile')!
       await userEvent.click(within(entry).getByText(/张/))
       expect(screen.getByRole('dialog')).toBeTruthy()
       expect(screen.getByText('通用卡内容')).toBeTruthy()
@@ -147,7 +148,7 @@ describe('Bookshelf', () => {
 
     it('关闭悬浮大窗（Esc）：dialog 消失', async () => {
       render(<Bookshelf />)
-      const entry = screen.getByText('通用盒子').closest('.box-tile')!
+      const entry = screen.getByText('通用盒子', { selector: '.box-tile-name-text' }).closest('.box-tile')!
       await userEvent.click(within(entry).getByText(/张/))
       expect(screen.getByRole('dialog')).toBeTruthy()
       await userEvent.keyboard('{Escape}')
@@ -169,7 +170,7 @@ describe('Bookshelf', () => {
         content: [{ type: 'paragraph', content: [{ type: 'text', text: '通用卡内容' }] }],
       })
       render(<Bookshelf />)
-      const entry = screen.getByText('通用盒子').closest('.box-tile')!
+      const entry = screen.getByText('通用盒子', { selector: '.box-tile-name-text' }).closest('.box-tile')!
       await userEvent.click(within(entry).getByText(/张/))
       await userEvent.click(document.querySelector('[data-box-action="insert"]') as HTMLButtonElement)
       expect(screen.getByText('插入到哪本书？')).toBeTruthy()
@@ -182,7 +183,7 @@ describe('Bookshelf', () => {
 
     it('盒子瓦片换 emoji：⋯ 菜单→换 icon→选一个 emoji，写进 box.emoji', async () => {
       render(<Bookshelf />)
-      const tile = screen.getByText('通用盒子').closest('.box-tile')!
+      const tile = screen.getByText('通用盒子', { selector: '.box-tile-name-text' }).closest('.box-tile')!
       await userEvent.click(within(tile).getByRole('button', { name: '更多' }))
       await userEvent.click(screen.getByRole('button', { name: /换 icon/ }))
       await userEvent.click(screen.getByRole('button', { name: '💡' }))
@@ -191,7 +192,7 @@ describe('Bookshelf', () => {
 
     it('盒子瓦片换颜色：⋯ 菜单→换颜色→选一个色，写进 box.color', async () => {
       render(<Bookshelf />)
-      const tile = screen.getByText('通用盒子').closest('.box-tile')!
+      const tile = screen.getByText('通用盒子', { selector: '.box-tile-name-text' }).closest('.box-tile')!
       await userEvent.click(within(tile).getByRole('button', { name: '更多' }))
       await userEvent.click(screen.getByRole('button', { name: /换颜色/ }))
       await userEvent.click(screen.getByTitle('#7fa3c4'))
