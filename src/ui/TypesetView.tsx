@@ -11,13 +11,18 @@ const CONTENT_H = 560
 type Item =
   | { type: 'chapter' | 'h1' | 'h2'; text: string; cardStart: boolean }
   | { type: 'body'; text: string; cardStart: boolean }
+  // 列表/引用/注：runCont = 紧跟在同样式的段落后面（连成一块，"注"标签只挂第一段）
+  | { type: BlockStyle; text: string; cardStart: boolean; runCont: boolean }
+
+type BlockStyle = 'bullet' | 'quote' | 'note'
+const BLOCK_STYLES: ReadonlySet<string> = new Set(['bullet', 'quote', 'note'])
 
 // 排进某一页的一片内容（正文可能是被拆开的一截）。
 type PageItem = { cls: string; text: string }
 
-function paraStyle(p: any): 'chapter' | 'h1' | 'h2' | 'body' {
+function paraStyle(p: any): 'chapter' | 'h1' | 'h2' | BlockStyle | 'body' {
   const s = p?.attrs?.style
-  return s === 'chapter' || s === 'h1' || s === 'h2' ? s : 'body'
+  return s === 'chapter' || s === 'h1' || s === 'h2' || BLOCK_STYLES.has(s) ? s : 'body'
 }
 function paraText(p: any): string {
   const out: string[] = []
@@ -35,7 +40,13 @@ export function buildItems(doc: any): Item[] {
     const paras = card?.content || []
     paras.forEach((p: any, pi: number) => {
       const style = paraStyle(p)
-      items.push({ type: style, text: paraText(p), cardStart: pi === 0 && ci > 0 })
+      const cardStart = pi === 0 && ci > 0
+      if (style === 'bullet' || style === 'quote' || style === 'note') {
+        const runCont = !cardStart && items.length > 0 && items[items.length - 1].type === style
+        items.push({ type: style, text: paraText(p), cardStart, runCont })
+      } else {
+        items.push({ type: style, text: paraText(p), cardStart })
+      }
     })
   })
   return items
@@ -163,14 +174,16 @@ export function TypesetView({ book }: { book: Book }) {
         cur.push({ cls, text: it.text })
         continue
       }
-      // 正文：能整段放下就放，放不下就切
+      // 正文（以及列表/引用/注——它们按正文一样排，只是多一个样式 class）：
+      // 能整段放下就放，放不下就切
       let rest = it.text
-      const dropcap = dropNext && !!rest.trim()
+      const block = it.type === 'body' ? '' : ` ts-${it.type}${'runCont' in it && it.runCont ? ' ts-run-cont' : ''}`
+      const dropcap = it.type === 'body' && dropNext && !!rest.trim()
       dropNext = false
       let firstPiece = true
       if (!rest.trim()) {
         // 空段也占一个空行的位
-        const cls = 'ts-body'
+        const cls = 'ts-body' + block
         const hh = heightOf(cls, ' ')
         if (cur.length && used + hh > budget) flush()
         used += hh
@@ -181,6 +194,7 @@ export function TypesetView({ book }: { book: Book }) {
         let remaining = budget - used
         const cls =
           'ts-body' +
+          block +
           (dropcap && firstPiece ? ' ts-dropcap' : '') +
           (it.cardStart && firstPiece ? ' ts-card-start' : '') +
           // 段落被翻页切开后，续接的那一截不是新段落，不该首行缩进

@@ -1,4 +1,4 @@
-import { Node, Extension, mergeAttributes } from '@tiptap/core'
+import { Node, Extension, InputRule, mergeAttributes } from '@tiptap/core'
 import Document from '@tiptap/extension-document'
 import Paragraph from '@tiptap/extension-paragraph'
 import Text from '@tiptap/extension-text'
@@ -14,9 +14,39 @@ import { Emphasis, Refer, Strike } from './marks'
 
 export const CardDocument = Document.extend({ content: 'card+' })
 
-// 段落样式：'body'（正文，默认）/'chapter'（章名）/'h1'/'h2'（层级标题）。
+// 段落样式：'body'（正文，默认）/'chapter'（章名）/'h1'/'h2'（层级标题）/
+// 'bullet'（列表项）/'quote'（引用）/'note'（注）。
 // 渲染成 data-style，样式表按这个属性走视觉区分。
-export type ParagraphStyle = 'body' | 'chapter' | 'h1' | 'h2'
+// 列表/引用/注跟标题一样只是段落的一个属性，不是嵌套结构——连着几段 bullet 在
+// 视觉上就是一个列表；大纲、折叠、字数这些只认 chapter/h1/h2 的逻辑把它们当正文。
+export type ParagraphStyle = 'body' | 'chapter' | 'h1' | 'h2' | 'bullet' | 'quote' | 'note'
+
+// "块样式"：回车会延续（写列表时一路回车一路是列表项），空段回车/段首退格则退回正文，
+// 跟常见编辑器里的列表手感一致。标题不在其列——标题的回车/退格行为保持原样。
+const BLOCK_STYLES: ReadonlySet<string> = new Set(['bullet', 'quote', 'note'])
+
+// 光标（空选区）所在段落是块样式时返回它的位置和节点，否则 null。
+function blockStyledParagraphAtCursor(state: EditorState): { pos: number; node: PMNode } | null {
+  const { $from, empty } = state.selection
+  if (!empty) return null
+  const node = $from.parent
+  if (node.type.name !== 'paragraph' || !BLOCK_STYLES.has(node.attrs.style)) return null
+  return { pos: $from.before(), node }
+}
+
+// 段首敲 markdown 式标记就换样式：`- `/`* ` → 列表，`> `/`》 ` → 引用（中文输入法下
+// 打 > 出来的是 》）。只对正文段落生效，标记字符本身被吃掉。
+function blockStyleInputRule(find: RegExp, style: ParagraphStyle) {
+  return new InputRule({
+    find,
+    handler: ({ state, range }) => {
+      const $start = state.doc.resolve(range.from)
+      const para = $start.parent
+      if (para.type.name !== 'paragraph' || para.attrs.style !== 'body') return null
+      state.tr.delete(range.from, range.to).setNodeAttribute($start.before(), 'style', style)
+    },
+  })
+}
 
 export const ParagraphWithStyle = Paragraph.extend({
   addAttributes() {
@@ -73,6 +103,11 @@ export const ParagraphWithStyle = Paragraph.extend({
           }
           return true
         },
+      // 工具栏里列表/引用/注按钮用：光标所在段已经是这个样式就退回正文，否则设成它。
+      toggleParagraphStyle:
+        (style: ParagraphStyle) =>
+        ({ editor, commands }) =>
+          commands.setParagraphStyle(editor.isActive('paragraph', { style }) ? 'body' : style),
       setHeadingNote:
         (headingIndex: number, note: string) =>
         ({ state, dispatch }) => {
@@ -125,6 +160,28 @@ export const ParagraphWithStyle = Paragraph.extend({
         },
     }
   },
+  // Paragraph 的 priority 是 1000，高于 Card（默认 100）——所以这里的 Backspace 先于
+  // Card 的 mergeCardBackward 被尝试：块样式段落在卡首退格，先退回正文而不是合卡。
+  addKeyboardShortcuts() {
+    const resetToBody = () => {
+      const hit = blockStyledParagraphAtCursor(this.editor.state)
+      if (!hit) return false
+      this.editor.view.dispatch(this.editor.state.tr.setNodeAttribute(hit.pos, 'style', 'body'))
+      return true
+    }
+    return {
+      ...this.parent?.(),
+      // 空的列表项/引用/注里回车 = 结束这个块，退回正文（不另生一段）。
+      Enter: () => {
+        const hit = blockStyledParagraphAtCursor(this.editor.state)
+        return !!hit && hit.node.content.size === 0 && resetToBody()
+      },
+      Backspace: () => this.editor.state.selection.$from.parentOffset === 0 && resetToBody(),
+    }
+  },
+  addInputRules() {
+    return [blockStyleInputRule(/^[-*]\s$/, 'bullet'), blockStyleInputRule(/^[>》]\s$/, 'quote')]
+  },
 })
 
 // 每张卡的底色调色板（低饱和度色块，风格与原来的 THREAD_PALETTE 一致）。
@@ -141,6 +198,7 @@ declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     paragraphStyle: {
       setParagraphStyle: (style: ParagraphStyle) => ReturnType
+      toggleParagraphStyle: (style: ParagraphStyle) => ReturnType
       setHeadingNote: (headingIndex: number, note: string) => ReturnType
       toggleCollapsed: (headingCardIndex: number) => ReturnType
     }
