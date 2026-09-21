@@ -5,6 +5,7 @@ import { useBookStore, type Box } from '../state/bookStore'
 import { useEditorBridge } from '../state/editorBridge'
 import { cardText, UniversalBoxModal } from './BoxView'
 import { autoCardColor } from '../editor/schema'
+import { countCardWords } from '../editor/wordCount'
 import { DROP_TARGET_CLASS } from '../editor/RiverEditor'
 import { Modal } from './Modal'
 import { OutlineDetail } from './OutlineDetail'
@@ -72,6 +73,9 @@ export type OutlineRow = {
   // 是否手动设色——决定色带透明度档位，跟正文 .river .card[data-color]（16%）
   // vs 没设色时的默认（13%）两档保持一致。
   bgExplicit: boolean
+  // 这张卡自己的字数（标题卡含标题文字）。标题行在目录里显示的是整段累计，
+  // 由 outlineRowWords 按 outlineSectionRange 现加，这里只存单卡的数。
+  words: number
 }
 
 function headingLevel(style: string): 1 | 2 | 3 {
@@ -94,6 +98,7 @@ export function outlineTreeFromDoc(doc: any): OutlineRow[] {
   for (let cardIndex = 0; cardIndex < cards.length; cardIndex++) {
     const card = cards[cardIndex]
     const { bg, explicit: bgExplicit } = cardBg(card)
+    const words = countCardWords(card)
     const paragraphs = card?.content || []
     const headingParagraph = paragraphs.find((p: any) => {
       const style = p?.attrs?.style
@@ -111,6 +116,7 @@ export function outlineTreeFromDoc(doc: any): OutlineRow[] {
         collapsed: !!headingParagraph.attrs?.collapsed,
         bg,
         bgExplicit,
+        words,
       })
       currentHeadingLevel = level
     } else {
@@ -128,6 +134,7 @@ export function outlineTreeFromDoc(doc: any): OutlineRow[] {
         collapsed: false,
         bg,
         bgExplicit,
+        words,
       })
     }
   }
@@ -333,6 +340,15 @@ export function outlineSectionRange(rows: OutlineRow[], index: number): [number,
   return [index, end]
 }
 
+// 目录里一行显示的字数：块行就是自己那张卡；标题行是整段累计——范围跟拖动
+// 重排、折叠用的是同一份 outlineSectionRange，折叠与否不影响数字。
+export function outlineRowWords(rows: OutlineRow[], index: number): number {
+  const [start, end] = outlineSectionRange(rows, index)
+  let total = 0
+  for (let i = start; i < end; i++) total += rows[i].words
+  return total
+}
+
 // 折叠三角（Phase 13 Task 2）：一个标题行"有没有后代"决定三角是否可点——复用
 // outlineSectionRange（跟拖动重排同一份"整段"边界定义），[index+1, end) 非空
 // 就是有后代（块和/或子标题）。
@@ -372,6 +388,18 @@ export function visibleOutlineRows(rows: OutlineRow[]): { row: OutlineRow; index
 // 都渲染它、都共用同一个 class/data 属性，拖拽 hook 认的是 data 属性,不关心
 // 渲染在哪个视图里。
 export const OUTLINE_DRAG_HANDLE_SELECTOR = '[data-outline-drag-handle]'
+
+// 目录行尾的字数（千分位）。0 不显示——空卡、空章不留一排 0 的噪音。侧栏简略
+// 树、详细大纲共用；数字本身由调用方用 outlineRowWords 算好传进来。
+export function OutlineWordCount({ words }: { words: number }) {
+  if (words <= 0) return null
+  const text = words.toLocaleString('en-US')
+  return (
+    <span className="outline-words" title={`${text} 字`}>
+      {text}
+    </span>
+  )
+}
 
 export function OutlineDragHandle() {
   return (
@@ -1148,6 +1176,7 @@ export function LeftNav() {
                   {row.kind === 'heading' && row.collapsed && (
                     <span className="outline-collapsed-marker" aria-hidden="true">⋯</span>
                   )}
+                  <OutlineWordCount words={outlineRowWords(rows, i)} />
                 </div>
                 <OutlineDragHandle />
               </div>

@@ -341,6 +341,20 @@ html.outline-drag-active, html.outline-drag-active * { user-select:none !importa
   padding:0 0 6px; color:var(--ink); font-weight:600; cursor:pointer; font-size:.95em;
 }
 .outline-card-title-text { flex:1; min-width:0; }
+/* 目录行尾字数：小号淡色、等宽数字（上下行的位数对齐好比较）。块行原本不是
+   flex，这里一并改成 flex，预览文字 flex:1 占满剩余宽度、照样按宽截断省略。
+   侧栏行的 ⠿ 把手是绝对定位贴右、hover 才露出——跟字数抢同一个位置，所以 hover
+   时字数让位（visibility 保留占位，文字不跳），把手接管；详细大纲里把手是 flex
+   子项，字数就排在它左边，不用让。 */
+.outline-block { display:flex; align-items:center; }
+.outline-block .outline-row-text { flex:1; min-width:0; }
+.outline-words {
+  flex:none; margin-left:6px;
+  font-size:11px; font-weight:400; color:var(--muted); opacity:.75;
+  font-variant-numeric:tabular-nums;
+}
+.outline-item-wrap:hover .outline-words,
+.outline-row-dragging .outline-words { visibility:hidden; }
 .outline-card-note { min-height:44px; }
 .page { padding:0 0 36px; display:flex; flex-direction:column; align-items:center; position:relative; }
 .river-wrap { width: min(var(--reading-measure), 96%); }

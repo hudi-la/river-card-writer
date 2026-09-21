@@ -12,6 +12,8 @@ import {
   NoteField,
   OutlineCollapseTriangle,
   OutlineDragHandle,
+  OutlineWordCount,
+  outlineRowWords,
   useOutlineRowDrag,
   scrollToOutlineIndex,
   scrollToCardIndex,
@@ -104,6 +106,7 @@ export function OutlineDetail() {
                 {row.kind === 'heading' && row.collapsed && (
                   <span className="outline-collapsed-marker" aria-hidden="true">⋯</span>
                 )}
+                <OutlineWordCount words={outlineRowWords(rows, i)} />
                 <OutlineDragHandle />
               </div>
               <NoteField
