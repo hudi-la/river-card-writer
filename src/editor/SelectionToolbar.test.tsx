@@ -48,7 +48,7 @@ describe('SelectionToolbar', () => {
     selectRange(editor, 2, 7)
     mount(editor)
 
-    fireEvent.mouseDown(screen.getByText('章'))
+    fireEvent.mouseDown(screen.getByLabelText('章'))
 
     expect(editor.getJSON().content![0].content![0].attrs?.style).toBe('chapter')
   })
@@ -59,7 +59,7 @@ describe('SelectionToolbar', () => {
     editor.commands.setParagraphStyle('chapter')
     mount(editor)
 
-    fireEvent.mouseDown(screen.getByText('正文'))
+    fireEvent.mouseDown(screen.getByLabelText('正文'))
 
     expect(editor.getJSON().content![0].content![0].attrs?.style).toBe('body')
   })
@@ -69,7 +69,7 @@ describe('SelectionToolbar', () => {
     selectRange(editor, 2, 7)
     mount(editor)
 
-    fireEvent.mouseDown(screen.getByText('强调'))
+    fireEvent.mouseDown(screen.getByLabelText('强调'))
 
     const marks = editor.getJSON().content![0].content![0].content?.[0]?.marks ?? []
     expect(marks.map((m: any) => m.type)).toContain('emphasis')
@@ -80,7 +80,7 @@ describe('SelectionToolbar', () => {
     selectRange(editor, 2, 7)
     mount(editor)
 
-    fireEvent.mouseDown(screen.getByText('refer'))
+    fireEvent.mouseDown(screen.getByLabelText('refer'))
 
     const marks = editor.getJSON().content![0].content![0].content?.[0]?.marks ?? []
     expect(marks.map((m: any) => m.type)).toContain('refer')
@@ -91,7 +91,7 @@ describe('SelectionToolbar', () => {
     selectRange(editor, 2, 7)
     mount(editor)
 
-    fireEvent.mouseDown(screen.getByText('删除'))
+    fireEvent.mouseDown(screen.getByLabelText('删除'))
 
     const marks = editor.getJSON().content![0].content![0].content?.[0]?.marks ?? []
     expect(marks.map((m: any) => m.type)).toContain('strike')
@@ -103,7 +103,35 @@ describe('SelectionToolbar', () => {
     editor.commands.toggleStrike()
     mount(editor)
 
-    expect(screen.getByText('删除').className).toContain('on')
+    expect(screen.getByLabelText('删除').className).toContain('on')
+  })
+
+  // 按钮上没有文字了（图标 / 带效果的「字」样本），名字只在 aria-label 里——
+  // 所以这些用例一律按 aria-label 找按钮，顺便就是一次可访问名字的回归。
+  it.each([
+    ['列表', 'bullet'],
+    ['引用', 'quote'],
+    ['注', 'note'],
+  ])('点"%s"把段落设成 %s，再点一次回到正文', (label, style) => {
+    editor = makeEditor()
+    selectRange(editor, 2, 7)
+    mount(editor)
+
+    fireEvent.mouseDown(screen.getByLabelText(label))
+    expect(editor.getJSON().content![0].content![0].attrs?.style).toBe(style)
+
+    fireEvent.mouseDown(screen.getByLabelText(label))
+    expect(editor.getJSON().content![0].content![0].attrs?.style).toBe('body')
+  })
+
+  it('当前段落样式对应的按钮是按下态（aria-pressed）', () => {
+    editor = makeEditor()
+    selectRange(editor, 2, 7)
+    editor.commands.setParagraphStyle('bullet')
+    mount(editor)
+
+    expect(screen.getByLabelText('列表').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByLabelText('正文').getAttribute('aria-pressed')).toBe('false')
   })
 
   it('点某个色块调用 setCardColor(hex)，作用于选区所在的整张卡', () => {

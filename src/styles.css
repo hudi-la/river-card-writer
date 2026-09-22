@@ -179,7 +179,10 @@ html.box-row-drag-active, html.box-row-drag-active * { user-select:none !importa
 /* 列表 / 引用 / 注（排版视图）。跨页续接的那一截（.ts-cont）不再画圆点/标签。
    间距照旧只用 padding（量高靠 rect，margin 量不进去）；列表项、注之间收紧一点。 */
 .ts-bullet { text-indent: 0; padding-left: 2em; padding-bottom: 4px; position: relative; text-align: left; }
-.ts-bullet:not(.ts-cont)::before { content: '•'; position: absolute; left: .75em; color: var(--muted); }
+.ts-bullet:not(.ts-cont)::before {
+  content: '•'; position: absolute; left: .7em; font-size: 1.1em;
+  color: color-mix(in srgb, var(--ink) 55%, var(--paper));
+}
 .ts-quote { text-indent: 0; margin-left: .4em; padding-left: 1.1em; border-left: 2px solid var(--hair); color: color-mix(in srgb, var(--ink) 72%, var(--paper)); }
 /* 注：整段悬挂缩进，"注"标签挂在左边空白里，连续几段注文字左缘对齐、只第一段挂标签 */
 .ts-note { position: relative; text-indent: 0; padding-left: 2.4em; padding-bottom: 4px; font-size: .86em; line-height: 1.8; color: color-mix(in srgb, var(--ink) 70%, var(--paper)); }
@@ -188,6 +191,16 @@ html.box-row-drag-active, html.box-row-drag-active * { user-select:none !importa
   border: 1px solid var(--hair); border-radius: 3px; color: var(--muted); font-family: -apple-system, 'PingFang SC', sans-serif;
 }
 .ts-card-start { padding-top: 18px; }
+/* 行内标记（阅读/排版视图）——跟编辑器里同一套：强调走中文的着重号，refer 不倾斜
+   只加虚线，删除线压淡一档。分页量高时这些 class 也会挂到量高层上，所以量出来的
+   行数就是排出来的行数。 */
+.ts-em {
+  font-weight: 700;
+  text-emphasis: filled dot; text-emphasis-position: under right;
+  -webkit-text-emphasis: filled dot; -webkit-text-emphasis-position: under right;
+}
+.ts-refer { border-bottom: 1px dashed color-mix(in srgb, var(--ink) 40%, var(--paper)); }
+.ts-strike { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink) 55%, var(--paper)); }
 /* 统色（Phase 14 Task 1 #2）：每个目录行读它对应卡片的颜色（手动 color 或
    autoCardColor(cardId)），透明度跟正文 .river .card 的两档一致——没手动设色
    13%，手动设色 16%（--row-bg 由 LeftNav.tsx 内联设置，一路继承到子元素）。目
@@ -456,8 +469,15 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 /* 块样式：列表 / 引用 / 注。都只是段落的 data-style，连着几段同样式的段落在视觉上
    连成一块（margin 为 0，竖线/底色首尾相接）。 */
 /* 列表项用 list-item + ::marker 出圆点，不占 ::before——空段落的占位符用的是 ::before */
-.river .card-body p[data-style="bullet"] { display: list-item; list-style: disc outside; text-indent: 0; margin-left: 2.2em; }
-.river .card-body p[data-style="bullet"]::marker { color: var(--muted); }
+.river .card-body p[data-style="bullet"] {
+  display: list-item; list-style: disc outside; text-indent: 0;
+  /* 悬挂缩进：圆点站在文本块外面，折行的第二行跟首行左缘对齐 */
+  margin: .12em 0 .12em 1.9em; padding-left: .35em; line-height: 1.8;
+}
+/* 圆点要看得见：默认 --muted 在纸色上太淡，且宋体的 disc 偏小 */
+.river .card-body p[data-style="bullet"]::marker {
+  color: color-mix(in srgb, var(--ink) 62%, var(--paper)); font-size: 1.2em;
+}
 .river .card-body p[data-style="quote"] {
   text-indent: 0; margin-left: .6em; padding-left: 1.2em;
   border-left: 3px solid var(--hair); color: color-mix(in srgb, var(--ink) 72%, var(--paper));
@@ -481,7 +501,22 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 .river p.is-empty::before { content: attr(data-placeholder); color: var(--muted); opacity: .5; float: left; height: 0; pointer-events: none; }
 /* 删除线 mark（<s class="strike">）——浏览器对 <s> 默认就是 line-through，这里
    显式声明一遍兜底，不依赖浏览器默认样式表。 */
-.river s.strike { text-decoration: line-through; }
+.river s.strike { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink) 55%, var(--paper)); }
+/* 强调（<strong class="em">）：宋体没有真正的粗体字面，合成出来的「粗」在 15px
+   的中文里几乎看不出来。所以照中文书的做法加着重号——字下面一排点，这是中文
+   排版里「强调」本来的样子，比加粗醒目得多；字重也一起提上去兜住不支持
+   text-emphasis 的浏览器。 */
+.river strong.em {
+  font-weight: 700;
+  text-emphasis: filled dot; text-emphasis-position: under right;
+  -webkit-text-emphasis: filled dot; -webkit-text-emphasis-position: under right;
+}
+/* refer（<em class="refer">）：中文没有真斜体，浏览器只会把方块字强行倾斜，
+   既难看也读不出「这是在指别处」。改成不倾斜 + 一条虚下划线。 */
+.river em.refer {
+  font-style: normal;
+  border-bottom: 1px dashed color-mix(in srgb, var(--ink) 40%, var(--paper));
+}
 
 .selection-toolbar {
   display: flex; align-items: center; gap: 10px; z-index: 30;
@@ -497,13 +532,36 @@ html.card-drag-active, html.card-drag-active * { user-select: none !important; -
 }
 .selection-toolbar button:hover { border-color: var(--hair); }
 .selection-toolbar button.on { background: rgba(120,158,196,.16); border-color: var(--hair); font-weight: 600; }
+/* 每个按钮都是它自己的样本：段落样式是小图，行内标记是一个带真实效果的「字」。
+   都用 currentColor，所以 hover / 高亮只换 color，图样跟着走。 */
+.selection-toolbar .sel-icon, .selection-toolbar .sel-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 26px; padding: 0; color: color-mix(in srgb, var(--ink) 66%, var(--paper));
+}
+.selection-toolbar .sel-icon:hover, .selection-toolbar .sel-mark:hover { color: var(--ink); }
+.selection-toolbar .sel-icon.on, .selection-toolbar .sel-mark.on { color: var(--ink); }
+.selection-toolbar .sel-mark span {
+  font-family: var(--reading-font); font-size: 14px; line-height: 1;
+  /* 着重号画在字下面，按钮得留出那一点地方 */
+  padding-bottom: 3px;
+}
+.selection-toolbar .spec-em { font-weight: 700; text-emphasis: filled dot; text-emphasis-position: under right; }
+.selection-toolbar .spec-strike {
+  /* 两头各留一点，线伸出字外——「文」中间是撇捺，横线穿过去不会跟笔画混 */
+  text-decoration: line-through; text-decoration-thickness: 1.3px; text-decoration-color: currentColor;
+  padding-inline: .16em;
+}
+.selection-toolbar .spec-refer::before { content: '「'; }
+.selection-toolbar .spec-refer::after { content: '」'; }
+.selection-toolbar .spec-refer { letter-spacing: -.12em; }
 .selection-toolbar .swatch {
   width: 18px; height: 18px; padding: 0; border-radius: 50%; border: 1px solid var(--hair);
 }
 .selection-toolbar .swatch:hover { border-color: var(--ink); }
 .selection-toolbar .swatch.clear {
-  width: auto; height: auto; border-radius: 5px; padding: 5px 8px; font-size: 11px; color: var(--muted);
-  background: none; border-color: var(--faint);
+  background: var(--paper); border-color: var(--hair);
+  /* 斜线 = 不指定颜色，回到按 cardId 自动配色 */
+  background-image: linear-gradient(45deg, transparent 44%, var(--muted) 44%, var(--muted) 56%, transparent 56%);
 }
 
 .shelf { max-width: 980px; margin: 0 auto; padding: 56px 24px; }
