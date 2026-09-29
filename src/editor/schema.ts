@@ -11,6 +11,7 @@ import { Fragment, type Node as PMNode } from '@tiptap/pm/model'
 import { nanoid } from 'nanoid'
 import { CardView } from './CardView'
 import { Emphasis, Refer, Strike } from './marks'
+import { isValidEn, STALE_SRC, splitEn, mergeEn, type EnState } from './enText'
 
 export const CardDocument = Document.extend({ content: 'card+' })
 
@@ -192,6 +193,29 @@ export function autoCardColor(cardId: string): string {
   let h = 0
   for (let i = 0; i < cardId.length; i++) h = (h * 31 + cardId.charCodeAt(i)) | 0
   return CARD_PALETTE[Math.abs(h) % CARD_PALETTE.length]
+}
+
+// 一张卡此刻渲染出来的底色——手动设了 color 就用它，否则按 cardId 哈希；跟
+// CardView / LeftNav 完全同一条公式（判断"撞色"必须跟眼睛看到的是同一把尺子）。
+// 还没拿到 cardId 的新卡返回 null：它的色这一轮才定下来，在那之前不该参与别人的
+// 撞色判断——否则一串同时出生的卡会被一个根本不存在的颜色互相误伤。
+function cardColorOf(node: PMNode): string | null {
+  if (node.type.name !== 'card') return null
+  if (node.attrs.color) return node.attrs.color
+  return node.attrs.cardId ? autoCardColor(node.attrs.cardId) : null
+}
+
+// 掷 id 的次数上限。banned 最多装两个邻居的色，6 色调色板里还剩 4 个候选，期望
+// 一两次就中；这个上限纯粹是保命用的——宁可撞一次色也不能让输入卡死。
+const MAX_ID_DRAWS = 20
+
+// 给一张新卡挑 cardId：颜色（= autoCardColor(id)）落在 banned 里就重掷。
+// 颜色仍然是 cardId 的纯函数，所以这条规则只在"出生"那一刻生效一次，之后这张卡
+// 拖到哪儿都不会变色——颜色是它的身份，不是它的位置。
+export function pickCardId(banned: Set<string>, gen: () => string = nanoid): string {
+  let id = gen()
+  for (let i = 1; i < MAX_ID_DRAWS && banned.has(autoCardColor(id)); i++) id = gen()
+  return id
 }
 
 declare module '@tiptap/core' {
@@ -455,6 +479,20 @@ function moveSectionToIndex(
   return true
 }
 
+// 一张卡的每一段中文文本。指纹和切分对齐都以它为输入。
+function cardParagraphTexts(cardNode: PMNode): string[] {
+  const out: string[] = []
+  cardNode.forEach((p) => out.push(p.textContent))
+  return out
+}
+
+// 把一份 EnState 落到指定位置的卡上。enAt 只在真的有英文时才盖时间戳。
+function applyEnState(tr: Transaction, pos: number, s: EnState, now: string): void {
+  tr.setNodeAttribute(pos, 'en', s.en)
+  tr.setNodeAttribute(pos, 'enSrc', s.enSrc)
+  if (s.en) tr.setNodeAttribute(pos, 'enAt', now)
+}
+
 export const Card = Node.create({
   name: 'card',
   group: 'block',
@@ -479,6 +517,42 @@ export const Card = Node.create({
         default: '',
         parseHTML: (el) => (el as HTMLElement).getAttribute('data-card-note') || '',
         renderHTML: (attrs) => (attrs.note ? { 'data-card-note': attrs.note } : {}),
+      },
+      // 作者自己写的英文，每段一个字符串。null = 没写过。
+      // 刻意是纯文本数组而不是 ProseMirror 片段：段落一一对应，所以英文不需要
+      // 自带段落样式（章名/标题/列表/引用/注全部按序号从对应的中文段继承）。这个
+      // 决定连带消掉了"第二个编辑器 + 派生文档 + 写回桥"的全部复杂度。
+      //
+      // CRITICAL：en.length === 本卡段落数 是不变量。形状不对一律当"没写过"，
+      // 绝不好心补齐或截断——补出来的英文跟中文对不上，比没有更有害。
+      // JSON 路径（getJSON/setContent）不走 parseHTML，所以 CardView 读取时还要
+      // 再用 isValidEn 兜一层。
+      en: {
+        default: null,
+        parseHTML: (el) => {
+          const raw = (el as HTMLElement).getAttribute('data-en')
+          if (!raw) return null
+          try {
+            const parsed = JSON.parse(raw)
+            const count = (el as HTMLElement).querySelectorAll('p').length
+            return isValidEn(parsed, count) ? parsed : null
+          } catch {
+            return null
+          }
+        },
+        renderHTML: (attrs) => (attrs.en ? { 'data-en': JSON.stringify(attrs.en) } : {}),
+      },
+      // 写英文时那一版中文的指纹。空串 = 显式标记为过期（见 enText.STALE_SRC）。
+      enSrc: {
+        default: STALE_SRC,
+        parseHTML: (el) => (el as HTMLElement).getAttribute('data-en-src') || STALE_SRC,
+        renderHTML: (attrs) => (attrs.enSrc ? { 'data-en-src': attrs.enSrc } : {}),
+      },
+      // 最后一次改动英文的时间（ISO string）。纯信息，不参与任何判断。
+      enAt: {
+        default: '',
+        parseHTML: (el) => (el as HTMLElement).getAttribute('data-en-at') || '',
+        renderHTML: (attrs) => (attrs.enAt ? { 'data-en-at': attrs.enAt } : {}),
       },
     }
   },
@@ -507,17 +581,33 @@ export const Card = Node.create({
           }
           if (cardDepth === -1) return false
           if (dispatch) {
+            // 下刀之前先算好英文怎么分——split 之后节点结构就变了，算不回来。
+            const cardNode = $from.node(cardDepth)
+            const paraIndex = $from.index(cardDepth)
+            const atBoundary = $from.parentOffset === 0
+            const plan = splitEn(cardNode.attrs.en, cardParagraphTexts(cardNode), paraIndex, atBoundary)
+            const now = new Date().toISOString()
+            const cardPos = $from.before(cardDepth)
+
             const tr = state.tr
             if (!state.selection.empty) tr.deleteSelection()
             // 从光标一路 split 到 card 这一层：depth(card) 到 depth(选区) 差几层就 split 几层
             const splitDepth = tr.selection.$from.depth - cardDepth + 1
             tr.split(tr.selection.from, splitDepth)
-            // 清掉新 card 继承来的 cardId，交给 assignCardIds 补新 id
+
+            // 前半张还在原位
+            applyEnState(tr, cardPos, plan.first, now)
+
+            // 清掉新 card 继承来的 cardId，交给 assignCardIds 补新 id；同时落它的英文。
+            // CRITICAL：tr.split() 会把 en/enSrc 一并复制给新卡，所以这里必须显式
+            // 覆盖——不覆盖就会凭空多出一份重复译文。
             const posAfter = tr.selection.from
             const $pos = tr.doc.resolve(posAfter)
             for (let d = $pos.depth; d > 0; d--) {
               if ($pos.node(d).type.name === 'card') {
-                tr.setNodeAttribute($pos.before(d), 'cardId', null)
+                const secondPos = $pos.before(d)
+                tr.setNodeAttribute(secondPos, 'cardId', null)
+                applyEnState(tr, secondPos, plan.second, now)
                 break
               }
             }
@@ -546,8 +636,24 @@ export const Card = Node.create({
           const cardPos = $from.before(cardDepth)
           if (cardPos <= 0) return false // 已是第一个 card
           if (dispatch) {
-            // join 位置：当前 card 与前一个 card 之间的边界点
-            dispatch(state.tr.join(cardPos).scrollIntoView())
+            // CRITICAL：tr.join() 只保留前一张卡的属性，后一张的英文会被静默吞掉
+            // ——作者润色过的东西无声消失。所以合并后必须显式写回拼接的结果。
+            const curCard = $from.node(cardDepth)
+            const prevCard = state.doc.resolve(cardPos).nodeBefore
+            const tr = state.tr
+            if (prevCard) {
+              const prevPos = cardPos - prevCard.nodeSize
+              const merged = mergeEn(prevCard.attrs.en, curCard.attrs.en, [
+                ...cardParagraphTexts(prevCard),
+                ...cardParagraphTexts(curCard),
+              ])
+              // join 位置：当前 card 与前一个 card 之间的边界点
+              tr.join(cardPos)
+              applyEnState(tr, prevPos, merged, new Date().toISOString())
+            } else {
+              tr.join(cardPos)
+            }
+            dispatch(tr.scrollIntoView())
           }
           return true
         },
@@ -688,11 +794,18 @@ export const assignCardIds = Extension.create({
         appendTransaction: (_transactions, _oldState, newState) => {
           const tr = newState.tr
           let modified = false
-          newState.doc.descendants((node, pos) => {
-            if (node.type.name === 'card' && !node.attrs.cardId) {
-              tr.setNodeAttribute(pos, 'cardId', nanoid())
-              modified = true
-            }
+          // 先把每张卡当前的底色抄一份下来，边发 id 边更新。同一个 transaction 里
+          // 一次生出多张卡（粘贴、搬运、拆卡）时，前面刚定下的色要参与后面那张的
+          // 判断——newState.doc 是发 id 之前的快照，光读它看不到本轮分出去的色。
+          const colors: (string | null)[] = []
+          newState.doc.forEach((node) => colors.push(cardColorOf(node)))
+          newState.doc.forEach((node, pos, index) => {
+            if (node.type.name !== 'card' || node.attrs.cardId) return
+            const banned = new Set([colors[index - 1], colors[index + 1]].filter((c): c is string => !!c))
+            const id = pickCardId(banned)
+            tr.setNodeAttribute(pos, 'cardId', id)
+            colors[index] = node.attrs.color || autoCardColor(id)
+            modified = true
           })
           return modified ? tr : null
         },
