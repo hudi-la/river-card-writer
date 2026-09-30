@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import { mergeImported, mergeUniversalCards } from './backup'
+import type { PrepResult } from '../prep/types'
 import { pushSnapshot, decideSnapshot } from './snapshots'
 
 export const EMPTY_DOC = { type: 'doc', content: [{ type: 'card', content: [{ type: 'paragraph' }] }] }
@@ -32,7 +33,14 @@ export function isValidCover(raw: any): raw is Cover {
 // 那边的合并规则去处理（该规则选择在缺失/无法比较时优先本地，绝不因为不确定
 // 就丢本地改动）。可选字段，而不是给个假的哨兵日期——不确定就是不确定，别装
 // 出一个"很旧"的确定值来源，那样反而可能在别的比较逻辑里被误用。
-export type Book = { id: string; title: string; doc: any; boxes: Box[]; updatedAt?: string; cover?: Cover; subtitle?: string; author?: string }
+// hints：备料提词，按 cardId 索引。刻意不放进 doc——正文 JSON 保持干净、导出成稿
+// 天然不带它；而且提词可能比正文还长，塞进 doc 会让每次编辑的 diff 和同步负载都
+// 被它主导。CRITICAL：模型的产出只进这里，绝不进 card 的 en 属性——en 只装作者
+// 自己敲的字。
+// aiPolicy：这份稿子允许 AI 做到哪一档。默认 strict（只给词）——安全的那一档是
+// 默认值，放开要主动开口。目前只实现了 strict。
+// 两个都是可选字段，老书读出来是 undefined、行为零变化，跟 cover/subtitle 同一个路子。
+export type Book = { id: string; title: string; doc: any; boxes: Box[]; updatedAt?: string; cover?: Cover; subtitle?: string; author?: string; hints?: Record<string, PrepResult>; aiPolicy?: 'strict' | 'open' | 'auto' }
 export type Library = { books: Book[]; activeBookId: string | null; universalBoxes: Box[] }
 
 // 库级通用盒子：不属于任何一本书，跨所有书共享同一份实例。Phase 14 起支持
@@ -90,6 +98,8 @@ type BookState = {
   // mergeUniversalCards）——只增不减，重复导入不产生重复卡。
   importUniversalCards: (cards: any[]) => void
   updateDoc: (doc: object) => void
+  setAiPolicy: (policy: 'strict' | 'open' | 'auto') => void
+  setCardHints: (cardId: string, result: PrepResult) => void
   openDoc: () => void
   addBox: (name: string) => Box | undefined
   // 重命名当前书里指定 id 的盒子；忽略空名（trim 后为空则 no-op，盒子名不变）。
@@ -773,6 +783,15 @@ export const useBookStore = create<BookState>((set, get) => {
     },
     updateDoc: (doc) => {
       withActiveBook((book) => ({ book: { ...book, doc }, result: undefined }))
+    },
+    setAiPolicy: (aiPolicy) => {
+      withActiveBook((book) => ({ book: { ...book, aiPolicy }, result: undefined }))
+    },
+    setCardHints: (cardId, result) => {
+      withActiveBook((book) => ({
+        book: { ...book, hints: { ...(book.hints ?? {}), [cardId]: result } },
+        result: undefined,
+      }))
     },
     openDoc: () => set({ viewKind: 'doc' }),
     addBox: (name) => {

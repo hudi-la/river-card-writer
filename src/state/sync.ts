@@ -10,7 +10,7 @@ export type CwBookRow = {
   id: string
   owner: string
   title: string
-  data: { doc: any; boxes: Book['boxes']; subtitle?: string; author?: string }
+  data: { doc: any; boxes: Book['boxes']; subtitle?: string; author?: string; hints?: Book['hints']; aiPolicy?: Book['aiPolicy'] }
   position: number
   updated_at: string
   cover?: Cover | null
@@ -26,6 +26,9 @@ export function rowToBook(row: CwBookRow): Book {
     cover: isValidCover(row.cover) ? row.cover : undefined,
     ...(typeof row.data.subtitle === 'string' ? { subtitle: row.data.subtitle } : {}),
     ...(typeof row.data.author === 'string' ? { author: row.data.author } : {}),
+    // 备料提词与档位：老行没有这两个 key，读出来就是 undefined，行为零变化。
+    ...(row.data.hints && typeof row.data.hints === 'object' ? { hints: row.data.hints } : {}),
+    ...(row.data.aiPolicy ? { aiPolicy: row.data.aiPolicy } : {}),
   }
 }
 
@@ -39,6 +42,8 @@ export function bookToRow(book: Book, ownerId: string, position: number): CwBook
       boxes: book.boxes,
       ...(book.subtitle ? { subtitle: book.subtitle } : {}),
       ...(book.author ? { author: book.author } : {}),
+      ...(book.hints ? { hints: book.hints } : {}),
+      ...(book.aiPolicy ? { aiPolicy: book.aiPolicy } : {}),
     },
     position,
     // 优先用本书自己的 updatedAt（改动发生的真实时间），这样即使这次 upsert

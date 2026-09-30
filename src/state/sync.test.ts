@@ -716,3 +716,40 @@ describe('flushToCloud（Cmd+S 手动强制保存：不看脏标记，直接把�
     expect(res).toEqual({ ok: false, error: 'network down' })
   })
 })
+
+describe('备料的 hints 与 aiPolicy', () => {
+  it('能原样往返 data jsonb', () => {
+    const hints = {
+      c0: {
+        genre: 'narrative' as const,
+        genreReason: '动作细节多',
+        targets: [{
+          zh: '堵', zhQuote: '堵在卧室里', category: '动作质感', priority: 1,
+          whyZhIsPrecise: '强弱易位', flatTranslation: { text: 'block', whyItDies: '没生命' },
+          candidates: [{ en: 'hem in', verifyForm: 'hem in', register: '书面', nuance: '围困', whyFits: '贴', loses: '没对峙感' }],
+          noSingleWord: false, family: '剥夺退路的掌控',
+        }],
+      },
+    }
+    const book: Book = { id: '11111111-1111-4111-8111-111111111111', title: '书', doc: {}, boxes: [], hints, aiPolicy: 'strict' }
+    const back = rowToBook(bookToRow(book, 'owner', 0))
+    expect(back.hints).toEqual(hints)
+    expect(back.aiPolicy).toBe('strict')
+  })
+
+  it('老行（data 里没有这两个 key）读出来是 undefined，行为零变化', () => {
+    const back = rowToBook({
+      id: '22222222-2222-4222-8222-222222222222', owner: 'o', title: '老书',
+      data: { doc: {}, boxes: [] }, position: 0, updated_at: '2026-01-01T00:00:00Z',
+    })
+    expect(back.hints).toBeUndefined()
+    expect(back.aiPolicy).toBeUndefined()
+  })
+
+  it('没有 hints 的书 upsert 时不写 hints key，不给老数据塞空对象', () => {
+    const book: Book = { id: '33333333-3333-4333-8333-333333333333', title: '书', doc: {}, boxes: [] }
+    const row = bookToRow(book, 'owner', 0)
+    expect('hints' in row.data).toBe(false)
+    expect('aiPolicy' in row.data).toBe(false)
+  })
+})

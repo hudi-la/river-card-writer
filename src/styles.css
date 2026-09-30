@@ -965,3 +965,114 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
   border-radius:6px; padding:7px 18px; font-size:13px; font-weight:600; cursor:pointer; flex:1;
 }
 .cover-editor-save:hover { opacity:.88; }
+
+/* ── 译前备料：双语两栏 ─────────────────────────────────────────────
+   卡片从单列变两列。只有挂了 .river--bilingual 的祖先里才生效，所以平时
+   （单语写作）卡片的排版和以前一字不差。
+   并排不是"两个编辑器并列"而是"每张卡自己是两列"，于是只有一个滚动条、
+   中英天然永远对齐，一行滚动同步代码都不用写。 */
+.card-en { display: none; }
+
+.river--bilingual .card {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+.river--bilingual .card-en { display: block; }
+
+.card-en-p {
+  min-height: 1.85em;
+  outline: none;
+  font-family: Georgia, 'Times New Roman', serif;
+  line-height: 1.8;
+  color: #2a2722;
+}
+.card-en-p:empty::before {
+  content: '在这里写你的英文';
+  color: #bdb7ab;
+  font-style: italic;
+}
+.card-en-p:focus { background: #fffdf7; box-shadow: inset 0 0 0 1px #e3d7be; }
+
+/* 英文段落的样式按序号从中文继承，所以这里跟着正文的语义样式走 */
+.card-en-p[data-style='chapter'] { font-size: 1.4em; font-weight: 600; }
+.card-en-p[data-style='h1'] { font-size: 1.2em; font-weight: 600; }
+.card-en-p[data-style='h2'] { font-size: 1.08em; font-weight: 600; }
+.card-en-p[data-style='bullet'] { padding-left: 1.2em; text-indent: -0.7em; }
+.card-en-p[data-style='quote'] { padding-left: 1em; border-left: 2px solid #ddd9cf; color: #5c5649; }
+.card-en-p[data-style='note'] { font-size: 0.9em; color: #6b665c; }
+
+/* 过期：不弹窗、不打断、不催——只是让它安静地发灰 */
+.card[data-en-stale='true'] .card-en-p { color: #a39d92; }
+.card-en-stale-note {
+  margin: 0 0 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9a6a1e;
+}
+
+/* 双语时 .app 从两列变三列：目录 | 正文 | 备料边栏。
+   边栏宽度自适应而不是钉死 456px：算过账——1440 屏上固定 456 还行（正文两栏
+   各约 378px、23 个汉字一行），但 1280 屏上正文只剩每栏约 300px、18 个字，
+   太窄了。clamp 让边栏在窄屏上先让步，因为中英两栏才是反复比对的主力。
+   min-width:0 防止中间列被内容顶出去（grid 项默认 min-width:auto 会溢出）。 */
+.app--bilingual { grid-template-columns: var(--rail-width, 172px) minmax(0, 1fr) clamp(300px, 26vw, 456px); }
+.app--bilingual > .page { min-width: 0; }
+/* 正文要装两栏，阅读行宽那个约束在这里得放宽——否则两栏各只剩一半的行宽。 */
+.page--bilingual .river-wrap { width: 96%; }
+
+/* 屏幕不够宽时，两栏并排会把中英都挤到没法读。这时英文退到中文下面——
+   还是同一张卡的两块，只是竖着排；对齐关系没变，可读性保住了。 */
+@media (max-width: 1180px) {
+  .river--bilingual .card { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .river--bilingual .card-en {
+    padding-top: 10px;
+    border-top: 1px dashed var(--faint, #e3e0d8);
+  }
+}
+
+/* 边栏跟 .rail 同一套：钉在视口、自己出滚动条，正文滚动时它不跟着跑。 */
+.prep-sidebar {
+  position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+  box-sizing: border-box; padding: 14px 18px;
+  border-left: 1px solid var(--faint); background: #f5f3ec; font-size: 13px;
+}
+.prep-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.prep-policy {
+  font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid #b8ccc4; background: #eef4f1; color: #2e6b58;
+}
+.prep-policy[data-ai-policy='open'] { border-color: #ddc9a0; background: #fdfaf3; color: #8c6d28; }
+.prep-policy[data-ai-policy='auto'] { border-color: #d9a695; background: #fcf8f7; color: #8f3a22; }
+.prep-meta { margin-left: auto; font-size: 11px; color: #8c867a; }
+.prep-empty { font-size: 12px; line-height: 1.7; color: #6b665c; }
+
+.prep-target { background: #fff; border: 1px solid #ddd9cf; border-radius: 9px; padding: 13px 14px; margin-bottom: 12px; }
+.prep-zh { margin: 0 0 8px; font-family: Georgia, 'Songti SC', serif; font-size: 19px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.prep-family { font-size: 10.5px; font-weight: 400; padding: 2px 7px; border-radius: 999px; background: #efeadf; color: #6b665c; }
+.prep-nosingle { font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 999px; background: #f3e7e2; color: #97552f; }
+.prep-why { margin: 0 0 8px; line-height: 1.65; color: #4a463d; font-size: 12.5px; }
+.prep-label { color: #8c867a; }
+.prep-flat {
+  margin: 0 0 11px; font-size: 12px; line-height: 1.6; color: #6b665c;
+  padding: 8px 10px; background: #faf6ef; border-left: 2px solid #c9a86a; border-radius: 0 4px 4px 0;
+}
+.prep-flat strong { color: #8c6d28; }
+.prep-cands { list-style: none; margin: 0; padding: 0; }
+.prep-cand { border-top: 1px solid #edeae1; padding-top: 9px; margin-top: 9px; }
+.prep-cand-head { display: flex; align-items: center; gap: 7px; margin-bottom: 3px; flex-wrap: wrap; }
+.prep-en { font-family: Georgia, serif; font-size: 15px; font-weight: 600; }
+.prep-register { font-size: 10.5px; color: #8c867a; }
+.prep-nuance { margin: 0 0 2px; font-size: 12px; line-height: 1.6; color: #4a463d; }
+.prep-loses { margin: 0; font-size: 12px; line-height: 1.6; color: #97552f; }
+
+/* 三档徽章：靠形状 + 明度区分，不只靠颜色——未查证的是空心环加删除线，
+   看不出颜色差别也认得出来。 */
+.prep-tier { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; }
+.prep-tier[data-tier='ok'] { color: #2e6b58; background: #e6f0eb; }
+.prep-tier[data-tier='rare'] { color: #8c6d28; background: #f6ecd4; border: 1px solid #ddc9a0; }
+.prep-tier[data-tier='unverified'] { color: #8f3a22; background: #fff; border: 1.5px solid #d9a695; }
+/* 未查证的候选整体降级：作者看得见它没有背书 */
+.prep-cand[data-tier='unverified'] { background: #fcf8f7; margin-left: -14px; margin-right: -14px; padding-left: 14px; padding-right: 14px; }
+.prep-cand[data-tier='unverified'] .prep-en { color: #6b665c; text-decoration: line-through; text-decoration-color: #c99a8a; }
