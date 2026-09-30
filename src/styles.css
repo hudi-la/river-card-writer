@@ -1012,10 +1012,25 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
   color: #9a6a1e;
 }
 
-/* 双语时 .app 从两列变三列：目录 | 正文 | 备料边栏。 */
-.app--bilingual { grid-template-columns: var(--rail-width, 172px) 1fr 456px; }
+/* 双语时 .app 从两列变三列：目录 | 正文 | 备料边栏。
+   边栏宽度自适应而不是钉死 456px：算过账——1440 屏上固定 456 还行（正文两栏
+   各约 378px、23 个汉字一行），但 1280 屏上正文只剩每栏约 300px、18 个字，
+   太窄了。clamp 让边栏在窄屏上先让步，因为中英两栏才是反复比对的主力。
+   min-width:0 防止中间列被内容顶出去（grid 项默认 min-width:auto 会溢出）。 */
+.app--bilingual { grid-template-columns: var(--rail-width, 172px) minmax(0, 1fr) clamp(300px, 26vw, 456px); }
+.app--bilingual > .page { min-width: 0; }
 /* 正文要装两栏，阅读行宽那个约束在这里得放宽——否则两栏各只剩一半的行宽。 */
 .page--bilingual .river-wrap { width: 96%; }
+
+/* 屏幕不够宽时，两栏并排会把中英都挤到没法读。这时英文退到中文下面——
+   还是同一张卡的两块，只是竖着排；对齐关系没变，可读性保住了。 */
+@media (max-width: 1180px) {
+  .river--bilingual .card { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .river--bilingual .card-en {
+    padding-top: 10px;
+    border-top: 1px dashed var(--faint, #e3e0d8);
+  }
+}
 
 /* 边栏跟 .rail 同一套：钉在视口、自己出滚动条，正文滚动时它不跟着跑。 */
 .prep-sidebar {
