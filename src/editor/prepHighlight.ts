@@ -110,3 +110,32 @@ export function prepHitCount(editor: { extensionManager?: { extensions: any[] } 
   const getTerms = ext?.options?.getTerms as ((id: string) => string[]) | undefined
   return getTerms ? getTerms(cardId).length : 0
 }
+
+// ── 光标所在的卡 ────────────────────────────────────────────────
+// 给它挂一个 class，样式那边据此画边框。
+// 单独一个插件、且不存 state：每次 selection 变化 ProseMirror 都会重新调用
+// props.decorations，所以现算比维护一份 plugin state 更简单也更不会失准。
+export const ActiveCard = Extension.create({
+  name: 'activeCard',
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        props: {
+          decorations(state) {
+            const { $from } = state.selection
+            for (let d = $from.depth; d > 0; d--) {
+              if ($from.node(d).type.name === 'card') {
+                const pos = $from.before(d)
+                return DecorationSet.create(state.doc, [
+                  Decoration.node(pos, pos + $from.node(d).nodeSize, { class: 'is-active-card' }),
+                ])
+              }
+            }
+            return null
+          },
+        },
+      }),
+    ]
+  },
+})

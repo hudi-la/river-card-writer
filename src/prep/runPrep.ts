@@ -27,16 +27,6 @@ export function hasContent(card: CardInput): boolean {
   return card.zhTexts.join('').trim() !== ''
 }
 
-// 已经备过的卡默认跳过，所以「备整章」是增量的：中断后再按一次只补没做的，
-// 不会把已有的重新花钱算一遍。
-// 想强制重算某张卡，走「备这张卡」——那是显式动作，总是重跑。
-export function cardsToPrep(
-  cards: CardInput[],
-  existingHints: Record<string, PrepResult> | undefined
-): CardInput[] {
-  return cards.filter((c) => hasContent(c) && !existingHints?.[c.cardId])
-}
-
 // 按批并发跑。每批结束后把这一批所有候选的裸词形一次性送去查证——查证一批
 // 只要 1.3 秒，按卡分开查纯属浪费往返。
 export async function runPrep(

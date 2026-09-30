@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { Editor } from '@tiptap/core'
-import { findTermRanges, PrepHighlight, PREP_HIGHLIGHT_REFRESH } from './prepHighlight'
+import { ActiveCard, findTermRanges, PrepHighlight, PREP_HIGHLIGHT_REFRESH } from './prepHighlight'
 import { baseExtensions } from './schema'
 
 describe('findTermRanges', () => {
@@ -104,6 +104,43 @@ describe('PrepHighlight 扩展', () => {
     e.commands.insertContentAt(2, '小猫')
     const hit = e.view.dom.querySelector('.prep-hit')
     expect(hit?.textContent).toBe('巡逻')
+    e.destroy()
+  })
+})
+
+describe('ActiveCard', () => {
+  function threeCards() {
+    return new Editor({
+      extensions: [...baseExtensions, ActiveCard],
+      content: {
+        type: 'doc',
+        content: ['a', 'b', 'c'].map((id) => ({
+          type: 'card', attrs: { cardId: id },
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: `第${id}段` }] }],
+        })),
+      },
+    })
+  }
+
+  it('只有光标所在那张卡带 is-active-card', () => {
+    const e = threeCards()
+    e.commands.setTextSelection(2) // 第一张卡里
+    const active = e.view.dom.querySelectorAll('.is-active-card')
+    expect(active.length).toBe(1)
+    expect(active[0].getAttribute('data-card-id')).toBe('a')
+    e.destroy()
+  })
+
+  it('光标移到别的卡，标记跟着走', () => {
+    const e = threeCards()
+    e.commands.setTextSelection(2)
+    expect(e.view.dom.querySelector('.is-active-card')?.getAttribute('data-card-id')).toBe('a')
+
+    const second = e.state.doc.child(0).nodeSize + 2
+    e.commands.setTextSelection(second)
+    const active = e.view.dom.querySelectorAll('.is-active-card')
+    expect(active.length).toBe(1)
+    expect(active[0].getAttribute('data-card-id')).toBe('b')
     e.destroy()
   })
 })

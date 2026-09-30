@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { runPrep, cardsToPrep, hasContent, PREP_CONCURRENCY } from './runPrep'
+import { runPrep, hasContent, PREP_CONCURRENCY } from './runPrep'
 import type { PrepResult } from './types'
 import type { Tier } from './verify'
 
@@ -37,22 +37,6 @@ describe('hasContent', () => {
   it('只有空段落的卡不值得花一次调用', () => {
     expect(hasContent({ cardId: 'c', zhTexts: ['', '  '] })).toBe(false)
     expect(hasContent({ cardId: 'c', zhTexts: ['有字'] })).toBe(true)
-  })
-})
-
-describe('cardsToPrep', () => {
-  it('跳过已经备过的卡——「备整章」因此是增量的，中断后再按只补没做的', () => {
-    const out = cardsToPrep(cards(3), { c1: result('x') })
-    expect(out.map((c) => c.cardId)).toEqual(['c0', 'c2'])
-  })
-
-  it('空白卡一并跳过', () => {
-    const out = cardsToPrep([{ cardId: 'a', zhTexts: ['  '] }, { cardId: 'b', zhTexts: ['字'] }], undefined)
-    expect(out.map((c) => c.cardId)).toEqual(['b'])
-  })
-
-  it('没有任何已备记录时全都要做', () => {
-    expect(cardsToPrep(cards(2), undefined).length).toBe(2)
   })
 })
 

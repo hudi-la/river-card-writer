@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Plus } from 'lucide-react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { baseExtensions, findCardInDoc } from './schema'
-import { PrepHighlight, PREP_HIGHLIGHT_REFRESH } from './prepHighlight'
+import { ActiveCard, PrepHighlight, PREP_HIGHLIGHT_REFRESH } from './prepHighlight'
 import { useBookStore, EMPTY_DOC } from '../state/bookStore'
 import { useEditorBridge } from '../state/editorBridge'
 import { SelectionToolbar } from './SelectionToolbar'
@@ -202,6 +202,7 @@ export function RiverEditor() {
     // 配一次，getTerms 每次调用都取最新状态，所以 hints 变了不用重建编辑器。
     extensions: [
       ...baseExtensions,
+      ActiveCard,
       PrepHighlight.configure({
         getTerms: (cardId) => {
           const hints = useBookStore.getState().activeBook()?.hints?.[cardId]

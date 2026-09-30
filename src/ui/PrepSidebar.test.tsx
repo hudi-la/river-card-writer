@@ -60,8 +60,21 @@ describe('PrepSidebar', () => {
     expect(heads[0].textContent).toContain('叙事 · 1 条')
   })
 
-  it('档位标记不在边栏——它属于顶栏，贴着稿子本身', () => {
-    expect(sidebar().container.querySelector('[data-ai-policy]')).toBeNull()
+  it('档位状态在边栏里，一直看得见——这个开关设错了不会报错', () => {
+    const { container } = sidebar()
+    expect(container.querySelector('[data-ai-policy="strict"]')).not.toBeNull()
+    expect(container.textContent).toContain('只给词')
+    expect(container.textContent).toContain('句子归你')
+  })
+
+  it('换档时状态跟着变', () => {
+    expect(sidebar({ aiPolicy: 'open' }).container.textContent).toContain('加骨架')
+    expect(sidebar({ aiPolicy: 'auto' }).container.textContent).toContain('给译文')
+  })
+
+  it('有 onClose 时给一个 × 可以收起边栏', () => {
+    const { container } = sidebar({ onClose: () => {} })
+    expect(container.querySelector('.prep-close')).not.toBeNull()
   })
 
   it('空态里给「备这张卡」——那是这张卡的动作，就该待在这张卡的面板里', () => {

@@ -3,6 +3,7 @@ import type { Tier } from '../prep/verify'
 
 const TIER_LABEL: Record<Tier, string> = { ok: '已查证', rare: '罕用', unverified: '未查证' }
 const GENRE_LABEL: Record<Genre, string> = { narrative: '叙事', expository: '议论', other: '其他' }
+const POLICY_LABEL: Record<string, string> = { strict: '只给词', open: '加骨架', auto: '给译文' }
 
 // 展开几条。前两条通常是承重句和歧义那一类（priority 已经排过序），值得占地方；
 // 其余折起来，否则一张卡五六条全展开边栏就是一堵墙。
@@ -31,6 +32,8 @@ export function PrepSidebar({
   busy = false,
   progress = null,
   onPrepCard,
+  aiPolicy = 'strict',
+  onClose,
 }: {
   targets: Target[]
   genre: Genre
@@ -38,6 +41,8 @@ export function PrepSidebar({
   busy?: boolean
   progress?: { done: number; total: number } | null
   onPrepCard?: () => void
+  aiPolicy?: 'strict' | 'open' | 'auto'
+  onClose?: () => void
 }) {
   return (
     <aside className="prep-sidebar">
@@ -57,7 +62,25 @@ export function PrepSidebar({
             重备
           </button>
         ) : null}
+        {onClose ? (
+          <button className="prep-close" onClick={onClose} title="收起备料" aria-label="收起备料">
+            ×
+          </button>
+        ) : null}
       </header>
+
+      {/* 这份稿子允许 AI 做到哪一档。spec §9.4：这个开关设错了不会报错，等发现时
+          稿子已经在对方手里，只能靠让状态一直在眼前来防。
+          目前只实现了 strict，所以这里是状态不是开关——摆一个切过去没反应的
+          三段控件比不摆更糟。做出 open/auto 之后它才该变成可切的。 */}
+      <div className="prep-policy-row">
+        <span className="policy-chip" data-ai-policy={aiPolicy}>
+          {POLICY_LABEL[aiPolicy]}
+        </span>
+        <span className="prep-policy-note">
+          {aiPolicy === 'strict' ? '只给词与语感，句子归你' : aiPolicy === 'open' ? '额外给句法骨架' : '额外给整句译文'}
+        </span>
+      </div>
 
       {busy && targets.length === 0 ? (
         <p className="prep-empty">
@@ -75,7 +98,6 @@ export function PrepSidebar({
               备这张卡
             </button>
           ) : null}
-          <p className="prep-empty-note">顶栏的「备料本章」会把整章都备上，已备过的跳过。</p>
         </div>
       ) : null}
 

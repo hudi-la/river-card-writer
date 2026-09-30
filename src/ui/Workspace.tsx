@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, BookOpen, Languages, Lock, Pencil, Square } from 'lucide-react'
+import { ArrowLeft, BookOpen, Languages, PanelRight, Pencil, Square } from 'lucide-react'
 import { useBookStore, type Book } from '../state/bookStore'
 import { usePrefsStore } from '../state/prefsStore'
 import { LeftNav } from './LeftNav'
@@ -13,7 +13,7 @@ import { useEditorBridge } from '../state/editorBridge'
 import { useToastStore } from '../state/toastStore'
 import { requestPrep, makeFetchFreqs } from '../prep/client'
 import { createVerifier, type Tier } from '../prep/verify'
-import { runPrep, cardsToPrep, type CardInput } from '../prep/runPrep'
+import { runPrep, type CardInput } from '../prep/runPrep'
 
 const FONT_STACK: Record<'serif' | 'sans', string> = {
   serif: "Georgia,'Songti SC','Noto Serif',serif",
@@ -22,7 +22,6 @@ const FONT_STACK: Record<'serif' | 'sans', string> = {
 
 const READ_MODE_KEY = 'card-writer:read-mode'
 
-const POLICY_LABEL: Record<string, string> = { strict: '只给词', open: '加骨架', auto: '给译文' }
 
 // 拖拽状态用 useRef 而不是 useState：pointermove 期间不需要触发 Workspace
 // 重渲染——setRailWidth 改 prefsStore，prefs 变化本身会重渲染一次去更新 CSS
@@ -86,6 +85,8 @@ export function Workspace() {
 
   // 双语并排：本地开关（离开这本书自然重置）。开着时每张卡变两列、右边出备料边栏。
   const [bilingual, setBilingual] = useState(false)
+  // 备料面板单独一个开关：不想要提词时可以只关面板，中英两栏照样写。
+  const [prepOpen, setPrepOpen] = useState(true)
   const [prepping, setPrepping] = useState(false)
   // 整章备料的进度。null = 没在跑。实测一次模型调用 24–60 秒，所以进度是必须的
   // ——没有它，作者面对的是几分钟的静默，跟卡死没有区别。
@@ -218,21 +219,12 @@ export function Workspace() {
     return runPrepOn([card], '备料完成')
   }
 
-  // 「备整章」：先做光标所在那张（你立刻就能开始写），其余的并发跟上；已经备过
-  // 的跳过，所以中断后再按一次只补没做的、不重复花钱。
-  const prepChapter = () => {
-    const all = cardsFromEditor()
-    const pending = cardsToPrep(all, book?.hints)
-    const first = pending.findIndex((c) => c.cardId === activeCardId)
-    const ordered = first > 0 ? [pending[first], ...pending.filter((_, i) => i !== first)] : pending
-    return runPrepOn(ordered, '整章备料完成')
-  }
-
   // 异常兜底：shell 已经切到 'book' 但没有 activeBook（比如被删掉了）——安全地
   // 不渲染，而不是读 undefined 崩掉。App 下一次渲染通常会跟着 shell 回书柜。
   if (!book) return null
 
-  const showPrep = bilingual && !readMode && viewKind !== 'box'
+  const showBilingual = bilingual && !readMode && viewKind !== 'box'
+  const showPrep = showBilingual && prepOpen
 
   return (
     <div className={readMode ? 'read-shell' : showPrep ? 'app app--bilingual' : 'app'}>
@@ -246,7 +238,7 @@ export function Workspace() {
           onPointerCancel={onHandlePointerUp}
         />
       )}
-      <main className={showPrep ? 'page page--bilingual river--bilingual' : 'page'}>
+      <main className={showBilingual ? 'page page--bilingual river--bilingual' : 'page'}>
         {/* 顶栏做成 sticky：往下滚正文时这条始终吸在视口顶部，← 书柜 / 书名 / ⚙
             一直够得着（见 .workspace-topbar）。三栏网格 1fr auto 1fr 让书名无论
             两侧按钮多宽都精确居中，且书名保持紧凑——点击区只落在书名本身，不会
@@ -258,41 +250,29 @@ export function Workspace() {
           </button>
           <WorkspaceTitle key={`title-${book.id}`} book={book} renameBook={renameBook} />
           <div className="topbar-right">
-            {/* 顺序即层级：状态 → 视图开关（轻）→ 主动作（重）→ 设置。
-                原来四个按钮同一种粗细并排，看不出主次，也看不出哪个会花钱。 */}
-
-            {/* 稿子的档位。spec §9.4：这个开关设错了不会报错，只能靠让状态一直在
-                眼前来防——所以它贴着书名放在顶栏，而不是藏进边栏或设置页。 */}
-            {showPrep && (
-              <span className="policy-chip" data-ai-policy={book.aiPolicy ?? 'strict'}>
-                <Lock size={12} strokeWidth={2.2} aria-hidden="true" />
-                这份稿子：{POLICY_LABEL[book.aiPolicy ?? 'strict']}
-              </span>
-            )}
-
-            <button className="read-toggle" onClick={() => setReadMode((v) => !v)} title={readMode ? '回到编辑' : '排版预览'}>
-              {readMode ? <Pencil size={14} strokeWidth={1.75} aria-hidden="true" /> : <BookOpen size={14} strokeWidth={1.75} aria-hidden="true" />}
-              {readMode ? '编辑' : '阅读'}
+            {/* 图标按钮。原来「阅读」「单语」的两个字在窄栏里折成上下两行了，
+                所以只留图标——这两个是常用开关，认图标比认字快。 */}
+            <button className="icon-toggle" onClick={() => setReadMode((v) => !v)} title={readMode ? '回到编辑' : '排版预览'} aria-label={readMode ? '回到编辑' : '排版预览'}>
+              {readMode ? <Pencil size={16} strokeWidth={1.75} aria-hidden="true" /> : <BookOpen size={16} strokeWidth={1.75} aria-hidden="true" />}
             </button>
 
             {!readMode && viewKind !== 'box' && (
-              <button className="read-toggle" onClick={() => setBilingual((v) => !v)} title={bilingual ? '回到单语' : '中英并排'}>
-                <Languages size={14} strokeWidth={1.75} aria-hidden="true" />
-                {bilingual ? '单语' : '双语'}
+              <button className="icon-toggle" data-on={bilingual ? 'true' : undefined} onClick={() => setBilingual((v) => !v)} title={bilingual ? '回到单语' : '中英并排'} aria-label={bilingual ? '回到单语' : '中英并排'}>
+                <Languages size={16} strokeWidth={1.75} aria-hidden="true" />
               </button>
             )}
 
-            {/* 唯一的主按钮。「备这张卡」下放到边栏——那是某一张卡的动作，就该待在
-                那张卡的面板里。 */}
-            {showPrep && !prepping && (
-              <button className="topbar-primary" onClick={prepChapter} title="整章都备（并发跑，边跑边出结果，已备过的跳过）">
-                备料本章
+            {/* 备料面板的开关，跟边栏右上角那个 × 是同一件事 */}
+            {showBilingual && (
+              <button className="icon-toggle" data-on={prepOpen ? 'true' : undefined} onClick={() => setPrepOpen((v) => !v)} title={prepOpen ? '收起备料' : '打开备料'} aria-label={prepOpen ? '收起备料' : '打开备料'}>
+                <PanelRight size={16} strokeWidth={1.75} aria-hidden="true" />
               </button>
             )}
-            {showPrep && prepping && (
-              <button className="topbar-primary is-stop" onClick={() => { stopRef.current = true }} title="不再发新的请求（已发出的那几个还会回来）">
+
+            {prepping && (
+              <button className="topbar-primary is-stop" onClick={() => { stopRef.current = true }} title="不再发新的请求（已发出的那个还会回来）">
                 <Square size={11} strokeWidth={2.5} aria-hidden="true" />
-                {progress ? `停 ${progress.done}/${progress.total}` : '停'}
+                停
               </button>
             )}
 
@@ -303,16 +283,6 @@ export function Workspace() {
           <TypesetView book={book} />
         ) : viewKind === 'box' ? (
           <BoxView key={activeBoxId} boxId={activeBoxId} />
-        ) : showPrep ? (
-          <>
-            {/* 列标题：两栏各是什么，一眼就知道。宽度和两列的分法必须跟卡片一致，
-                否则标题和内容对不上（见 styles.css 的 .river-colheads）。 */}
-            <div className="river-colheads">
-              <span>中文 · 原稿</span>
-              <span>英文 · 你写的</span>
-            </div>
-            <RiverEditor key={activeBookId} />
-          </>
         ) : (
           <RiverEditor key={activeBookId} />
         )}
@@ -325,6 +295,8 @@ export function Workspace() {
           busy={prepping}
           progress={progress}
           onPrepCard={prepThisCard}
+          aiPolicy={book.aiPolicy ?? 'strict'}
+          onClose={() => setPrepOpen(false)}
         />
       )}
     </div>
