@@ -2,6 +2,7 @@ import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/re
 import { GripVertical } from 'lucide-react'
 import { autoCardColor } from './schema'
 import { isStale, isValidEn, zhFingerprint, ZH_JOIN } from './enText'
+import { prepHitCount } from './prepHighlight'
 
 // 每张卡的渲染：一个 section.card（背景色 = 手动设的 color，或者按 cardId 稳定哈希
 // 出的默认色）+ 中文正文 + 英文栏 + 一个纯视觉的拖拽把手（GripVertical，跟阅读陪伴
@@ -14,7 +15,7 @@ import { isStale, isValidEn, zhFingerprint, ZH_JOIN } from './enText'
 //
 // 卡片本身是两列 grid（见 styles.css），所以中英按卡天然对齐、只有一个滚动条，
 // 不需要任何滚动同步代码。这是"英文住在中文卡片里"这个存储决定换来的红利。
-export function CardView({ node, updateAttributes }: NodeViewProps) {
+export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
   const cardId: string | null = node.attrs.cardId
   const color: string | null = node.attrs.color
   const bg = color || autoCardColor(cardId ?? '')
@@ -49,6 +50,9 @@ export function CardView({ node, updateAttributes }: NodeViewProps) {
     })
   }
 
+  // 这张卡有几条靶心。跟装饰器同一个来源，所以正文里高亮几处、这里就说几条。
+  const hitCount = cardId ? prepHitCount(editor, cardId) : 0
+
   return (
     <NodeViewWrapper
       as="section"
@@ -66,6 +70,9 @@ export function CardView({ node, updateAttributes }: NodeViewProps) {
           否则 PM 会试图把这里的输入当成文档编辑。内层每格再单独开。 */}
       <aside className="card-en" contentEditable={false}>
         {stale ? <p className="card-en-stale-note">中文改过，这段英文已过期</p> : null}
+        {en == null && hitCount > 0 ? (
+          <p className="card-en-hint">{hitCount} 个靶心在右栏 →</p>
+        ) : null}
         {zhTexts.map((_, i) => (
           <div
             key={i}
@@ -80,6 +87,7 @@ export function CardView({ node, updateAttributes }: NodeViewProps) {
             {en ? en[i] : ''}
           </div>
         ))}
+        {en == null ? <p className="card-en-empty">还没写</p> : null}
       </aside>
     </NodeViewWrapper>
   )

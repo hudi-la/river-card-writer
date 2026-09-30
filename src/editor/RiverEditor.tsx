@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Plus } from 'lucide-react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { baseExtensions, findCardInDoc } from './schema'
+import { PrepHighlight, PREP_HIGHLIGHT_REFRESH } from './prepHighlight'
 import { useBookStore, EMPTY_DOC } from '../state/bookStore'
 import { useEditorBridge } from '../state/editorBridge'
 import { SelectionToolbar } from './SelectionToolbar'
@@ -197,7 +198,17 @@ export function RiverEditor() {
   }
 
   const editor = useEditor({
-    extensions: baseExtensions,
+    // 靶心高亮：从 store 现读这本书的 hints，不作为依赖传进来——扩展只在创建时
+    // 配一次，getTerms 每次调用都取最新状态，所以 hints 变了不用重建编辑器。
+    extensions: [
+      ...baseExtensions,
+      PrepHighlight.configure({
+        getTerms: (cardId) => {
+          const hints = useBookStore.getState().activeBook()?.hints?.[cardId]
+          return hints ? hints.targets.map((t) => t.zh) : []
+        },
+      }),
+    ],
     content: book?.doc ?? EMPTY_DOC,
     immediatelyRender: false,
     onUpdate: ({ editor }) => updateDoc(editor.getJSON()),
@@ -210,6 +221,20 @@ export function RiverEditor() {
     setEditor(editor ?? null)
     return () => setEditor(null)
   }, [editor, setEditor])
+
+  // 提词变了但文档没变时，ProseMirror 不会自己重算装饰器（它只在 doc 变化时重跑）。
+  // 订阅 hints 的引用变化，发一个空事务带 refresh meta 逼它重算一次——备料边跑边
+  // 出结果，高亮就跟着一张张亮起来。
+  useEffect(() => {
+    if (!editor) return
+    let prev = useBookStore.getState().activeBook()?.hints
+    return useBookStore.subscribe((state) => {
+      const next = state.activeBook()?.hints
+      if (next === prev) return
+      prev = next
+      if (!editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta(PREP_HIGHLIGHT_REFRESH, true))
+    })
+  }, [editor])
 
   // ⠿ 把手的真拖拽：抓住 -> 一个跟着光标走的浮动预览 + 卡之间的落点线 -> 松手落定。
   // 全部走命令式 DOM（ghost/indicator 元素直接 append 到 body），拖拽过程中每次

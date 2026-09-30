@@ -5,6 +5,10 @@ const POLICY_LABEL: Record<string, string> = { strict: '只给词', open: '加�
 const TIER_LABEL: Record<Tier, string> = { ok: '已查证', rare: '罕用', unverified: '未查证' }
 const GENRE_LABEL: Record<Genre, string> = { narrative: '叙事', expository: '议论', other: '其他' }
 
+// 展开几条。前两条通常是承重句和歧义那一类（priority 已经排过序），值得占地方；
+// 其余折起来，否则一张卡五六条全展开边栏就是一堵墙。
+const EXPANDED = 2
+
 // 三档徽章。靠形状 + 明度区分，不只靠颜色——未查证的那个是空心环、候选名还带
 // 删除线，即使看不出颜色差别也认得出来。
 function TierBadge({ tier }: { tier: Tier }) {
@@ -38,6 +42,8 @@ export function PrepSidebar({
 }) {
   return (
     <aside className="prep-sidebar">
+      <header className="prep-title">备料 · 当前这张卡</header>
+
       <header className="prep-head">
         {/* 这个标记必须一直看得见：开关设错了不会报错，等发现时稿子已经在对方
             手里了。只能靠让状态一直在眼前来防，防不了靠记性。 */}
@@ -65,7 +71,7 @@ export function PrepSidebar({
         </p>
       ) : null}
 
-      {targets.map((t, i) => (
+      {targets.slice(0, EXPANDED).map((t, i) => (
         <section className="prep-target" key={`${t.zh}-${i}`}>
           <h3 className="prep-zh">
             {t.zh}
@@ -107,6 +113,38 @@ export function PrepSidebar({
           </ul>
         </section>
       ))}
+      {/* 只展开前 EXPANDED 条；其余在下面折成一行。 */}
+      {targets.slice(EXPANDED).map((t, i) => (
+        <details className="prep-collapsed" key={`c-${t.zh}-${i}`}>
+          <summary>
+            <span className="prep-zh-sm">{t.zh}</span>
+            {t.candidates.map((c) => (
+              <span className="prep-chip" key={c.en} data-tier={tiers.get(c.verifyForm) ?? 'unverified'}>
+                {c.en}
+              </span>
+            ))}
+          </summary>
+          {t.whyZhIsPrecise ? (
+            <p className="prep-why">
+              <span className="prep-label">中文准在 · </span>
+              {t.whyZhIsPrecise}
+            </p>
+          ) : null}
+          <ul className="prep-cands">
+            {t.candidates.map((c) => (
+              <li className="prep-cand" key={c.en} data-tier={tiers.get(c.verifyForm) ?? 'unverified'}>
+                <div className="prep-cand-head">
+                  <span className="prep-en">{c.en}</span>
+                  <TierBadge tier={tiers.get(c.verifyForm) ?? 'unverified'} />
+                </div>
+                {c.nuance ? <p className="prep-nuance">{c.nuance}</p> : null}
+                <p className="prep-loses">丢了 · {c.loses}</p>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ))}
+
     </aside>
   )
 }

@@ -290,6 +290,16 @@ export function Workspace() {
           <TypesetView book={book} />
         ) : viewKind === 'box' ? (
           <BoxView key={activeBoxId} boxId={activeBoxId} />
+        ) : showPrep ? (
+          <>
+            {/* 列标题：两栏各是什么，一眼就知道。宽度和两列的分法必须跟卡片一致，
+                否则标题和内容对不上（见 styles.css 的 .river-colheads）。 */}
+            <div className="river-colheads">
+              <span>中文 · 原稿</span>
+              <span>英文 · 你写的</span>
+            </div>
+            <RiverEditor key={activeBookId} />
+          </>
         ) : (
           <RiverEditor key={activeBookId} />
         )}

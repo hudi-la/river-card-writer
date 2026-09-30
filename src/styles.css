@@ -988,11 +988,6 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
   line-height: 1.8;
   color: #2a2722;
 }
-.card-en-p:empty::before {
-  content: '在这里写你的英文';
-  color: #bdb7ab;
-  font-style: italic;
-}
 .card-en-p:focus { background: #fffdf7; box-shadow: inset 0 0 0 1px #e3d7be; }
 
 /* 英文段落的样式按序号从中文继承，所以这里跟着正文的语义样式走 */
@@ -1076,3 +1071,99 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
 /* 未查证的候选整体降级：作者看得见它没有背书 */
 .prep-cand[data-tier='unverified'] { background: #fcf8f7; margin-left: -14px; margin-right: -14px; padding-left: 14px; padding-right: 14px; }
 .prep-cand[data-tier='unverified'] .prep-en { color: #6b665c; text-decoration: line-through; text-decoration-color: #c99a8a; }
+
+/* ── 译前备料：跟设计稿对齐的几处 ────────────────────────────────── */
+
+/* 靶心在中文正文里的高亮。走 ProseMirror 装饰器（见 prepHighlight.ts），
+   所以它跟着文字走、改中文也不会错位。淡到不打断阅读，但扫一眼能认出来。 */
+.prep-hit {
+  background: rgba(217, 119, 55, 0.25);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* 列标题。宽度和两列分法必须跟 .card 在双语态下的 grid 一致，否则对不上。 */
+.river-colheads {
+  width: 96%;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--faint, #e3e0d8);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: #8c867a;
+}
+@media (max-width: 1180px) {
+  /* 窄屏下英文退到中文下面，两个列标题就没有意义了 */
+  .river-colheads { display: none; }
+}
+
+/* 英文栏的空态与提示 */
+.card-en-empty {
+  margin: 0;
+  font-family: Georgia, serif;
+  font-style: italic;
+  color: #bdb7ab;
+}
+.card-en-hint {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: #8c867a;
+}
+
+/* 边栏标题 */
+.prep-title {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--faint, #e3e0d8);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: #8c867a;
+}
+
+/* 折叠的靶心行：一行标题 + 候选 chip，点开才展开全部字段。
+   一张卡五六条靶心全展开的话边栏就是一堵墙，扫不动。 */
+.prep-collapsed {
+  background: #fff;
+  border: 1px solid #ddd9cf;
+  border-radius: 9px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+.prep-collapsed > summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  list-style: none;
+}
+.prep-collapsed > summary::-webkit-details-marker { display: none; }
+.prep-zh-sm {
+  font-family: Georgia, 'Songti SC', serif;
+  font-size: 16px;
+  font-weight: 700;
+  margin-right: auto;
+}
+.prep-chip {
+  font-family: Georgia, serif;
+  font-size: 13px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #f3f1e9;
+  color: #4a463d;
+}
+.prep-chip[data-tier='rare'] { background: #f6ecd4; color: #8c6d28; }
+.prep-chip[data-tier='unverified'] {
+  background: #fff;
+  border: 1px solid #d9a695;
+  color: #8f3a22;
+  text-decoration: line-through;
+  text-decoration-color: #c99a8a;
+}
+.prep-collapsed[open] > summary { margin-bottom: 9px; }
