@@ -965,3 +965,49 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
   border-radius:6px; padding:7px 18px; font-size:13px; font-weight:600; cursor:pointer; flex:1;
 }
 .cover-editor-save:hover { opacity:.88; }
+
+/* ── 译前备料：双语两栏 ─────────────────────────────────────────────
+   卡片从单列变两列。只有挂了 .river--bilingual 的祖先里才生效，所以平时
+   （单语写作）卡片的排版和以前一字不差。
+   并排不是"两个编辑器并列"而是"每张卡自己是两列"，于是只有一个滚动条、
+   中英天然永远对齐，一行滚动同步代码都不用写。 */
+.card-en { display: none; }
+
+.river--bilingual .card {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+.river--bilingual .card-en { display: block; }
+
+.card-en-p {
+  min-height: 1.85em;
+  outline: none;
+  font-family: Georgia, 'Times New Roman', serif;
+  line-height: 1.8;
+  color: #2a2722;
+}
+.card-en-p:empty::before {
+  content: '在这里写你的英文';
+  color: #bdb7ab;
+  font-style: italic;
+}
+.card-en-p:focus { background: #fffdf7; box-shadow: inset 0 0 0 1px #e3d7be; }
+
+/* 英文段落的样式按序号从中文继承，所以这里跟着正文的语义样式走 */
+.card-en-p[data-style='chapter'] { font-size: 1.4em; font-weight: 600; }
+.card-en-p[data-style='h1'] { font-size: 1.2em; font-weight: 600; }
+.card-en-p[data-style='h2'] { font-size: 1.08em; font-weight: 600; }
+.card-en-p[data-style='bullet'] { padding-left: 1.2em; text-indent: -0.7em; }
+.card-en-p[data-style='quote'] { padding-left: 1em; border-left: 2px solid #ddd9cf; color: #5c5649; }
+.card-en-p[data-style='note'] { font-size: 0.9em; color: #6b665c; }
+
+/* 过期：不弹窗、不打断、不催——只是让它安静地发灰 */
+.card[data-en-stale='true'] .card-en-p { color: #a39d92; }
+.card-en-stale-note {
+  margin: 0 0 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9a6a1e;
+}
