@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, BookOpen, Languages, Pencil, TextSearch } from 'lucide-react'
+import { ArrowLeft, BookOpen, Languages, Pencil, Square, TextSearch } from 'lucide-react'
 import { useBookStore, type Book } from '../state/bookStore'
 import { usePrefsStore } from '../state/prefsStore'
 import { LeftNav } from './LeftNav'
@@ -13,6 +13,7 @@ import { useEditorBridge } from '../state/editorBridge'
 import { useToastStore } from '../state/toastStore'
 import { requestPrep, makeFetchFreqs } from '../prep/client'
 import { createVerifier, type Tier } from '../prep/verify'
+import { runPrep, cardsToPrep, type CardInput } from '../prep/runPrep'
 
 const FONT_STACK: Record<'serif' | 'sans', string> = {
   serif: "Georgia,'Songti SC','Noto Serif',serif",
@@ -84,6 +85,11 @@ export function Workspace() {
   // 双语并排：本地开关（离开这本书自然重置）。开着时每张卡变两列、右边出备料边栏。
   const [bilingual, setBilingual] = useState(false)
   const [prepping, setPrepping] = useState(false)
+  // 整章备料的进度。null = 没在跑。实测一次模型调用 24–60 秒，所以进度是必须的
+  // ——没有它，作者面对的是几分钟的静默，跟卡死没有区别。
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  // 「停」：不中断已经发出的请求（那次调用的钱已经花了），只是不再发新的。
+  const stopRef = useRef(false)
   // 查证结果按词形累积。整个会话共用一个 verifier，所以同一个词只查一次。
   const [tiers, setTiers] = useState<Map<string, Tier>>(new Map())
   const verify = useMemo(() => createVerifier(makeFetchFreqs()), [])
@@ -155,43 +161,69 @@ export function Workspace() {
     e.currentTarget.classList.remove('dragging')
   }
 
-  // 「备料」：把这一章每张卡分别送去挑靶心，再把候选词的裸词形拿去查语料。
-  // 一张卡一次请求——卡本来就是作者切出来的意义单元，译起来上下文完整。
-  // 刻意不做自动后台备料：作者还在改的时候它在烧钱，而且那不是"被动的好画布"
-  // 该干的事。备料永远是按下去的。
-  const prepChapter = async () => {
+  // 编辑器里每张卡的 cardId + 各段中文。
+  const cardsFromEditor = (): CardInput[] => {
     const editor = useEditorBridge.getState().editor
+    if (!editor) return []
+    const out: CardInput[] = []
+    editor.state.doc.forEach((card) => {
+      const cardId: string | null = card.attrs.cardId
+      if (!cardId) return
+      const zhTexts: string[] = []
+      card.forEach((para) => zhTexts.push(para.textContent))
+      out.push({ cardId, zhTexts })
+    })
+    return out
+  }
+
+  // 备料的共同通路。刻意不做自动后台备料：作者还在改的时候它在烧钱，而且那不是
+  // "被动的好画布"该干的事。备料永远是按下去的。
+  const runPrepOn = async (cards: CardInput[], label: string) => {
     const showToast = useToastStore.getState().show
-    if (!editor) return
+    if (cards.length === 0) {
+      showToast({ text: '这些卡都已经备过了。想重算某一张，把光标放进去按「备这张卡」。', kind: 'info' })
+      return
+    }
+    stopRef.current = false
     setPrepping(true)
     try {
-      const doc = editor.state.doc
-      let done = 0
-      for (let i = 0; i < doc.childCount; i++) {
-        const card = doc.child(i)
-        const cardId: string | null = card.attrs.cardId
-        if (!cardId) continue
-        const zhTexts: string[] = []
-        card.forEach((para) => zhTexts.push(para.textContent))
-        if (zhTexts.join('').trim() === '') continue
-
-        const r = await requestPrep(zhTexts)
-        if (!r.ok) {
-          showToast({ text: `备料失败：${r.error}`, kind: 'error', durationMs: 5000 })
-          continue
-        }
-        setCardHints(cardId, r.value)
-        done++
-
-        // 查证每个候选的裸词形。取不到一律显示"未查证"，绝不默认当成已查证。
-        const forms = r.value.targets.flatMap((t) => t.candidates.map((c) => c.verifyForm))
-        const m = await verify(forms)
-        setTiers((prev) => new Map([...prev, ...m]))
-      }
-      if (done > 0) showToast({ text: `备料完成：${done} 张卡`, kind: 'success' })
+      const out = await runPrep(cards, {
+        requestPrep: (zhTexts) => requestPrep(zhTexts),
+        verify,
+        onCardDone: (cardId, result) => setCardHints(cardId, result),
+        onTiers: (m) => setTiers((prev) => new Map([...prev, ...m])),
+        onProgress: (done, total) => setProgress({ done, total }),
+        onError: (_cardId, error) => showToast({ text: `备料失败：${error}`, kind: 'error', durationMs: 5000 }),
+        shouldStop: () => stopRef.current,
+      })
+      const parts = [`${label}：${out.done} 张卡`]
+      if (out.failed > 0) parts.push(`${out.failed} 张失败`)
+      if (out.stopped) parts.push('已停下')
+      showToast({ text: parts.join('，'), kind: out.failed > 0 ? 'info' : 'success' })
     } finally {
       setPrepping(false)
+      setProgress(null)
     }
+  }
+
+  // 「备这张卡」：一次调用，只等你现在要写的那一段。显式动作，所以总是重跑。
+  const prepThisCard = () => {
+    const card = cardsFromEditor().find((c) => c.cardId === activeCardId)
+    if (!card) {
+      useToastStore.getState().show({ text: '先把光标放进一张卡里', kind: 'info' })
+      return
+    }
+    return runPrepOn([card], '备料完成')
+  }
+
+  // 「备整章」：先做光标所在那张（你立刻就能开始写），其余的并发跟上；已经备过
+  // 的跳过，所以中断后再按一次只补没做的、不重复花钱。
+  const prepChapter = () => {
+    const all = cardsFromEditor()
+    const pending = cardsToPrep(all, book?.hints)
+    const first = pending.findIndex((c) => c.cardId === activeCardId)
+    const ordered = first > 0 ? [pending[first], ...pending.filter((_, i) => i !== first)] : pending
+    return runPrepOn(ordered, '整章备料完成')
   }
 
   // 异常兜底：shell 已经切到 'book' 但没有 activeBook（比如被删掉了）——安全地
@@ -234,10 +266,21 @@ export function Workspace() {
                 {bilingual ? '单语' : '双语'}
               </button>
             )}
-            {showPrep && (
-              <button className="read-toggle" onClick={prepChapter} disabled={prepping} title="为这一章挑出值得下功夫的词">
-                <TextSearch size={14} strokeWidth={1.75} aria-hidden="true" />
-                {prepping ? '备料中…' : '备料'}
+            {showPrep && !prepping && (
+              <>
+                <button className="read-toggle" onClick={prepThisCard} title="只备光标所在这张卡（一次调用，约半分钟）">
+                  <TextSearch size={14} strokeWidth={1.75} aria-hidden="true" />
+                  备这张卡
+                </button>
+                <button className="read-toggle" onClick={prepChapter} title="整章都备（并发跑，边跑边出结果，已备过的跳过）">
+                  整章
+                </button>
+              </>
+            )}
+            {showPrep && prepping && (
+              <button className="read-toggle" onClick={() => { stopRef.current = true }} title="不再发新的请求（已发出的那几个还会回来）">
+                <Square size={12} strokeWidth={2.5} aria-hidden="true" />
+                {progress ? `停（${progress.done}/${progress.total}）` : '停'}
               </button>
             )}
             {!readMode && <ReadingSettings />}
@@ -258,6 +301,7 @@ export function Workspace() {
           tiers={tiers}
           aiPolicy={book.aiPolicy ?? 'strict'}
           busy={prepping}
+          progress={progress}
         />
       )}
     </div>

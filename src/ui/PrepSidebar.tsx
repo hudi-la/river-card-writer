@@ -27,12 +27,14 @@ export function PrepSidebar({
   tiers,
   aiPolicy,
   busy = false,
+  progress = null,
 }: {
   targets: Target[]
   genre: Genre
   tiers: Map<string, Tier>
   aiPolicy: 'strict' | 'open' | 'auto'
   busy?: boolean
+  progress?: { done: number; total: number } | null
 }) {
   return (
     <aside className="prep-sidebar">
@@ -43,9 +45,19 @@ export function PrepSidebar({
           这份稿子：{POLICY_LABEL[aiPolicy]}
         </span>
         <span className="prep-meta">
-          {busy ? '备料中…' : `${GENRE_LABEL[genre]} · ${targets.length} 条`}
+          {busy
+            ? progress && progress.total > 1
+              ? `备料中 ${progress.done}/${progress.total}`
+              : '备料中…'
+            : `${GENRE_LABEL[genre]} · ${targets.length} 条`}
         </span>
       </header>
+
+      {busy && targets.length === 0 ? (
+        <p className="prep-empty">
+          一次模型调用大约半分钟到一分钟。整章是并发跑的，边跑边出结果——这期间你可以直接开始写英文，不用等它。
+        </p>
+      ) : null}
 
       {targets.length === 0 && !busy ? (
         <p className="prep-empty">
