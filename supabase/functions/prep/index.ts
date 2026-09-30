@@ -16,7 +16,27 @@
 // 设 key：npx supabase secrets set GEMINI_API_KEY=...
 // 换模型：npx supabase secrets set PREP_MODEL=gemini-3.1-pro-preview
 
-const DEFAULT_MODEL = 'gemini-3.5-flash'
+// 模型候选链。这些 503「high demand」不是异常而是常态——开发期间在这几个模型
+// 之间轮着试才拿得到响应。只挑一个模型就意味着作者点一次「备料」全章都失败、
+// 功能看起来是坏的。
+// PREP_MODEL 设了就排最前，后面几个是退路；都是这个 key 实测可用的。
+const MODEL_CHAIN = [
+  'gemini-3.5-flash',
+  'gemini-3-flash-preview',
+  'gemini-2.5-flash',
+  'gemini-flash-latest',
+]
+
+// 每个模型最多等一次再重试；再不行就换下一个。
+const RETRY_DELAY_MS = 1500
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+// 值得换个模型再试的状态码：429（额度/限流）和一切 5xx（过载、瞬时故障）。
+// 4xx 里除 429 之外的（请求本身有问题）换模型也没用，直接抛回去。
+function worthRetrying(status: number): boolean {
+  return status === 429 || status >= 500
+}
 
 // 同时最多打几个 Ngrams 请求。它是非官方端点，别把它打挂；一章的候选词量级
 // 在几十个，4 路并发足够快。
@@ -79,26 +99,51 @@ async function handleModel(system: unknown, user: unknown): Promise<Response> {
   if (typeof system !== 'string' || typeof user !== 'string' || !system || !user) {
     return json({ error: '缺 system 或 user' }, 400)
   }
-  const model = Deno.env.get('PREP_MODEL') ?? DEFAULT_MODEL
-  const r = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents: [{ role: 'user', parts: [{ text: user }] }],
-        // 输出是清单不是稿子，又短又便宜，所以不需要流式。
-        generationConfig: { responseMimeType: 'application/json', temperature: 1 },
-      }),
+  // PREP_MODEL 排最前，其余候选跟在后面（去重）。
+  const preferred = Deno.env.get('PREP_MODEL')
+  const chain = Array.from(new Set([...(preferred ? [preferred] : []), ...MODEL_CHAIN]))
+
+  const body = JSON.stringify({
+    systemInstruction: { parts: [{ text: system }] },
+    contents: [{ role: 'user', parts: [{ text: user }] }],
+    // 输出是清单不是稿子，又短又便宜，所以不需要流式。
+    generationConfig: { responseMimeType: 'application/json', temperature: 1 },
+  })
+
+  let lastStatus = 0
+  let lastDetail: unknown = null
+
+  for (const model of chain) {
+    // 每个模型给两次机会（过载往往几秒就恢复），之后换下一个。
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const r = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+        { method: 'POST', headers: { 'content-type': 'application/json' }, body }
+      )
+      const j = await r.json().catch(() => null)
+      if (r.ok) {
+        const text =
+          j?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? '').join('') ?? ''
+        // 空回复也算这个模型没干成活，换下一个试。
+        if (text) return json({ text, model })
+        lastStatus = 502
+        lastDetail = { reason: '模型返回空内容', model }
+        break
+      }
+      lastStatus = r.status
+      lastDetail = j
+      if (!worthRetrying(r.status)) {
+        // 请求本身有问题，换模型也救不了。
+        return json({ error: `模型返回 ${r.status}`, detail: j }, 502)
+      }
+      if (attempt === 1) await sleep(RETRY_DELAY_MS)
     }
+  }
+
+  return json(
+    { error: `所有候选模型都没答上来（最后一次 ${lastStatus}）`, detail: lastDetail, tried: chain },
+    502
   )
-  const j = await r.json()
-  if (!r.ok) return json({ error: `模型返回 ${r.status}`, detail: j }, 502)
-  const text =
-    j?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? '').join('') ?? ''
-  if (!text) return json({ error: '模型没有返回内容' }, 502)
-  return json({ text })
 }
 
 Deno.serve(async (req) => {
