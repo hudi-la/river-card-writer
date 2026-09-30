@@ -67,9 +67,37 @@ describe('PrepSidebar', () => {
     expect(container.textContent).toContain('句子归你')
   })
 
-  it('换档时状态跟着变', () => {
-    expect(sidebar({ aiPolicy: 'open' }).container.textContent).toContain('加骨架')
-    expect(sidebar({ aiPolicy: 'auto' }).container.textContent).toContain('给译文')
+  it('换档时说明跟着变', () => {
+    expect(sidebar().container.textContent).toContain('句子归你')
+    expect(sidebar({ aiPolicy: 'auto' }).container.textContent).toContain('只在这里当参考')
+  })
+
+  it('给了 onPolicyChange 就是真开关，两档都能点', () => {
+    const picked: string[] = []
+    const { container } = sidebar({ onPolicyChange: (p) => picked.push(p) })
+    const btns = container.querySelectorAll('.policy-switch button')
+    expect(Array.from(btns).map((b) => b.textContent)).toEqual(['只给词', '给译文'])
+    ;(btns[1] as HTMLButtonElement).click()
+    expect(picked).toEqual(['auto'])
+  })
+
+  it('当前档位在开关上标出来，读屏也能知道', () => {
+    const { container } = sidebar({ aiPolicy: 'auto', onPolicyChange: () => {} })
+    const on = container.querySelector('.policy-switch button[data-on]')
+    expect(on?.textContent).toBe('给译文')
+    expect(on?.getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('auto 档显示整句译文，并说明它不会进英文栏', () => {
+    const { container } = sidebar({ aiPolicy: 'auto', translation: ['The cat barred the door.'] })
+    expect(container.querySelector('.prep-translation')?.textContent).toContain('The cat barred the door.')
+    expect(container.textContent).toContain('不会进你的英文栏')
+  })
+
+  it('strict 档就算手里有译文也不显示——档位说了算', () => {
+    const { container } = sidebar({ aiPolicy: 'strict', translation: ['The cat barred the door.'] })
+    expect(container.querySelector('.prep-translation')).toBeNull()
+    expect(container.textContent).not.toContain('The cat barred the door.')
   })
 
   it('有 onClose 时给一个 × 可以收起边栏', () => {

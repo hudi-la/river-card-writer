@@ -1,9 +1,9 @@
-import type { Genre, Target } from '../prep/types'
+import type { AiPolicy, Genre, Target } from '../prep/types'
 import type { Tier } from '../prep/verify'
 
 const TIER_LABEL: Record<Tier, string> = { ok: '已查证', rare: '罕用', unverified: '未查证' }
 const GENRE_LABEL: Record<Genre, string> = { narrative: '叙事', expository: '议论', other: '其他' }
-const POLICY_LABEL: Record<string, string> = { strict: '只给词', open: '加骨架', auto: '给译文' }
+const POLICY_LABEL: Record<AiPolicy, string> = { strict: '只给词', auto: '给译文' }
 
 // 展开几条。前两条通常是承重句和歧义那一类（priority 已经排过序），值得占地方；
 // 其余折起来，否则一张卡五六条全展开边栏就是一堵墙。
@@ -33,6 +33,8 @@ export function PrepSidebar({
   progress = null,
   onPrepCard,
   aiPolicy = 'strict',
+  onPolicyChange,
+  translation,
   onClose,
 }: {
   targets: Target[]
@@ -41,7 +43,9 @@ export function PrepSidebar({
   busy?: boolean
   progress?: { done: number; total: number } | null
   onPrepCard?: () => void
-  aiPolicy?: 'strict' | 'open' | 'auto'
+  aiPolicy?: AiPolicy
+  onPolicyChange?: (p: AiPolicy) => void
+  translation?: string[]
   onClose?: () => void
 }) {
   return (
@@ -70,17 +74,46 @@ export function PrepSidebar({
       </header>
 
       {/* 这份稿子允许 AI 做到哪一档。spec §9.4：这个开关设错了不会报错，等发现时
-          稿子已经在对方手里，只能靠让状态一直在眼前来防。
-          目前只实现了 strict，所以这里是状态不是开关——摆一个切过去没反应的
-          三段控件比不摆更糟。做出 open/auto 之后它才该变成可切的。 */}
+          稿子已经在对方手里，只能靠让状态一直在眼前来防——所以它常驻在这儿，
+          不藏进设置页。 */}
       <div className="prep-policy-row">
-        <span className="policy-chip" data-ai-policy={aiPolicy}>
-          {POLICY_LABEL[aiPolicy]}
-        </span>
+        {onPolicyChange ? (
+          <div className="policy-switch" role="group" aria-label="这份稿子允许 AI 做到哪一档">
+            {(['strict', 'auto'] as AiPolicy[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                data-on={aiPolicy === p ? 'true' : undefined}
+                data-policy={p}
+                aria-pressed={aiPolicy === p}
+                onClick={() => onPolicyChange(p)}
+              >
+                {POLICY_LABEL[p]}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span className="policy-chip" data-ai-policy={aiPolicy}>{POLICY_LABEL[aiPolicy]}</span>
+        )}
         <span className="prep-policy-note">
-          {aiPolicy === 'strict' ? '只给词与语感，句子归你' : aiPolicy === 'open' ? '额外给句法骨架' : '额外给整句译文'}
+          {aiPolicy === 'strict' ? '只给词与语感，句子归你' : '额外给整句译文，只在这里当参考'}
         </span>
       </div>
+
+      {/* 整句译文。刻意长得不像可以粘的东西：等宽、发灰、带一句提醒。
+          它存在 hints 里，绝不进 en——en 只装作者自己敲的字（§9.1）。
+          必须同时说清它保证不了什么：照着重打一遍，数据层看不出任何区别。 */}
+      {aiPolicy === 'auto' && translation && translation.length > 0 ? (
+        <section className="prep-translation">
+          <h3>整句译文 · 参考</h3>
+          {translation.map((line, i) => (
+            <p key={i}>{line}</p>
+          ))}
+          <p className="prep-translation-note">
+            它不会进你的英文栏。照着重打一遍的话，文件层面看不出区别——那句话的来源就不是你了。
+          </p>
+        </section>
+      ) : null}
 
       {busy && targets.length === 0 ? (
         <p className="prep-empty">

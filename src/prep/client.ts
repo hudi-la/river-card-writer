@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabase'
 import { buildPrepRequest } from './prompt'
 import { parsePrepResponse } from './parse'
-import type { PrepResult } from './types'
+import type { AiPolicy, PrepResult } from './types'
 import type { FetchFreqs } from './verify'
 
 // invoke 抽成可注入的依赖：测试不能真的打到线上 Edge Function。跟 triggerSave /
@@ -19,16 +19,18 @@ function defaultInvoke(name: string, opts: { body: unknown }) {
 // 永不抛出：任何失败都变成 { ok: false, error }，由 UI 决定怎么告诉作者。
 export async function requestPrep(
   zhTexts: string[],
+  policy: AiPolicy = 'strict',
   deps: { invoke?: InvokeFn } = {}
 ): Promise<{ ok: true; value: PrepResult } | { ok: false; error: string }> {
   const invoke = deps.invoke ?? defaultInvoke
   try {
-    const { system, user } = buildPrepRequest(zhTexts)
+    const { system, user } = buildPrepRequest(zhTexts, policy)
     const { data, error } = await invoke('prep', { body: { kind: 'model', system, user } })
     if (error) return { ok: false, error: error.message }
     if (data?.error) return { ok: false, error: String(data.error) }
     if (!data?.text) return { ok: false, error: '服务端没有返回内容' }
-    return parsePrepResponse(data.text)
+    // 用同一个 policy 校验：strict 档下模型若夹带成句，这里拒收而不是悄悄收下。
+    return parsePrepResponse(data.text, policy)
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }

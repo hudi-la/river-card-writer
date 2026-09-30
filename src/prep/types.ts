@@ -31,8 +31,25 @@ export type Target = {
 
 export type Genre = 'narrative' | 'expository' | 'other'
 
+// 这份稿子允许 AI 做到哪一档。
+//   strict —— 只给词与语感。条目 schema 里没有任何能装句子的字段，模型没地方
+//             放句子；校验器见到 translation 一律拒收。
+//   auto   —— 额外给整句译文，只在边栏当参考。这是 §9.3 主动开的口子，不是
+//             意外漏的。就算在这一档，译文也绝不进 en——en 只装作者敲的字。
+// （早期设计里还有个 open「加骨架」档，作者明确要求砍掉，不留半成品。）
+export type AiPolicy = 'strict' | 'auto'
+
+// 读进来的档位，认不出的一律退成最严的那档——不确定时必须保守，
+// 因为搞错的代价是作者拿着含 AI 句法的稿子去交给禁 AI 的接收方。
+export function toAiPolicy(raw: unknown): AiPolicy {
+  return raw === 'auto' ? 'auto' : 'strict'
+}
+
 export type PrepResult = {
   genre: Genre
   genreReason: string
   targets: Target[]
+  // 整句译文，每段一个字符串，只在 auto 档出现。strict 档下这个字段永远是
+  // undefined——不是"空的"，是压根没有。
+  translation?: string[]
 }

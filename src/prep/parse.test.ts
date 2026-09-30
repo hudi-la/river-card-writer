@@ -99,3 +99,52 @@ describe('parsePrepResponse', () => {
     expect(r.value.genre).toBe('other')
   })
 })
+
+
+describe('档位决定要不要收整句译文', () => {
+  const withTranslation = (over: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      genre: 'narrative', genre_reason: '',
+      translation: ['The cat barred the door.'],
+      targets: [goodTarget()], ...over,
+    })
+
+  it('strict 档下模型夹带 translation 一律拒收——不是忽略，是拒收', () => {
+    const r = parsePrepResponse(withTranslation(), 'strict')
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.error).toContain('只给词')
+  })
+
+  it('默认档位就是 strict——不传 policy 时也拒收', () => {
+    expect(parsePrepResponse(withTranslation()).ok).toBe(false)
+  })
+
+  it('auto 档下接受 translation', () => {
+    const r = parsePrepResponse(withTranslation(), 'auto')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.value.translation).toEqual(['The cat barred the door.'])
+  })
+
+  it('strict 档下没有 translation 时正常通过，且字段是 undefined 而不是空数组', () => {
+    const r = parsePrepResponse(good(), 'strict')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.value.translation).toBeUndefined()
+  })
+
+  it('auto 档下 translation 形状不对要拒收', () => {
+    expect(parsePrepResponse(withTranslation({ translation: 'not an array' }), 'auto').ok).toBe(false)
+    expect(parsePrepResponse(withTranslation({ translation: [1, 2] }), 'auto').ok).toBe(false)
+  })
+
+  it('auto 档下条目字段里仍然不许出现整句英文——句子只能待在 translation 里', () => {
+    const bad = JSON.stringify({
+      genre: 'narrative', translation: ['ok'],
+      targets: [goodTarget({ candidates: [goodCandidate({
+        nuance: 'A palm-sized kitten had hemmed the neighbors in their own bedroom and waited.' })] })],
+    })
+    expect(parsePrepResponse(bad, 'auto').ok).toBe(false)
+  })
+})

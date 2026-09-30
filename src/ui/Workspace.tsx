@@ -14,6 +14,7 @@ import { useToastStore } from '../state/toastStore'
 import { requestPrep, makeFetchFreqs } from '../prep/client'
 import { createVerifier, type Tier } from '../prep/verify'
 import { runPrep, type CardInput } from '../prep/runPrep'
+import { toAiPolicy } from '../prep/types'
 
 const FONT_STACK: Record<'serif' | 'sans', string> = {
   serif: "Georgia,'Songti SC','Noto Serif',serif",
@@ -81,6 +82,7 @@ export function Workspace() {
   const prefs = usePrefsStore((s) => s.prefs)
   const setRailWidth = usePrefsStore((s) => s.setRailWidth)
   const setCardHints = useBookStore((s) => s.setCardHints)
+  const setAiPolicy = useBookStore((s) => s.setAiPolicy)
   const railDragRef = useRef<RailDragState | null>(null)
 
   // 双语并排：本地开关（离开这本书自然重置）。开着时每张卡变两列、右边出备料边栏。
@@ -191,7 +193,7 @@ export function Workspace() {
     setPrepping(true)
     try {
       const out = await runPrep(cards, {
-        requestPrep: (zhTexts) => requestPrep(zhTexts),
+        requestPrep: (zhTexts) => requestPrep(zhTexts, toAiPolicy(book?.aiPolicy)),
         verify,
         onCardDone: (cardId, result) => setCardHints(cardId, result),
         onTiers: (m) => setTiers((prev) => new Map([...prev, ...m])),
@@ -295,7 +297,9 @@ export function Workspace() {
           busy={prepping}
           progress={progress}
           onPrepCard={prepThisCard}
-          aiPolicy={book.aiPolicy ?? 'strict'}
+          aiPolicy={toAiPolicy(book.aiPolicy)}
+          onPolicyChange={setAiPolicy}
+          translation={activeCardId ? book.hints?.[activeCardId]?.translation : undefined}
           onClose={() => setPrepOpen(false)}
         />
       )}

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import { mergeImported, mergeUniversalCards } from './backup'
-import type { PrepResult } from '../prep/types'
+import type { AiPolicy, PrepResult } from '../prep/types'
 import { pushSnapshot, decideSnapshot } from './snapshots'
 
 export const EMPTY_DOC = { type: 'doc', content: [{ type: 'card', content: [{ type: 'paragraph' }] }] }
@@ -37,10 +37,10 @@ export function isValidCover(raw: any): raw is Cover {
 // 天然不带它；而且提词可能比正文还长，塞进 doc 会让每次编辑的 diff 和同步负载都
 // 被它主导。CRITICAL：模型的产出只进这里，绝不进 card 的 en 属性——en 只装作者
 // 自己敲的字。
-// aiPolicy：这份稿子允许 AI 做到哪一档。默认 strict（只给词）——安全的那一档是
-// 默认值，放开要主动开口。目前只实现了 strict。
+// aiPolicy：这份稿子允许 AI 做到哪一档（strict 只给词 / auto 额外给整句译文）。
+// 默认 strict——安全的那一档是默认值，放开要主动开口。
 // 两个都是可选字段，老书读出来是 undefined、行为零变化，跟 cover/subtitle 同一个路子。
-export type Book = { id: string; title: string; doc: any; boxes: Box[]; updatedAt?: string; cover?: Cover; subtitle?: string; author?: string; hints?: Record<string, PrepResult>; aiPolicy?: 'strict' | 'open' | 'auto' }
+export type Book = { id: string; title: string; doc: any; boxes: Box[]; updatedAt?: string; cover?: Cover; subtitle?: string; author?: string; hints?: Record<string, PrepResult>; aiPolicy?: AiPolicy }
 export type Library = { books: Book[]; activeBookId: string | null; universalBoxes: Box[] }
 
 // 库级通用盒子：不属于任何一本书，跨所有书共享同一份实例。Phase 14 起支持
@@ -98,7 +98,7 @@ type BookState = {
   // mergeUniversalCards）——只增不减，重复导入不产生重复卡。
   importUniversalCards: (cards: any[]) => void
   updateDoc: (doc: object) => void
-  setAiPolicy: (policy: 'strict' | 'open' | 'auto') => void
+  setAiPolicy: (policy: AiPolicy) => void
   setCardHints: (cardId: string, result: PrepResult) => void
   openDoc: () => void
   addBox: (name: string) => Box | undefined
