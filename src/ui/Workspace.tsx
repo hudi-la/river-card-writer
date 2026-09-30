@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowLeft, BookOpen, Pencil } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ArrowLeft, BookOpen, Languages, Pencil, TextSearch } from 'lucide-react'
 import { useBookStore, type Book } from '../state/bookStore'
 import { usePrefsStore } from '../state/prefsStore'
 import { LeftNav } from './LeftNav'
@@ -7,6 +7,12 @@ import { RiverEditor } from '../editor/RiverEditor'
 import { BoxView } from './BoxView'
 import { ReadingSettings } from './ReadingSettings'
 import { TypesetView } from './TypesetView'
+import { PrepSidebar } from './PrepSidebar'
+import { useActiveCardId } from './useActiveCardId'
+import { useEditorBridge } from '../state/editorBridge'
+import { useToastStore } from '../state/toastStore'
+import { requestPrep, makeFetchFreqs } from '../prep/client'
+import { createVerifier, type Tier } from '../prep/verify'
 
 const FONT_STACK: Record<'serif' | 'sans', string> = {
   serif: "Georgia,'Songti SC','Noto Serif',serif",
@@ -72,7 +78,16 @@ export function Workspace() {
   const renameBook = useBookStore((s) => s.renameBook)
   const prefs = usePrefsStore((s) => s.prefs)
   const setRailWidth = usePrefsStore((s) => s.setRailWidth)
+  const setCardHints = useBookStore((s) => s.setCardHints)
   const railDragRef = useRef<RailDragState | null>(null)
+
+  // 双语并排：本地开关（离开这本书自然重置）。开着时每张卡变两列、右边出备料边栏。
+  const [bilingual, setBilingual] = useState(false)
+  const [prepping, setPrepping] = useState(false)
+  // 查证结果按词形累积。整个会话共用一个 verifier，所以同一个词只查一次。
+  const [tiers, setTiers] = useState<Map<string, Tier>>(new Map())
+  const verify = useMemo(() => createVerifier(makeFetchFreqs()), [])
+  const activeCardId = useActiveCardId()
   // 阅读/排版视图：本地开关（离开这本书自然重置）。开着时隐藏目录栏、正文换成只读排版。
   // 存一份到 sessionStorage：刷新不会跑卸载 cleanup，标记还在 → 恢复到阅读视图；
   // 正常返回书柜时卸载 cleanup 清掉标记，保持"离开这本书自然重置"的原语义。
@@ -140,12 +155,53 @@ export function Workspace() {
     e.currentTarget.classList.remove('dragging')
   }
 
+  // 「备料」：把这一章每张卡分别送去挑靶心，再把候选词的裸词形拿去查语料。
+  // 一张卡一次请求——卡本来就是作者切出来的意义单元，译起来上下文完整。
+  // 刻意不做自动后台备料：作者还在改的时候它在烧钱，而且那不是"被动的好画布"
+  // 该干的事。备料永远是按下去的。
+  const prepChapter = async () => {
+    const editor = useEditorBridge.getState().editor
+    const showToast = useToastStore.getState().show
+    if (!editor) return
+    setPrepping(true)
+    try {
+      const doc = editor.state.doc
+      let done = 0
+      for (let i = 0; i < doc.childCount; i++) {
+        const card = doc.child(i)
+        const cardId: string | null = card.attrs.cardId
+        if (!cardId) continue
+        const zhTexts: string[] = []
+        card.forEach((para) => zhTexts.push(para.textContent))
+        if (zhTexts.join('').trim() === '') continue
+
+        const r = await requestPrep(zhTexts)
+        if (!r.ok) {
+          showToast({ text: `备料失败：${r.error}`, kind: 'error', durationMs: 5000 })
+          continue
+        }
+        setCardHints(cardId, r.value)
+        done++
+
+        // 查证每个候选的裸词形。取不到一律显示"未查证"，绝不默认当成已查证。
+        const forms = r.value.targets.flatMap((t) => t.candidates.map((c) => c.verifyForm))
+        const m = await verify(forms)
+        setTiers((prev) => new Map([...prev, ...m]))
+      }
+      if (done > 0) showToast({ text: `备料完成：${done} 张卡`, kind: 'success' })
+    } finally {
+      setPrepping(false)
+    }
+  }
+
   // 异常兜底：shell 已经切到 'book' 但没有 activeBook（比如被删掉了）——安全地
   // 不渲染，而不是读 undefined 崩掉。App 下一次渲染通常会跟着 shell 回书柜。
   if (!book) return null
 
+  const showPrep = bilingual && !readMode && viewKind !== 'box'
+
   return (
-    <div className={readMode ? 'read-shell' : 'app'}>
+    <div className={readMode ? 'read-shell' : showPrep ? 'app app--bilingual' : 'app'}>
       {!readMode && <LeftNav />}
       {!readMode && (
         <div
@@ -156,7 +212,7 @@ export function Workspace() {
           onPointerCancel={onHandlePointerUp}
         />
       )}
-      <main className="page">
+      <main className={showPrep ? 'page page--bilingual river--bilingual' : 'page'}>
         {/* 顶栏做成 sticky：往下滚正文时这条始终吸在视口顶部，← 书柜 / 书名 / ⚙
             一直够得着（见 .workspace-topbar）。三栏网格 1fr auto 1fr 让书名无论
             两侧按钮多宽都精确居中，且书名保持紧凑——点击区只落在书名本身，不会
@@ -172,6 +228,18 @@ export function Workspace() {
               {readMode ? <Pencil size={14} strokeWidth={1.75} aria-hidden="true" /> : <BookOpen size={14} strokeWidth={1.75} aria-hidden="true" />}
               {readMode ? '编辑' : '阅读'}
             </button>
+            {!readMode && viewKind !== 'box' && (
+              <button className="read-toggle" onClick={() => setBilingual((v) => !v)} title={bilingual ? '回到单语' : '中英并排'}>
+                <Languages size={14} strokeWidth={1.75} aria-hidden="true" />
+                {bilingual ? '单语' : '双语'}
+              </button>
+            )}
+            {showPrep && (
+              <button className="read-toggle" onClick={prepChapter} disabled={prepping} title="为这一章挑出值得下功夫的词">
+                <TextSearch size={14} strokeWidth={1.75} aria-hidden="true" />
+                {prepping ? '备料中…' : '备料'}
+              </button>
+            )}
             {!readMode && <ReadingSettings />}
           </div>
         </div>
@@ -183,6 +251,15 @@ export function Workspace() {
           <RiverEditor key={activeBookId} />
         )}
       </main>
+      {showPrep && (
+        <PrepSidebar
+          targets={(activeCardId && book.hints?.[activeCardId]?.targets) || []}
+          genre={(activeCardId && book.hints?.[activeCardId]?.genre) || 'other'}
+          tiers={tiers}
+          aiPolicy={book.aiPolicy ?? 'strict'}
+          busy={prepping}
+        />
+      )}
     </div>
   )
 }

@@ -14,7 +14,7 @@ const validResponse = JSON.stringify({
 
 describe('requestPrep', () => {
   it('把校验过的结果交回来，并且请求里带 kind: model', async () => {
-    const invoke = vi.fn(async () => ({ data: { text: validResponse }, error: null }))
+    const invoke = vi.fn(async (_n: string, _o: { body: unknown }) => ({ data: { text: validResponse } as any, error: null }))
     const r = await requestPrep(['第一段'], { invoke })
     expect(r.ok).toBe(true)
     if (!r.ok) return
@@ -54,7 +54,7 @@ describe('requestPrep', () => {
 
 describe('makeFetchFreqs', () => {
   it('把词形批量发给 Edge Function，带 kind: ngram', async () => {
-    const invoke = vi.fn(async () => ({ data: { freqs: { 'hem in': 7.1e-8 } }, error: null }))
+    const invoke = vi.fn(async (_n: string, _o: { body: unknown }) => ({ data: { freqs: { 'hem in': 7.1e-8 } } as any, error: null }))
     const fetchFreqs = makeFetchFreqs({ invoke })
     const out = await fetchFreqs(['hem in'])
     expect(out['hem in']).toBe(7.1e-8)
