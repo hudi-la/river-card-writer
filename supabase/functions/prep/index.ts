@@ -22,10 +22,19 @@ const DEFAULT_MODEL = 'gemini-3.5-flash'
 // 在几十个，4 路并发足够快。
 const NGRAM_CONCURRENCY = 4
 
+// 浏览器跨域调用 Edge Function 会先发 OPTIONS 预检。不回 CORS 头的话，
+// supabase-js 的 functions.invoke 在预检那一步就失败，前端只看到一个含糊的
+// 网络错误——所以每个响应都得带上，OPTIONS 也要单独答。
+const CORS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
+  'access-control-allow-methods': 'POST, OPTIONS',
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json' },
+    headers: { ...CORS, 'content-type': 'application/json' },
   })
 }
 
@@ -93,6 +102,7 @@ async function handleModel(system: unknown, user: unknown): Promise<Response> {
 }
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   if (req.method !== 'POST') return json({ error: 'method not allowed' }, 405)
   let body: { kind?: string; system?: unknown; user?: unknown; forms?: unknown }
   try {
