@@ -1,7 +1,6 @@
 import type { Genre, Target } from '../prep/types'
 import type { Tier } from '../prep/verify'
 
-const POLICY_LABEL: Record<string, string> = { strict: '只给词', open: '加骨架', auto: '给译文' }
 const TIER_LABEL: Record<Tier, string> = { ok: '已查证', rare: '罕用', unverified: '未查证' }
 const GENRE_LABEL: Record<Genre, string> = { narrative: '叙事', expository: '议论', other: '其他' }
 
@@ -29,27 +28,23 @@ export function PrepSidebar({
   targets,
   genre,
   tiers,
-  aiPolicy,
   busy = false,
   progress = null,
+  onPrepCard,
 }: {
   targets: Target[]
   genre: Genre
   tiers: Map<string, Tier>
-  aiPolicy: 'strict' | 'open' | 'auto'
   busy?: boolean
   progress?: { done: number; total: number } | null
+  onPrepCard?: () => void
 }) {
   return (
     <aside className="prep-sidebar">
-      <header className="prep-title">备料 · 当前这张卡</header>
-
+      {/* 一行表头：左标题、右文体条数。原来我把标题另起一行压在这上面，
+          于是边栏顶上出现两行 chrome——那就是页面上看着重复的东西。 */}
       <header className="prep-head">
-        {/* 这个标记必须一直看得见：开关设错了不会报错，等发现时稿子已经在对方
-            手里了。只能靠让状态一直在眼前来防，防不了靠记性。 */}
-        <span className="prep-policy" data-ai-policy={aiPolicy}>
-          这份稿子：{POLICY_LABEL[aiPolicy]}
-        </span>
+        <span className="prep-title">备料 · 当前这张卡</span>
         <span className="prep-meta">
           {busy
             ? progress && progress.total > 1
@@ -57,6 +52,11 @@ export function PrepSidebar({
               : '备料中…'
             : `${GENRE_LABEL[genre]} · ${targets.length} 条`}
         </span>
+        {targets.length > 0 && !busy && onPrepCard ? (
+          <button className="prep-redo" onClick={onPrepCard} title="重新备这张卡">
+            重备
+          </button>
+        ) : null}
       </header>
 
       {busy && targets.length === 0 ? (
@@ -66,9 +66,17 @@ export function PrepSidebar({
       ) : null}
 
       {targets.length === 0 && !busy ? (
-        <p className="prep-empty">
-          这张卡还没备料。按顶栏的「备料」，模型会挑出中文里质感最重、最容易在英译中被压平的地方，为每处给几个词和它们的语感差别——句子由你自己写。
-        </p>
+        <div className="prep-empty">
+          <p>
+            这张卡还没备料。模型会挑出中文里质感最重、最容易在英译中被压平的地方，为每处给几个词和它们的语感差别——句子由你自己写。
+          </p>
+          {onPrepCard ? (
+            <button className="prep-card-btn" onClick={onPrepCard}>
+              备这张卡
+            </button>
+          ) : null}
+          <p className="prep-empty-note">顶栏的「备料本章」会把整章都备上，已备过的跳过。</p>
+        </div>
       ) : null}
 
       {targets.slice(0, EXPANDED).map((t, i) => (

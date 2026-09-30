@@ -18,7 +18,7 @@ const targets: Target[] = [{
 const tiers = new Map<string, Tier>([['hem in', 'ok'], ['swat down', 'rare'], ['corner off', 'unverified']])
 
 const sidebar = (over: Partial<Parameters<typeof PrepSidebar>[0]> = {}) =>
-  render(<PrepSidebar targets={targets} genre="narrative" tiers={tiers} aiPolicy="strict" {...over} />)
+  render(<PrepSidebar targets={targets} genre="narrative" tiers={tiers} {...over} />)
 
 describe('PrepSidebar', () => {
   it('显示靶心、族、中文准在哪、以及笼统译法的对照', () => {
@@ -52,20 +52,31 @@ describe('PrepSidebar', () => {
     expect(Array.from(badges).every((b) => b.getAttribute('data-tier') === 'unverified')).toBe(true)
   })
 
-  it('aiPolicy 一直看得见——这个开关设错了不会报错，只能靠让状态在眼前来防', () => {
+  it('表头只有一行：标题在左、文体条数在右', () => {
     const { container } = sidebar()
-    expect(container.querySelector('[data-ai-policy="strict"]')).not.toBeNull()
-    expect(container.textContent).toContain('只给词')
+    const heads = container.querySelectorAll('header')
+    expect(heads.length).toBe(1)
+    expect(heads[0].textContent).toContain('备料 · 当前这张卡')
+    expect(heads[0].textContent).toContain('叙事 · 1 条')
   })
 
-  it('换成 open / auto 档时标记跟着变', () => {
-    expect(sidebar({ aiPolicy: 'open' }).container.textContent).toContain('加骨架')
-    expect(sidebar({ aiPolicy: 'auto' }).container.textContent).toContain('给译文')
+  it('档位标记不在边栏——它属于顶栏，贴着稿子本身', () => {
+    expect(sidebar().container.querySelector('[data-ai-policy]')).toBeNull()
+  })
+
+  it('空态里给「备这张卡」——那是这张卡的动作，就该待在这张卡的面板里', () => {
+    const onPrepCard = () => {}
+    const { container } = sidebar({ targets: [], onPrepCard })
+    expect(container.querySelector('.prep-card-btn')?.textContent).toBe('备这张卡')
+  })
+
+  it('有内容时表头给一个轻量的「重备」，不占主按钮的位置', () => {
+    const { container } = sidebar({ onPrepCard: () => {} })
+    expect(container.querySelector('.prep-redo')?.textContent).toBe('重备')
   })
 
   it('还没备料时给一句说明，不是空白', () => {
     const { container } = sidebar({ targets: [] })
-    expect(container.textContent).toContain('备料')
     expect(container.textContent).toContain('句子由你自己写')
   })
 

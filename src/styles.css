@@ -1033,15 +1033,29 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
   box-sizing: border-box; padding: 14px 18px;
   border-left: 1px solid var(--faint); background: #f5f3ec; font-size: 13px;
 }
-.prep-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-.prep-policy {
-  font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
-  border: 1px solid #b8ccc4; background: #eef4f1; color: #2e6b58;
+/* 一行表头：左标题、右文体条数（+ 有内容时一个轻量的「重备」）。 */
+.prep-head {
+  display: flex; align-items: baseline; gap: 8px;
+  margin-bottom: 12px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--faint, #e3e0d8);
 }
-.prep-policy[data-ai-policy='open'] { border-color: #ddc9a0; background: #fdfaf3; color: #8c6d28; }
-.prep-policy[data-ai-policy='auto'] { border-color: #d9a695; background: #fcf8f7; color: #8f3a22; }
 .prep-meta { margin-left: auto; font-size: 11px; color: #8c867a; }
+.prep-redo {
+  border: 0; background: none; padding: 0; cursor: pointer;
+  font-family: inherit; font-size: 11px; color: #a8543f; text-decoration: underline;
+}
+.prep-redo:hover { color: #7d3d2d; }
+
 .prep-empty { font-size: 12px; line-height: 1.7; color: #6b665c; }
+.prep-empty p { margin: 0 0 12px; }
+.prep-empty-note { font-size: 11px; color: #8c867a; margin-top: 12px !important; }
+/* 「备这张卡」放在边栏而不是顶栏：它是某一张卡的动作，就该待在那张卡的面板里。 */
+.prep-card-btn {
+  border: 1px solid #1f1d1a; background: #1f1d1a; color: #faf9f5;
+  padding: 8px 16px; border-radius: 7px; cursor: pointer;
+  font-family: inherit; font-size: 12.5px; font-weight: 600;
+}
+.prep-card-btn:hover { background: #33302c; }
 
 .prep-target { background: #fff; border: 1px solid #ddd9cf; border-radius: 9px; padding: 13px 14px; margin-bottom: 12px; }
 .prep-zh { margin: 0 0 8px; font-family: Georgia, 'Songti SC', serif; font-size: 19px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
@@ -1115,11 +1129,8 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
   color: #8c867a;
 }
 
-/* 边栏标题 */
+/* 边栏标题：表头里的一段文字，不再单独占一行 */
 .prep-title {
-  margin-bottom: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--faint, #e3e0d8);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.1em;
@@ -1167,3 +1178,36 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
   text-decoration-color: #c99a8a;
 }
 .prep-collapsed[open] > summary { margin-bottom: 9px; }
+
+/* ── 顶栏的层级 ──────────────────────────────────────────────────
+   原来 阅读/单语/备这张卡/整章 四个按钮同一种粗细并排，看不出主次、
+   也看不出哪个会花钱。现在：状态 chip → 轻开关 → 单个主按钮 → 设置。 */
+
+/* 稿子的档位。spec §9.4：这个开关设错了不会报错（等发现时稿子已经在对方
+   手里），只能靠让状态一直在眼前来防——所以它贴着书名放在顶栏。
+   它是状态不是按钮，所以不做成可点的样子。 */
+.policy-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+  border: 1px solid #b8ccc4; background: #eef4f1; color: #2e6b58;
+}
+.policy-chip[data-ai-policy='open'] { border-color: #ddc9a0; background: #fdfaf3; color: #8c6d28; }
+.policy-chip[data-ai-policy='auto'] { border-color: #d9a695; background: #fcf8f7; color: #8f3a22; }
+
+/* 唯一的主按钮。深色实心，跟旁边的轻量开关拉开层级——它是会花钱的那个。 */
+.topbar-primary {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid #1f1d1a; background: #1f1d1a; color: #faf9f5;
+  padding: 7px 15px; border-radius: 7px; cursor: pointer;
+  font-family: inherit; font-size: 12.5px; font-weight: 600; white-space: nowrap;
+}
+.topbar-primary:hover { background: #33302c; }
+.topbar-primary.is-stop { background: #8f3a22; border-color: #8f3a22; }
+.topbar-primary.is-stop:hover { background: #75301c; }
+
+/* 窄屏时顶栏塞不下，档位 chip 先收起文字只留锁图标——状态还在，只是不占地方。 */
+@media (max-width: 1320px) {
+  .policy-chip { font-size: 0; gap: 0; padding: 6px 8px; }
+  .policy-chip svg { width: 13px; height: 13px; }
+}

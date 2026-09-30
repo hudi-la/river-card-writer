@@ -4,3 +4,8 @@ node_modules/
 .superpowers/
 dist/
 supabase/.temp/
+
+# 文件同步（iCloud Drive 之类）生成的冲突副本：「foo 2.ts」「foo 2.md」。
+# 它们曾经有 17 个被误提交进来，其中两个是陈旧版本、直接让 tsc 报错。
+* 2.*
+* 3.*

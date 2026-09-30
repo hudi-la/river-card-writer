@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, BookOpen, Languages, Pencil, Square, TextSearch } from 'lucide-react'
+import { ArrowLeft, BookOpen, Languages, Lock, Pencil, Square } from 'lucide-react'
 import { useBookStore, type Book } from '../state/bookStore'
 import { usePrefsStore } from '../state/prefsStore'
 import { LeftNav } from './LeftNav'
@@ -21,6 +21,8 @@ const FONT_STACK: Record<'serif' | 'sans', string> = {
 }
 
 const READ_MODE_KEY = 'card-writer:read-mode'
+
+const POLICY_LABEL: Record<string, string> = { strict: '只给词', open: '加骨架', auto: '给译文' }
 
 // 拖拽状态用 useRef 而不是 useState：pointermove 期间不需要触发 Workspace
 // 重渲染——setRailWidth 改 prefsStore，prefs 变化本身会重渲染一次去更新 CSS
@@ -256,33 +258,44 @@ export function Workspace() {
           </button>
           <WorkspaceTitle key={`title-${book.id}`} book={book} renameBook={renameBook} />
           <div className="topbar-right">
+            {/* 顺序即层级：状态 → 视图开关（轻）→ 主动作（重）→ 设置。
+                原来四个按钮同一种粗细并排，看不出主次，也看不出哪个会花钱。 */}
+
+            {/* 稿子的档位。spec §9.4：这个开关设错了不会报错，只能靠让状态一直在
+                眼前来防——所以它贴着书名放在顶栏，而不是藏进边栏或设置页。 */}
+            {showPrep && (
+              <span className="policy-chip" data-ai-policy={book.aiPolicy ?? 'strict'}>
+                <Lock size={12} strokeWidth={2.2} aria-hidden="true" />
+                这份稿子：{POLICY_LABEL[book.aiPolicy ?? 'strict']}
+              </span>
+            )}
+
             <button className="read-toggle" onClick={() => setReadMode((v) => !v)} title={readMode ? '回到编辑' : '排版预览'}>
               {readMode ? <Pencil size={14} strokeWidth={1.75} aria-hidden="true" /> : <BookOpen size={14} strokeWidth={1.75} aria-hidden="true" />}
               {readMode ? '编辑' : '阅读'}
             </button>
+
             {!readMode && viewKind !== 'box' && (
               <button className="read-toggle" onClick={() => setBilingual((v) => !v)} title={bilingual ? '回到单语' : '中英并排'}>
                 <Languages size={14} strokeWidth={1.75} aria-hidden="true" />
                 {bilingual ? '单语' : '双语'}
               </button>
             )}
+
+            {/* 唯一的主按钮。「备这张卡」下放到边栏——那是某一张卡的动作，就该待在
+                那张卡的面板里。 */}
             {showPrep && !prepping && (
-              <>
-                <button className="read-toggle" onClick={prepThisCard} title="只备光标所在这张卡（一次调用，约半分钟）">
-                  <TextSearch size={14} strokeWidth={1.75} aria-hidden="true" />
-                  备这张卡
-                </button>
-                <button className="read-toggle" onClick={prepChapter} title="整章都备（并发跑，边跑边出结果，已备过的跳过）">
-                  整章
-                </button>
-              </>
-            )}
-            {showPrep && prepping && (
-              <button className="read-toggle" onClick={() => { stopRef.current = true }} title="不再发新的请求（已发出的那几个还会回来）">
-                <Square size={12} strokeWidth={2.5} aria-hidden="true" />
-                {progress ? `停（${progress.done}/${progress.total}）` : '停'}
+              <button className="topbar-primary" onClick={prepChapter} title="整章都备（并发跑，边跑边出结果，已备过的跳过）">
+                备料本章
               </button>
             )}
+            {showPrep && prepping && (
+              <button className="topbar-primary is-stop" onClick={() => { stopRef.current = true }} title="不再发新的请求（已发出的那几个还会回来）">
+                <Square size={11} strokeWidth={2.5} aria-hidden="true" />
+                {progress ? `停 ${progress.done}/${progress.total}` : '停'}
+              </button>
+            )}
+
             {!readMode && <ReadingSettings />}
           </div>
         </div>
@@ -309,9 +322,9 @@ export function Workspace() {
           targets={(activeCardId && book.hints?.[activeCardId]?.targets) || []}
           genre={(activeCardId && book.hints?.[activeCardId]?.genre) || 'other'}
           tiers={tiers}
-          aiPolicy={book.aiPolicy ?? 'strict'}
           busy={prepping}
           progress={progress}
+          onPrepCard={prepThisCard}
         />
       )}
     </div>
