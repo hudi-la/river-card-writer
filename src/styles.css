@@ -425,12 +425,27 @@ html.outline-drag-active, html.outline-drag-active * { user-select:none !importa
   border: 1px solid var(--hair); color: var(--ink);
 }
 .river { outline:none; }
+/* 卡片 = 一条左侧彩条 + 极淡的底。彩条的颜色就是这张卡的"线"（主题），所以
+   顺着某条线扫一眼就能认出来；底色淡到不打断阅读。
+   单语和双语共用这一套——原来双语另写了一份，两份并存迟早会漂。
+   原来的做法是整片 13–16% 的底色，卡挨着卡时会糊成一大块分不清界；而且
+   卡间还另画一条横线，彩条和横线两样东西干同一件事，是多余的。 */
 .river .card {
   position:relative; padding:12px 16px 12px 40px;
-  background: color-mix(in srgb, var(--card-bg, #7fa3c4) 13%, transparent);
+  background: color-mix(in srgb, var(--card-bg, #7fa3c4) 5%, transparent);
+  border-left: 3px solid var(--card-bg, #7fa3c4);
+  border-radius: 0 3px 3px 0;
+  margin-bottom: 10px;
 }
-.river .card[data-color] { background: color-mix(in srgb, var(--card-bg) 16%, transparent); }
-.river .card + .card::before { content:""; position:absolute; left:40px; right:16px; top:0; border-top:1px solid var(--hair); }
+.river .card[data-color] { background: color-mix(in srgb, var(--card-bg) 6%, transparent); }
+
+/* 光标所在的卡。装饰器挂的 class（见 prepHighlight.ts 的 ActiveCard），
+   跟着光标走、不需要任何 React 状态。 */
+.river .card.is-active-card {
+  outline: 2px solid var(--card-bg, #d98b7a);
+  outline-offset: 2px;
+  background: color-mix(in srgb, var(--card-bg, #7fa3c4) 11%, transparent);
+}
 /* 拖拽把手（改成真实 DOM 元素，见 CardView.tsx 的 GripVertical）：定位跟老的
    ⠿ ::after 一致（left/top 14px），pointer-events:none——命中判定始终是
    RiverEditor 里对 e.clientX - rect.left 的像素区间判断，这个图标只是视觉提示，
@@ -1187,31 +1202,6 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
 .topbar-primary.is-stop:hover { background: #75301c; }
 
 
-
-/* ── 双语视图里的卡片：左侧彩条 + 选中描边 ──────────────────────
-   单语视图保持原样（整片淡底色）。双语下每张卡要装两栏、彼此挨得近，
-   整片底色会糊成一大块分不清卡界；换成一条左侧彩条 + 极淡的底，
-   卡与卡之间清楚，颜色（= 线/主题）也还在。 */
-.river--bilingual .card {
-  padding-left: 40px;
-  background: color-mix(in srgb, var(--card-bg, #7fa3c4) 5%, transparent);
-  border-left: 3px solid var(--card-bg, #7fa3c4);
-  border-radius: 0 3px 3px 0;
-  margin-bottom: 10px;
-}
-.river--bilingual .card[data-color] {
-  background: color-mix(in srgb, var(--card-bg) 6%, transparent);
-}
-/* 卡之间原来靠一条横线分隔；现在有彩条和间距了，横线反而多余 */
-.river--bilingual .card + .card::before { display: none; }
-
-/* 光标所在的卡。装饰器挂的 class（见 prepHighlight.ts 的 ActiveCard），
-   所以它跟着光标走、不需要任何 React 状态。 */
-.river--bilingual .card.is-active-card {
-  outline: 2px solid var(--card-bg, #d98b7a);
-  outline-offset: 2px;
-  background: color-mix(in srgb, var(--card-bg, #7fa3c4) 11%, transparent);
-}
 
 /* ── 备料边栏的档位行与关闭 ────────────────────────────────────── */
 .prep-policy-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
