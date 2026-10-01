@@ -1,8 +1,74 @@
+import { useLayoutEffect, useRef } from 'react'
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react'
 import { GripVertical } from 'lucide-react'
 import { autoCardColor } from './schema'
 import { isStale, isValidEn, zhFingerprint, ZH_JOIN } from './enText'
 import { prepHitCount } from './prepHighlight'
+
+// 一段英文 = 一个 <textarea>。
+//
+// 原来这里用的是裸 contentEditable 的 <div>，那是个错误的选择，直接造成两个
+// 真 bug：
+//   1. 按回车时浏览器往 DOM 里塞 <div>/<br>，那些行根本不在数据模型里，
+//      于是删不掉也存不下。
+//   2. contentEditable 的粘贴是带格式的 HTML，字号字体整个被带进来；而保存
+//      时用 textContent 压成纯文本——看到的和存下来的是两回事。
+//
+// 数据模型是 string[]（每段一个纯字符串），那对应的 DOM 原语就是 textarea：
+// HTML 进不来、字号带不进来、删除和回车都是原生行为，一行清洗代码都不用写。
+//
+// 非受控 + 失焦写回：受控组件每次击键都要重渲染，容易跟光标打架；而写回发生
+// 在失焦之后，那时焦点已经离开，不会把正在打字的位置冲掉。
+function EnCell({
+  value,
+  style,
+  index,
+  placeholder,
+  onCommit,
+}: {
+  value: string
+  style: string
+  index: number
+  placeholder?: string
+  onCommit: (text: string) => void
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+
+  // 高度跟着内容长。textarea 默认是固定行数的滚动框，那在并排阅读里没法看——
+  // 中英两栏必须各自撑开到自己的真实高度才对得上。
+  const grow = () => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }
+  useLayoutEffect(grow, [value])
+
+  return (
+    <textarea
+      ref={ref}
+      className="card-en-p"
+      data-style={style}
+      aria-label={`第 ${index + 1} 段的英文`}
+      defaultValue={value}
+      rows={1}
+      spellCheck
+      placeholder={placeholder}
+      onInput={grow}
+      onBlur={(e) => onCommit(e.currentTarget.value)}
+      // CRITICAL：拦住事件，别让它们冒到 ProseMirror 的根上去。
+      // 这个 textarea 在 PM 可编辑区内部（靠 aside 的 contentEditable={false}
+      // 隔开），但 DOM 事件照样会冒泡；PM 的 keymap 抓 Backspace / Enter 等键，
+      // 很可能就是原来"英文格子里删不掉行"的另一半原因。
+      // 这里只挡键盘和粘贴——失焦、输入这些 PM 不处理的照常往上走。
+      onKeyDown={(e) => e.stopPropagation()}
+      onKeyUp={(e) => e.stopPropagation()}
+      onPaste={(e) => e.stopPropagation()}
+      onCut={(e) => e.stopPropagation()}
+      onDragStart={(e) => e.stopPropagation()}
+    />
+  )
+}
 
 // 每张卡的渲染：一个 section.card（背景色 = 手动设的 color，或者按 cardId 稳定哈希
 // 出的默认色）+ 中文正文 + 英文栏 + 一个纯视觉的拖拽把手（GripVertical，跟阅读陪伴
@@ -68,26 +134,25 @@ export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
       <NodeViewContent className="card-body" />
       {/* contentEditable={false} 把英文栏从 ProseMirror 的可编辑区里摘出来，
           否则 PM 会试图把这里的输入当成文档编辑。内层每格再单独开。 */}
+      {/* contentEditable={false} 把英文栏从 ProseMirror 的可编辑区里摘出来，
+          否则 PM 会试图把这里的输入当成文档编辑。 */}
       <aside className="card-en" contentEditable={false}>
         {stale ? <p className="card-en-stale-note">中文改过，这段英文已过期</p> : null}
         {en == null && hitCount > 0 ? (
           <p className="card-en-hint">{hitCount} 个靶心在右栏 →</p>
         ) : null}
         {zhTexts.map((_, i) => (
-          <div
-            key={i}
-            className="card-en-p"
-            data-style={zhStyles[i]}
-            contentEditable
-            suppressContentEditableWarning
-            role="textbox"
-            aria-label={`第 ${i + 1} 段的英文`}
-            onBlur={(e) => commit(i, e.currentTarget.textContent ?? '')}
-          >
-            {en ? en[i] : ''}
-          </div>
+          <EnCell
+            // key 带上当前值：外部改动（切卡/合卡重算了 en）时整个换一个，
+            // 从而刷新 defaultValue。打字期间不会触发——我们只在失焦时写回。
+            key={`${cardId ?? 'n'}-${i}-${en ? en[i] : ''}`}
+            value={en ? en[i] : ''}
+            style={zhStyles[i]}
+            index={i}
+            placeholder={en == null && i === 0 ? '还没写' : undefined}
+            onCommit={(text) => commit(i, text)}
+          />
         ))}
-        {en == null ? <p className="card-en-empty">还没写</p> : null}
       </aside>
     </NodeViewWrapper>
   )

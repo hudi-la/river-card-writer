@@ -996,13 +996,26 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
 }
 .river--bilingual .card-en { display: block; }
 
+/* textarea 要洗掉浏览器默认的那套外框，让它看起来就是正文的一部分：
+   无边框、透明底、不可拖拽缩放、字体行高跟中文那栏对齐。 */
 .card-en-p {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
   min-height: 1.85em;
+  margin: 0;
+  padding: 0;
+  border: 0;
   outline: none;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
   font-family: Georgia, 'Times New Roman', serif;
+  font-size: inherit;
   line-height: 1.8;
   color: #2a2722;
 }
+.card-en-p::placeholder { color: #bdb7ab; font-style: italic; }
 /* 不给边框、不给底色——这是写作面，不是表单字段。只用一条细的左侧竖线
    说明"光标在这一段"，够用且不打断视线。 */
 .card-en-p:focus { box-shadow: -8px 0 0 -7px #a8543f; }
@@ -1114,12 +1127,6 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
 }
 
 /* 英文栏的空态与提示 */
-.card-en-empty {
-  margin: 0;
-  font-family: Georgia, serif;
-  font-style: italic;
-  color: #bdb7ab;
-}
 .card-en-hint {
   margin: 8px 0 0;
   font-size: 11.5px;

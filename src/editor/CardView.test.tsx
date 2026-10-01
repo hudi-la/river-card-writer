@@ -106,8 +106,8 @@ describe('CardView 的英文栏', () => {
     const aside = container.querySelector('aside.card-en')
     expect(aside).not.toBeNull()
     expect(aside!.querySelectorAll('.card-en-p').length).toBe(2)
-    expect(aside!.textContent).toContain('One.')
-    expect(aside!.textContent).toContain('Two.')
+    const vals = Array.from(aside!.querySelectorAll('.card-en-p')).map((c) => (c as HTMLTextAreaElement).value)
+    expect(vals).toEqual(['One.', 'Two.'])
   })
 
   it('英文段落从对应的中文段继承 data-style——英文自己不存样式', async () => {
@@ -125,6 +125,26 @@ describe('CardView 的英文栏', () => {
     expect(container.querySelector('section.card')!.getAttribute('data-en-stale')).toBeNull()
   })
 
+  it('空态用 placeholder，不另起一行「还没写」——否则空格子和那句话同时出现', async () => {
+    const { container } = render(<EnHarness en={null} enSrc={STALE_SRC} />)
+    await new Promise((r) => setTimeout(r, 0))
+    const cells = container.querySelectorAll('aside.card-en .card-en-p')
+    expect((cells[0] as HTMLTextAreaElement).placeholder).toBe('还没写')
+    // 只第一格给提示，不是每格都挂一遍
+    expect((cells[1] as HTMLTextAreaElement).placeholder).toBe('')
+    expect(container.querySelector('.card-en-empty')).toBeNull()
+  })
+
+  it('键盘事件不往上冒——否则 ProseMirror 的 keymap 会抢走 Backspace / Enter', async () => {
+    const { container } = render(<EnHarness en={['One.', 'Two.']} enSrc={zhFingerprint(['第一段', '第二段'])} />)
+    await new Promise((r) => setTimeout(r, 0))
+    const cell = container.querySelector('.card-en-p') as HTMLTextAreaElement
+    let reachedRoot = false
+    container.addEventListener('keydown', () => { reachedRoot = true })
+    cell.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }))
+    expect(reachedRoot).toBe(false)
+  })
+
   it('中文改过、指纹对不上时，卡上出现 data-en-stale', async () => {
     const { container } = render(<EnHarness en={['One.', 'Two.']} enSrc={'f-旧的指纹'} />)
     await new Promise((r) => setTimeout(r, 0))
@@ -137,7 +157,17 @@ describe('CardView 的英文栏', () => {
     await new Promise((r) => setTimeout(r, 0))
     const aside = container.querySelector('aside.card-en')!
     expect(aside.querySelectorAll('.card-en-p').length).toBe(2)
-    expect(aside.textContent).not.toContain('Only one.')
+    expect(Array.from(aside.querySelectorAll('.card-en-p')).every((c) => (c as HTMLTextAreaElement).value === '')).toBe(true)
+  })
+
+  it('英文格子是 textarea，不是 contentEditable——HTML 和字号从结构上就进不来', async () => {
+    const { container } = render(<EnHarness en={['One.', 'Two.']} enSrc={zhFingerprint(['第一段', '第二段'])} />)
+    await new Promise((r) => setTimeout(r, 0))
+    const cells = container.querySelectorAll('.card-en-p')
+    expect(cells.length).toBe(2)
+    expect(Array.from(cells).every((c) => c.tagName === 'TEXTAREA')).toBe(true)
+    expect(Array.from(cells).every((c) => !c.hasAttribute('contenteditable'))).toBe(true)
+    expect((cells[0] as HTMLTextAreaElement).value).toBe('One.')
   })
 
   it('在英文格子里打字后失焦，写回 card 的 en 属性并盖 enAt', async () => {
@@ -160,8 +190,8 @@ describe('CardView 的英文栏', () => {
     const { container } = render(<Wrap />)
     await new Promise((r) => setTimeout(r, 0))
 
-    const cell = container.querySelector('.card-en-p') as HTMLElement
-    cell.textContent = 'The cat barred the door.'
+    const cell = container.querySelector('.card-en-p') as HTMLTextAreaElement
+    cell.value = 'The cat barred the door.'
     cell.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
     await new Promise((r) => setTimeout(r, 0))
 
@@ -169,6 +199,38 @@ describe('CardView 的英文栏', () => {
     expect(attrs.en).toEqual(['The cat barred the door.'])
     expect(attrs.enSrc).toBe(zhFingerprint(['第一段']))
     expect(attrs.enAt).not.toBe('')
+  })
+
+  it('回车产生的是字符串里的换行，不是 DOM 节点——所以删得掉、也存得下', async () => {
+    let ed: Editor | undefined
+    function Wrap() {
+      const editor = useEditor({
+        extensions: baseExtensions,
+        immediatelyRender: false,
+        content: {
+          type: 'doc',
+          content: [
+            { type: 'card', attrs: { cardId: 'c0', en: null, enSrc: STALE_SRC },
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: '第一段' }] }] },
+          ],
+        },
+      })
+      if (editor) ed = editor
+      return editor ? <EditorContent editor={editor} /> : null
+    }
+    const { container } = render(<Wrap />)
+    await new Promise((r) => setTimeout(r, 0))
+
+    const cell = container.querySelector('.card-en-p') as HTMLTextAreaElement
+    cell.value = 'First line\nSecond line'
+    cell.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 0))
+
+    // 原来用 contentEditable 时，回车会在 DOM 里塞 <div>/<br>——那些行不在数据
+    // 模型里，于是删不掉也存不下。现在它只是字符串里的一个 \n。
+    expect(ed!.getJSON().content![0].attrs!.en).toEqual(['First line\nSecond line'])
+    expect(container.querySelectorAll('.card-en-p br').length).toBe(0)
+    expect(container.querySelectorAll('.card-en-p div').length).toBe(0)
   })
 
   it('把英文清空后退回"没写过"，而不是存一个全是空串的数组', async () => {
@@ -191,8 +253,8 @@ describe('CardView 的英文栏', () => {
     const { container } = render(<Wrap />)
     await new Promise((r) => setTimeout(r, 0))
 
-    const cell = container.querySelector('.card-en-p') as HTMLElement
-    cell.textContent = '   '
+    const cell = container.querySelector('.card-en-p') as HTMLTextAreaElement
+    cell.value = '   '
     cell.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
     await new Promise((r) => setTimeout(r, 0))
 
@@ -200,4 +262,5 @@ describe('CardView 的英文栏', () => {
     expect(attrs.en).toBe(null)
     expect(attrs.enSrc).toBe('')
   })
+
 })
