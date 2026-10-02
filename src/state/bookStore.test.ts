@@ -950,3 +950,46 @@ describe('bookStore — 自定义封面 cover', () => {
     expect(b.doc).toEqual(EMPTY_DOC)
   })
 })
+
+describe('normalizeBook 不许丢字段', () => {
+  // 这条是回归测试。原来 normalizeBook 用一行显式字段列表，加新字段时没人会
+  // 想起来改它——subtitle / author / hints / aiPolicy 四个就是这么被静默丢掉的，
+  // 而且残缺版本会经由同步把云端那份也带没。
+  it('Book 上的每一个字段都活着穿过一次 normalize', () => {
+    const raw = {
+      id: 'b1',
+      title: '书',
+      doc: { type: 'doc', content: [] },
+      boxes: [{ id: 'x', name: '盒', cards: [] }],
+      updatedAt: '2026-01-01T00:00:00Z',
+      cover: { colors: ['#111', '#222', '#333'] as [string, string, string] },
+      subtitle: '副标题',
+      author: '作者',
+      hints: { c0: { genre: 'narrative' as const, genreReason: '', targets: [] } },
+      aiPolicy: 'auto' as const,
+    }
+    const out = normalizeBook(raw) as Record<string, unknown>
+    const lost = Object.keys(raw).filter((k) => out[k] === undefined)
+    expect(lost).toEqual([])
+    expect(out.hints).toEqual(raw.hints)
+    expect(out.aiPolicy).toBe('auto')
+    expect(out.subtitle).toBe('副标题')
+  })
+
+  it('整条 load → persist → load 的往返也不丢', () => {
+    const lib = {
+      books: [{
+        id: 'b1', title: '书', doc: { type: 'doc', content: [] }, boxes: [],
+        subtitle: '副', author: '者', aiPolicy: 'strict' as const,
+        hints: { c0: { genre: 'other' as const, genreReason: '', targets: [] } },
+      }],
+      activeBookId: null,
+      universalBoxes: [],
+    }
+    const back = normalizeLibrary(JSON.parse(JSON.stringify(lib)))
+    expect(back.books[0].hints).toEqual(lib.books[0].hints)
+    expect(back.books[0].subtitle).toBe('副')
+    expect(back.books[0].author).toBe('者')
+    expect(back.books[0].aiPolicy).toBe('strict')
+  })
+})

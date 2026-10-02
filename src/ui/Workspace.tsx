@@ -92,14 +92,16 @@ export function Workspace() {
   // 目录栏。双语模式下最缺的就是横向空间（两栏正文 + 备料边栏），目录那一栏
   // 该让出来——但不能一关了之，作者还要跳章节，所以给一个开关随时叫回来。
   const [navOpen, setNavOpen] = useState(true)
-  const [prepping, setPrepping] = useState(false)
+  // 正在备料的卡，按 cardId 记——不是一个全局布尔。
+  // 备料一次要半分钟到一分钟，作者在等的时候当然会去写别处；他还应该能顺手
+  // 把下一块也排上。用全局布尔的话按钮整个消失，这两件事都干不成。
+  const [preppingCards, setPreppingCards] = useState<Set<string>>(new Set())
+  // 错误和告警也按卡记：第 3 张卡失败了，不该让你在第 5 张卡上看到那条红框。
+  const [prepErrors, setPrepErrors] = useState<Record<string, string>>({})
+  const [prepWarnings, setPrepWarnings] = useState<Record<string, string[]>>({})
   // 整章备料的进度。null = 没在跑。实测一次模型调用 24–60 秒，所以进度是必须的
   // ——没有它，作者面对的是几分钟的静默，跟卡死没有区别。
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
-  // 失败必须留在界面上。原来只弹一个 5 秒的 toast，然后边栏退回"还没备料"——
-  // 于是"失败了"和"从没试过"长得一模一样，作者既不知道发生过什么，也看不到原因。
-  const [prepError, setPrepError] = useState<string | null>(null)
-  const [prepWarnings, setPrepWarnings] = useState<string[]>([])
   // 「停」：不中断已经发出的请求（那次调用的钱已经花了），只是不再发新的。
   const stopRef = useRef(false)
   // 查证结果按词形累积。整个会话共用一个 verifier，所以同一个词只查一次。
@@ -197,19 +199,31 @@ export function Workspace() {
       return
     }
     stopRef.current = false
-    setPrepError(null)
-    setPrepWarnings([])
-    setPrepping(true)
+    const ids = cards.map((c) => c.cardId)
+    setPrepErrors((prev) => {
+      const next = { ...prev }
+      for (const id of ids) delete next[id]
+      return next
+    })
+    setPrepWarnings((prev) => {
+      const next = { ...prev }
+      for (const id of ids) delete next[id]
+      return next
+    })
+    setPreppingCards((prev) => new Set([...prev, ...ids]))
     try {
       const out = await runPrep(cards, {
         requestPrep: (zhTexts) => requestPrep(zhTexts, toAiPolicy(book?.aiPolicy)),
         verify,
         onCardDone: (cardId, result) => setCardHints(cardId, result),
-        onWarnings: (w) => setPrepWarnings((prev) => [...prev, ...w]),
+        onWarnings: (w) => {
+          const id = ids[0]
+          setPrepWarnings((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), ...w] }))
+        },
         onTiers: (m) => setTiers((prev) => new Map([...prev, ...m])),
         onProgress: (done, total) => setProgress({ done, total }),
-        onError: (_cardId, error) => {
-          setPrepError(error)
+        onError: (cardId, error) => {
+          setPrepErrors((prev) => ({ ...prev, [cardId]: error }))
           showToast({ text: `备料失败：${error}`, kind: 'error', durationMs: 5000 })
         },
         shouldStop: () => stopRef.current,
@@ -219,7 +233,11 @@ export function Workspace() {
       if (out.stopped) parts.push('已停下')
       showToast({ text: parts.join('，'), kind: out.failed > 0 ? 'info' : 'success' })
     } finally {
-      setPrepping(false)
+      setPreppingCards((prev) => {
+        const next = new Set(prev)
+        for (const id of ids) next.delete(id)
+        return next
+      })
       setProgress(null)
     }
   }
@@ -231,6 +249,8 @@ export function Workspace() {
       useToastStore.getState().show({ text: '先把光标放进一张卡里', kind: 'info' })
       return
     }
+    // 同一张卡不重复发；别的卡照常可以同时排上。
+    if (preppingCards.has(card.cardId)) return
     return runPrepOn([card], '备料完成')
   }
 
@@ -294,10 +314,10 @@ export function Workspace() {
               </button>
             )}
 
-            {prepping && (
-              <button className="topbar-primary is-stop" onClick={() => { stopRef.current = true }} title="不再发新的请求（已发出的那个还会回来）">
+            {preppingCards.size > 0 && (
+              <button className="topbar-primary is-stop" onClick={() => { stopRef.current = true }} title="不再发新的请求（已发出的那些还会回来）">
                 <Square size={11} strokeWidth={2.5} aria-hidden="true" />
-                停
+                {preppingCards.size > 1 ? `备料中 ${preppingCards.size}` : '备料中'}
               </button>
             )}
 
@@ -317,11 +337,11 @@ export function Workspace() {
           targets={(activeCardId && book.hints?.[activeCardId]?.targets) || []}
           genre={(activeCardId && book.hints?.[activeCardId]?.genre) || 'other'}
           tiers={tiers}
-          busy={prepping}
+          busy={!!activeCardId && preppingCards.has(activeCardId)}
           progress={progress}
           onPrepCard={prepThisCard}
-          error={prepError}
-          warnings={prepWarnings}
+          error={activeCardId ? (prepErrors[activeCardId] ?? null) : null}
+          warnings={activeCardId ? (prepWarnings[activeCardId] ?? []) : []}
           aiPolicy={toAiPolicy(book.aiPolicy)}
           onPolicyChange={setAiPolicy}
           translation={activeCardId ? book.hints?.[activeCardId]?.translation : undefined}

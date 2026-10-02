@@ -512,6 +512,17 @@ function chapterTitleCard(title: string) {
   }
 }
 
+// 旧格式迁移后该消失的字段。摊开 raw 会把它们一并带过来，所以显式剔掉。
+// 这是一份**封闭**的清单（旧格式就那几个字段，不会再长），跟"保留哪些字段"那种
+// 开放清单不同——开放清单每加一个新字段就得记得改它，而那正是丢字段的根源。
+const LEGACY_BOOK_KEYS = ['chapters', 'threads', 'activeChapterId'] as const
+
+function dropLegacy<T extends Record<string, unknown>>(book: T): T {
+  const out = { ...book }
+  for (const k of LEGACY_BOOK_KEYS) delete (out as Record<string, unknown>)[k]
+  return out
+}
+
 export function normalizeBook(raw: any): Book {
   const boxes: Box[] = Array.isArray(raw.boxes) ? raw.boxes : []
   // 老数据没有 updatedAt 字段——留空（undefined），不编造一个哨兵日期。sync 合并
@@ -522,7 +533,13 @@ export function normalizeBook(raw: any): Book {
   // 别的地方需要再检查一遍 cover 的合法性。
   const cover = isValidCover(raw.cover) ? raw.cover : undefined
   if (raw.doc) {
-    return { id: raw.id, title: raw.title, doc: raw.doc, boxes, updatedAt, cover }
+    // CRITICAL：先摊开 raw，再覆盖需要校验的那几个。
+    // 原来这里是一行显式字段列表——加新字段时没人会想起来改它，于是
+    // subtitle / author / hints / aiPolicy 四个字段在每次加载时被静默丢掉。
+    // 更糟的是本地读回来的残缺版本 updatedAt 还是新的，同步时会把它推回云端，
+    // 云端那份也跟着没。摊开写法让这类 bug 不可能再发生：新字段默认活下来，
+    // 需要校验的才显式处理。
+    return dropLegacy({ ...raw, id: raw.id, title: raw.title, doc: raw.doc, boxes, updatedAt, cover })
   }
   // 旧格式迁移：每章 → [章标题卡, ...该章的卡]，顺次拼进一个大 doc。
   const chapters = Array.isArray(raw.chapters) ? raw.chapters : []
@@ -537,7 +554,7 @@ export function normalizeBook(raw: any): Book {
     content.push(...chapterCards)
   }
   const doc = content.length > 0 ? { type: 'doc', content } : structuredClone(EMPTY_DOC)
-  return { id: raw.id, title: raw.title, doc, boxes, updatedAt, cover }
+  return dropLegacy({ ...raw, id: raw.id, title: raw.title, doc, boxes, updatedAt, cover })
 }
 
 export function normalizeLibrary(raw: any): Library {

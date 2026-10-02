@@ -165,13 +165,22 @@ export function PrepSidebar({
         </div>
       ) : null}
 
-      {targets.slice(0, EXPANDED).map((t, i) => (
-        <section className="prep-target" key={`${t.zh}-${i}`}>
-          <h3 className="prep-zh">
-            {t.zh}
+      {/* 全部可折叠，前 EXPANDED 条默认展开。
+          原来前两条渲染成固定展开的 <section>、其余是 <details>——于是前两条
+          压根没有折叠入口，看着像 bug。同一种东西就该有同一种行为。 */}
+      {targets.map((t, i) => (
+        <details className="prep-target" key={`${t.zh}-${i}`} open={i < EXPANDED}>
+          <summary>
+            <span className="prep-zh">{t.zh}</span>
             {t.family ? <span className="prep-family">族 · {t.family}</span> : null}
             {t.noSingleWord ? <span className="prep-nosingle">英文没有对应单词</span> : null}
-          </h3>
+            {/* 折起来时在标题行上留下候选词，展开后由 CSS 藏掉——否则重复 */}
+            {t.candidates.map((c) => (
+              <span className="prep-chip" key={c.en} data-tier={tiers.get(c.verifyForm) ?? 'unverified'}>
+                {c.en}
+              </span>
+            ))}
+          </summary>
 
           {t.whyZhIsPrecise ? (
             <p className="prep-why">
@@ -204,37 +213,6 @@ export function PrepSidebar({
                 </li>
               )
             })}
-          </ul>
-        </section>
-      ))}
-      {/* 只展开前 EXPANDED 条；其余在下面折成一行。 */}
-      {targets.slice(EXPANDED).map((t, i) => (
-        <details className="prep-collapsed" key={`c-${t.zh}-${i}`}>
-          <summary>
-            <span className="prep-zh-sm">{t.zh}</span>
-            {t.candidates.map((c) => (
-              <span className="prep-chip" key={c.en} data-tier={tiers.get(c.verifyForm) ?? 'unverified'}>
-                {c.en}
-              </span>
-            ))}
-          </summary>
-          {t.whyZhIsPrecise ? (
-            <p className="prep-why">
-              <span className="prep-label">中文准在 · </span>
-              {t.whyZhIsPrecise}
-            </p>
-          ) : null}
-          <ul className="prep-cands">
-            {t.candidates.map((c) => (
-              <li className="prep-cand" key={c.en} data-tier={tiers.get(c.verifyForm) ?? 'unverified'}>
-                <div className="prep-cand-head">
-                  <span className="prep-en">{c.en}</span>
-                  <TierBadge tier={tiers.get(c.verifyForm) ?? 'unverified'} />
-                </div>
-                {c.nuance ? <p className="prep-nuance">{c.nuance}</p> : null}
-                <p className="prep-loses">丢了 · {c.loses}</p>
-              </li>
-            ))}
           </ul>
         </details>
       ))}

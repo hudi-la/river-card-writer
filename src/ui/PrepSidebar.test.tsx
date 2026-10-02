@@ -127,31 +127,36 @@ describe('PrepSidebar', () => {
     expect(container.textContent).not.toContain('0 条')
   })
 
-  it('前两条展开，其余折成一行——一张卡五六条全展开边栏就是一堵墙', () => {
+  it('每一条都可折叠——同一种东西就该有同一种行为', () => {
     const many = [0, 1, 2, 3].map((i) => ({ ...targets[0], zh: `靶心${i}` }))
     const { container } = sidebar({ targets: many })
-    expect(container.querySelectorAll('section.prep-target').length).toBe(2)
-    expect(container.querySelectorAll('details.prep-collapsed').length).toBe(2)
-    // 展开的是前两条（priority 已排序，承重句和歧义那类排最前）
-    const expanded = Array.from(container.querySelectorAll('section.prep-target .prep-zh'))
-    expect(expanded.map((n) => n.textContent?.slice(0, 3))).toEqual(['靶心0', '靶心1'])
+    const all = container.querySelectorAll('details.prep-target')
+    expect(all.length).toBe(4)
+    // 每一条都有可点的 summary，包括前两条（原来前两条是固定展开的 section，没有入口）
+    expect(Array.from(all).every((d) => d.querySelector('summary'))).toBe(true)
   })
 
-  it('折叠行上仍然看得见候选词和它们的查证档位', () => {
+  it('前两条默认展开，其余默认折起', () => {
+    const many = [0, 1, 2, 3].map((i) => ({ ...targets[0], zh: `靶心${i}` }))
+    const { container } = sidebar({ targets: many })
+    const open = Array.from(container.querySelectorAll('details.prep-target')).map(
+      (d) => (d as HTMLDetailsElement).open
+    )
+    expect(open).toEqual([true, true, false, false])
+  })
+
+  it('折叠状态下标题行上仍然看得见候选词和它们的查证档位', () => {
     const many = [0, 1, 2].map((i) => ({ ...targets[0], zh: `靶心${i}` }))
     const { container } = sidebar({ targets: many })
-    const chips = container.querySelectorAll('details.prep-collapsed .prep-chip')
-    expect(chips.length).toBe(3)
-    expect(Array.from(chips).map((c) => c.getAttribute('data-tier'))).toEqual(['ok', 'rare', 'unverified'])
+    const chips = container.querySelectorAll('details.prep-target summary .prep-chip')
+    expect(chips.length).toBe(9) // 三条靶心各三个候选
+    expect(Array.from(chips).slice(0, 3).map((c) => c.getAttribute('data-tier'))).toEqual([
+      'ok', 'rare', 'unverified',
+    ])
   })
 
   it('边栏有标题，说明它显示的是哪一张卡的备料', () => {
     expect(sidebar().container.textContent).toContain('备料 · 当前这张卡')
-  })
-
-  it('靶心少于展开上限时不出现任何折叠行', () => {
-    const { container } = sidebar({ targets: [targets[0]] })
-    expect(container.querySelectorAll('details.prep-collapsed').length).toBe(0)
   })
 
   it('失败留在边栏里，说清原因并给再试一次——不是闪一下就没的 toast', () => {
