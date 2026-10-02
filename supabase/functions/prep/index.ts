@@ -79,16 +79,44 @@ async function ngramFreq(form: string): Promise<number | null> {
   }
 }
 
+// 短语的第一个词。英语里动词短语的信息量基本都在它身上。
+function headWord(form: string): string {
+  return form.trim().split(/[\s,]+/)[0] ?? ''
+}
+
+// 每个词形返回两个数：整体搭配的频率，和词头的频率。
+//
+// 为什么要补查词头：模型给的候选常常本身就是带代词/介词的短语
+// （enmeshed within it），整体当然查不到——可 enmeshed 是 7.9e-07 的常见词。
+// 只看整体的话一整栏好词会被集体标成可疑，徽章就废了。
+// 但也不能拿词头的频率冒充整体：那会让生造的搭配蒙混过关（pace the beat →
+// pace 很常见）。所以两个数都给回去，由前端分出"词常见、搭配未见"这一档。
 async function handleNgram(forms: unknown): Promise<Response> {
   if (!Array.isArray(forms)) return json({ error: 'forms 必须是数组' }, 400)
   const list = forms.filter((f): f is string => typeof f === 'string' && f.trim() !== '').slice(0, 200)
-  const out: Record<string, number | null> = {}
-  for (let i = 0; i < list.length; i += NGRAM_CONCURRENCY) {
-    const batch = list.slice(i, i + NGRAM_CONCURRENCY)
-    const freqs = await Promise.all(batch.map(ngramFreq))
-    batch.forEach((form, k) => {
-      out[form] = freqs[k]
-    })
+  const out: Record<string, { full: number | null; head: number | null }> = {}
+
+  // 先把所有要查的 n-gram 摊平去重：整体 + 多词形的词头。省掉重复请求。
+  const needed = new Set<string>()
+  for (const form of list) {
+    needed.add(form)
+    const h = headWord(form)
+    if (h && h !== form) needed.add(h)
+  }
+  const unique = Array.from(needed)
+  const freq = new Map<string, number | null>()
+  for (let i = 0; i < unique.length; i += NGRAM_CONCURRENCY) {
+    const batch = unique.slice(i, i + NGRAM_CONCURRENCY)
+    const got = await Promise.all(batch.map(ngramFreq))
+    batch.forEach((f, k) => freq.set(f, got[k]))
+  }
+
+  for (const form of list) {
+    const h = headWord(form)
+    out[form] = {
+      full: freq.get(form) ?? null,
+      head: h && h !== form ? (freq.get(h) ?? null) : (freq.get(form) ?? null),
+    }
   }
   return json({ freqs: out })
 }

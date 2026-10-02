@@ -42,7 +42,6 @@ describe('PrepSidebar', () => {
     const badges = container.querySelectorAll('.prep-tier[data-tier]')
     expect(Array.from(badges).map((b) => b.getAttribute('data-tier'))).toEqual(['ok', 'rare', 'unverified'])
     expect(container.textContent).toContain('未查证')
-    expect(container.textContent).toContain('语料里查不到')
     expect(container.textContent).toContain('罕用')
   })
 
@@ -193,5 +192,11 @@ describe('PrepSidebar', () => {
   it('英文没有对应单词时明说出来', () => {
     const { container } = sidebar({ targets: [{ ...targets[0], noSingleWord: true }] })
     expect(container.textContent).toContain('英文没有对应单词')
+  })
+
+  it('「词常见 · 搭配未见」这一档不打删除线——词本身没问题，别冤枉它', () => {
+    const tiersHead = new Map<string, Tier>([['hem in', 'head-only']])
+    const { container } = sidebar({ tiers: tiersHead })
+    expect(container.querySelector('.prep-tier[data-tier="head-only"]')?.textContent).toBe('词常见 · 搭配未见')
   })
 })

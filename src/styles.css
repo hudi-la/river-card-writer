@@ -1331,3 +1331,9 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
    双语模式下这是刚需——两栏正文加备料边栏，横向空间本来就不够分。 */
 .app--no-nav { grid-template-columns: minmax(0, 1fr); }
 .app--no-nav.app--bilingual { grid-template-columns: minmax(0, 1fr) clamp(300px, 26vw, 456px); }
+
+/* 「词常见 · 搭配未见」：词本身没问题，只是这个组合在语料里没见到。
+   既不该像已查证那样给绿灯，也不该像未查证那样打删除线——它是中间档。 */
+.prep-tier[data-tier='head-only'] { color: #6b665c; background: #f3f1e9; }
+.prep-cand[data-tier='head-only'] .prep-en { text-decoration: none; }
+.prep-chip[data-tier='head-only'] { background: #f3f1e9; color: #4a463d; border: 0; text-decoration: none; }

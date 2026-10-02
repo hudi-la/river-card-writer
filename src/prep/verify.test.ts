@@ -1,9 +1,37 @@
 import { describe, it, expect, vi } from 'vitest'
-import { tierOf, createVerifier, RARE_BELOW } from './verify'
+import { tierOf, headWord, createVerifier, RARE_BELOW } from './verify'
+
+describe('headWord', () => {
+  it('取短语的第一个词', () => {
+    expect(headWord('enmeshed within it')).toBe('enmeshed')
+    expect(headWord('operationalized as independent actors')).toBe('operationalized')
+    expect(headWord('strut')).toBe('strut')
+  })
+})
 
 describe('tierOf', () => {
   it('查不到（null）一律是 unverified，绝不默认当成已查证', () => {
     expect(tierOf(null)).toBe('unverified')
+  })
+
+  it('整体搭配少见但词本身常见 → head-only，而不是冤枉它', () => {
+    // 实测数据：enmeshed within it 是 8.1e-10，而 enmeshed 本身是 7.9e-07
+    expect(tierOf(8.1e-10, 7.9e-7)).toBe('head-only')
+    // operationalized as independent actors 整体查不到，词头正常
+    expect(tierOf(null, 1e-6)).toBe('head-only')
+  })
+
+  it('整体和词头都少见才算 rare', () => {
+    expect(tierOf(1.5e-9, 1e-9)).toBe('rare')
+  })
+
+  it('整体本来就常见时，词头是什么都不影响', () => {
+    expect(tierOf(5.7e-7, null)).toBe('ok')
+    expect(tierOf(5.7e-7, 1e-12)).toBe('ok')
+  })
+
+  it('两个都查不到才是 unverified', () => {
+    expect(tierOf(null, null)).toBe('unverified')
   })
   it('频率够高是 ok（用的是实测到的真实频率）', () => {
     expect(tierOf(5.7e-7)).toBe('ok') // pin down
@@ -26,8 +54,9 @@ describe('createVerifier', () => {
   // 取数是批量的，而且必须在服务端做：Ngrams 端点不返回 CORS 头，浏览器直连
   // 会被拦掉，那会让每个词都变成"未查证"、徽章沦为纯噪音。
   const FREQS: Record<string, number | null> = { 'pin down': 5.7e-7, 'swat down': 1.5e-9 }
+  // 服务端现在给 { full, head } 一对；这里词头一律给 null，专测整体那一路。
   const fakeBatch = (forms: string[]) =>
-    Object.fromEntries(forms.map((f) => [f, FREQS[f] ?? null]))
+    Object.fromEntries(forms.map((f) => [f, { full: FREQS[f] ?? null, head: null }]))
 
   it('把每个词形映射到它的档位', async () => {
     const verify = createVerifier(async (forms) => fakeBatch(forms))
@@ -111,5 +140,15 @@ describe('createVerifier', () => {
     const verify = createVerifier(spy, { 'pin down': 'ok' })
     await verify(['pin down', 'swat down'])
     expect(spy.mock.calls[0][0]).toEqual(['swat down'])
+  })
+
+  it('旧形状（只给一个数）也认——服务端没来得及升级时不至于全军覆没', async () => {
+    const verify = createVerifier(async (forms) => Object.fromEntries(forms.map((f) => [f, 5.7e-7])))
+    expect((await verify(['pin down'])).get('pin down')).toBe('ok')
+  })
+
+  it('服务端给了词头频率时，整体少见的词形落到 head-only', async () => {
+    const verify = createVerifier(async () => ({ 'enmeshed within it': { full: 8.1e-10, head: 7.9e-7 } }))
+    expect((await verify(['enmeshed within it'])).get('enmeshed within it')).toBe('head-only')
   })
 })

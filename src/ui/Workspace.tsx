@@ -268,6 +268,35 @@ export function Workspace() {
     return runPrepOn([card], '备料完成')
   }
 
+  // 打开一张已经备过料、但查证结果缺失的卡时，自动把缺的补上。
+  //
+  // 为什么需要：查证档位是后来才持久化的，之前备的料刷新一次就全成了"未查证"
+  // ——一整栏好词被集体冤枉。重备一次要半分钟和真钱，而补查证只是纯语料查询，
+  // 1.3 秒、不花模型的钱，而且查过的词永久缓存。所以让它自己痊愈。
+  useEffect(() => {
+    const panelOpen = bilingual && prepOpen && !readMode && viewKind !== 'box'
+    if (!panelOpen || !activeCardId) return
+    const targets = book?.hints?.[activeCardId]?.targets
+    if (!targets || targets.length === 0) return
+    const missing = targets
+      .flatMap((t) => t.candidates.map((c) => c.verifyForm))
+      .filter((f) => f && !tiers.has(f))
+    if (missing.length === 0) return
+    let alive = true
+    verify(missing)
+      .then((m) => {
+        if (!alive || m.size === 0) return
+        setTiers((prev) => new Map([...prev, ...m]))
+        mergeVerified(Object.fromEntries(m))
+      })
+      .catch(() => {
+        // 查不到就维持原样（显示未查证），绝不让它打断写作
+      })
+    return () => {
+      alive = false
+    }
+  }, [bilingual, prepOpen, readMode, viewKind, activeCardId, book?.hints, tiers, verify, mergeVerified])
+
   // 异常兜底：shell 已经切到 'book' 但没有 activeBook（比如被删掉了）——安全地
   // 不渲染，而不是读 undefined 崩掉。App 下一次渲染通常会跟着 shell 回书柜。
   if (!book) return null

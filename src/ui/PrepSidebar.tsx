@@ -1,7 +1,12 @@
 import type { AiPolicy, Genre, Target } from '../prep/types'
 import type { Tier } from '../prep/verify'
 
-const TIER_LABEL: Record<Tier, string> = { ok: '已查证', rare: '罕用', unverified: '未查证' }
+const TIER_LABEL: Record<Tier, string> = {
+  ok: '已查证',
+  'head-only': '词常见 · 搭配未见',
+  rare: '罕用',
+  unverified: '未查证',
+}
 const GENRE_LABEL: Record<Genre, string> = { narrative: '叙事', expository: '议论', other: '其他' }
 const POLICY_LABEL: Record<AiPolicy, string> = { strict: '只给词', auto: '给译文' }
 
@@ -12,7 +17,6 @@ function TierBadge({ tier }: { tier: Tier }) {
   return (
     <span className="prep-tier" data-tier={tier}>
       {TIER_LABEL[tier]}
-      {tier === 'unverified' ? ' · 语料里查不到' : null}
     </span>
   )
 }

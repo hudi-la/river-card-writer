@@ -45,6 +45,6 @@ export function makeFetchFreqs(deps: { invoke?: InvokeFn } = {}): FetchFreqs {
     const { data, error } = await invoke('prep', { body: { kind: 'ngram', forms } })
     if (error) throw new Error(error.message)
     if (!data?.freqs) throw new Error('服务端没有返回 freqs')
-    return data.freqs as Record<string, number | null>
+    return data.freqs as Awaited<ReturnType<FetchFreqs>>
   }
 }
