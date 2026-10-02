@@ -31,8 +31,10 @@ export type FetchFreqs = (forms: string[]) => Promise<Record<string, number | nu
 // 一个词的历史语料频率不会变，所以缓存可以永久有效。
 // 只缓存查到结果的词——整批取数失败时不写缓存，否则一次网络抖动会把一整批
 // 好词永久钉在"未查证"上。
-export function createVerifier(fetchFreqs: FetchFreqs) {
-  const cache = new Map<string, Tier>()
+// seed：从持久化里读回来的已知档位，用来预热缓存。一个词的历史语料频率不会变，
+// 所以查过的永远不用再查——刷新之后也不该从零开始。
+export function createVerifier(fetchFreqs: FetchFreqs, seed?: Record<string, Tier>) {
+  const cache = new Map<string, Tier>(seed ? Object.entries(seed) : [])
 
   return async function verify(forms: string[]): Promise<Map<string, Tier>> {
     const unique = Array.from(new Set(forms.filter((f) => f.trim() !== '')))

@@ -753,3 +753,18 @@ describe('备料的 hints 与 aiPolicy', () => {
     expect('aiPolicy' in row.data).toBe(false)
   })
 })
+
+describe('verified 也要往返', () => {
+  it('查证档位能存能读——不然刷新后每个候选都变未查证，好词被集体冤枉', () => {
+    const verified = { 'hem in': 'ok' as const, 'swat down': 'rare' as const, 'corner off': 'unverified' as const }
+    const book: Book = {
+      id: '44444444-4444-4444-8444-444444444444', title: '书', doc: {}, boxes: [], verified,
+    }
+    expect(rowToBook(bookToRow(book, 'owner', 0)).verified).toEqual(verified)
+  })
+
+  it('没有 verified 的书不往 data 里塞空对象', () => {
+    const book: Book = { id: '55555555-5555-4555-8555-555555555555', title: '书', doc: {}, boxes: [] }
+    expect('verified' in bookToRow(book, 'owner', 0).data).toBe(false)
+  })
+})

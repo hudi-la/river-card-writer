@@ -967,6 +967,7 @@ describe('normalizeBook 不许丢字段', () => {
       author: '作者',
       hints: { c0: { genre: 'narrative' as const, genreReason: '', targets: [] } },
       aiPolicy: 'auto' as const,
+      verified: { 'hem in': 'ok' as const },
     }
     const out = normalizeBook(raw) as Record<string, unknown>
     const lost = Object.keys(raw).filter((k) => out[k] === undefined)

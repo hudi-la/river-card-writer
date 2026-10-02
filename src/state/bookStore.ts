@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import { mergeImported, mergeUniversalCards } from './backup'
 import type { AiPolicy, PrepResult } from '../prep/types'
+import type { Tier } from '../prep/verify'
 import { pushSnapshot, decideSnapshot } from './snapshots'
 
 export const EMPTY_DOC = { type: 'doc', content: [{ type: 'card', content: [{ type: 'paragraph' }] }] }
@@ -39,8 +40,11 @@ export function isValidCover(raw: any): raw is Cover {
 // 自己敲的字。
 // aiPolicy：这份稿子允许 AI 做到哪一档（strict 只给词 / auto 额外给整句译文）。
 // 默认 strict——安全的那一档是默认值，放开要主动开口。
+// verified：词形 → 查证档位。必须持久化，否则刷新后每个候选都落到"未查证"，
+// 好词被集体冤枉、徽章沦为纯噪音（spec §11.1 说的那个负资产）。
+// 一个词的历史语料频率不会变，所以这份记录永不过期，也能用来预热查证器。
 // 两个都是可选字段，老书读出来是 undefined、行为零变化，跟 cover/subtitle 同一个路子。
-export type Book = { id: string; title: string; doc: any; boxes: Box[]; updatedAt?: string; cover?: Cover; subtitle?: string; author?: string; hints?: Record<string, PrepResult>; aiPolicy?: AiPolicy }
+export type Book = { id: string; title: string; doc: any; boxes: Box[]; updatedAt?: string; cover?: Cover; subtitle?: string; author?: string; hints?: Record<string, PrepResult>; aiPolicy?: AiPolicy; verified?: Record<string, Tier> }
 export type Library = { books: Book[]; activeBookId: string | null; universalBoxes: Box[] }
 
 // 库级通用盒子：不属于任何一本书，跨所有书共享同一份实例。Phase 14 起支持
@@ -100,6 +104,7 @@ type BookState = {
   updateDoc: (doc: object) => void
   setAiPolicy: (policy: AiPolicy) => void
   setCardHints: (cardId: string, result: PrepResult) => void
+  mergeVerified: (tiers: Record<string, Tier>) => void
   openDoc: () => void
   addBox: (name: string) => Box | undefined
   // 重命名当前书里指定 id 的盒子；忽略空名（trim 后为空则 no-op，盒子名不变）。
@@ -803,6 +808,13 @@ export const useBookStore = create<BookState>((set, get) => {
     },
     setAiPolicy: (aiPolicy) => {
       withActiveBook((book) => ({ book: { ...book, aiPolicy }, result: undefined }))
+    },
+    mergeVerified: (tiers) => {
+      if (Object.keys(tiers).length === 0) return
+      withActiveBook((book) => ({
+        book: { ...book, verified: { ...(book.verified ?? {}), ...tiers } },
+        result: undefined,
+      }))
     },
     setCardHints: (cardId, result) => {
       withActiveBook((book) => ({

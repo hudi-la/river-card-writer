@@ -96,4 +96,20 @@ describe('createVerifier', () => {
     expect(spy).not.toHaveBeenCalled()
     expect(m.size).toBe(0)
   })
+
+  it('能用持久化读回来的档位预热——查过的词刷新后也不用再查', async () => {
+    const spy = vi.fn(async (forms: string[]) => fakeBatch(forms))
+    const verify = createVerifier(spy, { 'pin down': 'ok', 'swat down': 'rare' })
+    const m = await verify(['pin down', 'swat down'])
+    expect(spy).not.toHaveBeenCalled()
+    expect(m.get('pin down')).toBe('ok')
+    expect(m.get('swat down')).toBe('rare')
+  })
+
+  it('预热里没有的词照常去查', async () => {
+    const spy = vi.fn(async (forms: string[]) => fakeBatch(forms))
+    const verify = createVerifier(spy, { 'pin down': 'ok' })
+    await verify(['pin down', 'swat down'])
+    expect(spy.mock.calls[0][0]).toEqual(['swat down'])
+  })
 })

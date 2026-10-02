@@ -83,6 +83,7 @@ export function Workspace() {
   const setRailWidth = usePrefsStore((s) => s.setRailWidth)
   const setCardHints = useBookStore((s) => s.setCardHints)
   const setAiPolicy = useBookStore((s) => s.setAiPolicy)
+  const mergeVerified = useBookStore((s) => s.mergeVerified)
   const railDragRef = useRef<RailDragState | null>(null)
 
   // 双语并排：本地开关（离开这本书自然重置）。开着时每张卡变两列、右边出备料边栏。
@@ -105,8 +106,17 @@ export function Workspace() {
   // 「停」：不中断已经发出的请求（那次调用的钱已经花了），只是不再发新的。
   const stopRef = useRef(false)
   // 查证结果按词形累积。整个会话共用一个 verifier，所以同一个词只查一次。
-  const [tiers, setTiers] = useState<Map<string, Tier>>(new Map())
-  const verify = useMemo(() => createVerifier(makeFetchFreqs()), [])
+  // 查证档位从持久化里读回来。不读的话刷新后 tiers 是空的，每个候选都落到
+  // "未查证"——好词被集体冤枉，徽章沦为纯噪音。
+  // useState 的惰性初始值：只在首次渲染时读一次。
+  const [tiers, setTiers] = useState<Map<string, Tier>>(
+    () => new Map(Object.entries(useBookStore.getState().activeBook()?.verified ?? {}))
+  )
+  // 查证器也用同一份预热：查过的词永不重查，刷新之后也不从零开始。
+  const verify = useMemo(
+    () => createVerifier(makeFetchFreqs(), useBookStore.getState().activeBook()?.verified),
+    []
+  )
   const activeCardId = useActiveCardId()
   // 阅读/排版视图：本地开关（离开这本书自然重置）。开着时隐藏目录栏、正文换成只读排版。
   // 存一份到 sessionStorage：刷新不会跑卸载 cleanup，标记还在 → 恢复到阅读视图；
@@ -220,7 +230,11 @@ export function Workspace() {
           const id = ids[0]
           setPrepWarnings((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), ...w] }))
         },
-        onTiers: (m) => setTiers((prev) => new Map([...prev, ...m])),
+        onTiers: (m) => {
+          setTiers((prev) => new Map([...prev, ...m]))
+          // 同时落盘，否则刷新就全没了
+          mergeVerified(Object.fromEntries(m))
+        },
         onProgress: (done, total) => setProgress({ done, total }),
         onError: (cardId, error) => {
           setPrepErrors((prev) => ({ ...prev, [cardId]: error }))
