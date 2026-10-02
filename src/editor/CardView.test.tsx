@@ -170,6 +170,31 @@ describe('CardView 的英文栏', () => {
     expect((cells[0] as HTMLTextAreaElement).value).toBe('One.')
   })
 
+  it('每个格子外面有个影子元素带着同一份文字——高度靠它撑开，不靠 JS 量', async () => {
+    const { container } = render(<EnHarness en={['One.', 'Two.']} enSrc={zhFingerprint(['第一段', '第二段'])} />)
+    await new Promise((r) => setTimeout(r, 0))
+    const cells = container.querySelectorAll('.card-en-cell')
+    expect(cells.length).toBe(2)
+    expect(Array.from(cells).map((c) => c.getAttribute('data-value'))).toEqual(['One.', 'Two.'])
+  })
+
+  it('打字时影子跟着变，所以格子边打边长', async () => {
+    const { container } = render(<EnHarness en={['One.', 'Two.']} enSrc={zhFingerprint(['第一段', '第二段'])} />)
+    await new Promise((r) => setTimeout(r, 0))
+    const cell = container.querySelector('.card-en-cell') as HTMLElement
+    const ta = cell.querySelector('.card-en-p') as HTMLTextAreaElement
+    ta.value = 'One.\nTwo.\nThree.'
+    ta.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(cell.getAttribute('data-value')).toBe('One.\nTwo.\nThree.')
+  })
+
+  it('绝不给 textarea 写死内联高度——隐藏时量出来的是 0，会把格子钉成一行', async () => {
+    const { container } = render(<EnHarness en={['很长的一段英文，长到必然要折行才放得下，用来确认高度不是被钉死的', 'Two.']} enSrc={'x'} />)
+    await new Promise((r) => setTimeout(r, 0))
+    const ta = container.querySelector('.card-en-p') as HTMLTextAreaElement
+    expect(ta.style.height).toBe('')
+  })
+
   it('在英文格子里打字后失焦，写回 card 的 en 属性并盖 enAt', async () => {
     let ed: Editor | undefined
     function Wrap() {

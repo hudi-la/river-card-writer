@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useRef } from 'react'
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react'
 import { GripVertical } from 'lucide-react'
 import { autoCardColor } from './schema'
@@ -19,6 +19,12 @@ import { prepHitCount } from './prepHighlight'
 //
 // 非受控 + 失焦写回：受控组件每次击键都要重渲染，容易跟光标打架；而写回发生
 // 在失焦之后，那时焦点已经离开，不会把正在打字的位置冲掉。
+//
+// 高度走纯 CSS（外层 .card-en-cell 的 ::after 复制同一份文字当影子，把格子
+// 撑到真实高度），不用 JS 量。原来用的是 el.scrollHeight——而 .card-en 平时是
+// display:none，textarea 在隐藏状态下挂载时 scrollHeight 读出来是 0，高度就被
+// 钉死成一行；开关备料边栏导致栏宽变化时同样会失准。
+// 任何"量一次就记住"的做法在这里都会过期，CSS 不会。
 function EnCell({
   value,
   style,
@@ -32,41 +38,35 @@ function EnCell({
   placeholder?: string
   onCommit: (text: string) => void
 }) {
-  const ref = useRef<HTMLTextAreaElement>(null)
-
-  // 高度跟着内容长。textarea 默认是固定行数的滚动框，那在并排阅读里没法看——
-  // 中英两栏必须各自撑开到自己的真实高度才对得上。
-  const grow = () => {
-    const el = ref.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
-  }
-  useLayoutEffect(grow, [value])
+  const wrap = useRef<HTMLDivElement>(null)
 
   return (
-    <textarea
-      ref={ref}
-      className="card-en-p"
-      data-style={style}
-      aria-label={`第 ${index + 1} 段的英文`}
-      defaultValue={value}
-      rows={1}
-      spellCheck
-      placeholder={placeholder}
-      onInput={grow}
-      onBlur={(e) => onCommit(e.currentTarget.value)}
-      // CRITICAL：拦住事件，别让它们冒到 ProseMirror 的根上去。
-      // 这个 textarea 在 PM 可编辑区内部（靠 aside 的 contentEditable={false}
-      // 隔开），但 DOM 事件照样会冒泡；PM 的 keymap 抓 Backspace / Enter 等键，
-      // 很可能就是原来"英文格子里删不掉行"的另一半原因。
-      // 这里只挡键盘和粘贴——失焦、输入这些 PM 不处理的照常往上走。
-      onKeyDown={(e) => e.stopPropagation()}
-      onKeyUp={(e) => e.stopPropagation()}
-      onPaste={(e) => e.stopPropagation()}
-      onCut={(e) => e.stopPropagation()}
-      onDragStart={(e) => e.stopPropagation()}
-    />
+    <div className="card-en-cell" ref={wrap} data-value={value}>
+      <textarea
+        className="card-en-p"
+        data-style={style}
+        aria-label={`第 ${index + 1} 段的英文`}
+        defaultValue={value}
+        rows={1}
+        spellCheck
+        placeholder={placeholder}
+        // 高度由外层那个影子元素（::after 复制同一份文字）撑开，这里只负责
+        // 把当前值同步过去。不读 scrollHeight、不量任何东西。
+        onInput={(e) => {
+          if (wrap.current) wrap.current.dataset.value = e.currentTarget.value
+        }}
+        onBlur={(e) => onCommit(e.currentTarget.value)}
+        // CRITICAL：拦住事件，别让它们冒到 ProseMirror 的根上去。
+        // 这个 textarea 在 PM 可编辑区内部（靠 aside 的 contentEditable={false}
+        // 隔开），但 DOM 事件照样会冒泡；PM 的 keymap 抓 Backspace / Enter 等键，
+        // 那是原来"英文格子里删不掉行"的另一半原因。
+        onKeyDown={(e) => e.stopPropagation()}
+        onKeyUp={(e) => e.stopPropagation()}
+        onPaste={(e) => e.stopPropagation()}
+        onCut={(e) => e.stopPropagation()}
+        onDragStart={(e) => e.stopPropagation()}
+      />
+    </div>
   )
 }
 
