@@ -15,7 +15,7 @@ const targets: Target[] = [{
   ],
   noSingleWord: false, family: '剥夺退路的掌控',
 }]
-const tiers = new Map<string, Tier>([['hem in', 'ok'], ['swat down', 'rare'], ['corner off', 'unverified']])
+const tiers = new Map<string, Tier>([['hem in', 'found'], ['swat down', 'collocation-unseen'], ['corner off', 'not-found']])
 
 const sidebar = (over: Partial<Parameters<typeof PrepSidebar>[0]> = {}) =>
   render(<PrepSidebar targets={targets} genre="narrative" tiers={tiers} {...over} />)
@@ -40,15 +40,17 @@ describe('PrepSidebar', () => {
   it('三档徽章各自可辨，未查证的那个明确说自己没有背书', () => {
     const { container } = sidebar()
     const badges = container.querySelectorAll('.prep-tier[data-tier]')
-    expect(Array.from(badges).map((b) => b.getAttribute('data-tier'))).toEqual(['ok', 'rare', 'unverified'])
-    expect(container.textContent).toContain('未查证')
-    expect(container.textContent).toContain('罕用')
+    expect(Array.from(badges).map((b) => b.getAttribute('data-tier'))).toEqual([
+      'found', 'collocation-unseen', 'not-found',
+    ])
+    expect(container.textContent).toContain('语料里没查到')
+    expect(container.textContent).toContain('这个搭配没查到')
   })
 
   it('查证结果里没有这个词形时，保守地当未查证——绝不默认当成已查证', () => {
     const { container } = sidebar({ tiers: new Map() })
     const badges = container.querySelectorAll('.prep-tier[data-tier]')
-    expect(Array.from(badges).every((b) => b.getAttribute('data-tier') === 'unverified')).toBe(true)
+    expect(Array.from(badges).every((b) => b.getAttribute('data-tier') === 'not-found')).toBe(true)
   })
 
   it('表头只有一行：标题在左、文体条数在右', () => {
@@ -158,7 +160,7 @@ describe('PrepSidebar', () => {
     const chips = container.querySelectorAll('details.prep-target summary .prep-chip')
     expect(chips.length).toBe(9) // 三条靶心各三个候选
     expect(Array.from(chips).slice(0, 3).map((c) => c.getAttribute('data-tier'))).toEqual([
-      'ok', 'rare', 'unverified',
+      'found', 'collocation-unseen', 'not-found',
     ])
   })
 
@@ -194,9 +196,10 @@ describe('PrepSidebar', () => {
     expect(container.textContent).toContain('英文没有对应单词')
   })
 
-  it('「词常见 · 搭配未见」这一档不打删除线——词本身没问题，别冤枉它', () => {
-    const tiersHead = new Map<string, Tier>([['hem in', 'head-only']])
-    const { container } = sidebar({ tiers: tiersHead })
-    expect(container.querySelector('.prep-tier[data-tier="head-only"]')?.textContent).toBe('词常见 · 搭配未见')
+  it('查证只说有没有，不说常不常用——低频的词不该被标成警告', () => {
+    const rare = new Map<string, Tier>([['hem in', 'found']])
+    const { container } = sidebar({ tiers: rare })
+    expect(container.querySelector('.prep-tier[data-tier="found"]')?.textContent).toBe('查到了')
+    expect(container.textContent).not.toContain('罕用')
   })
 })

@@ -14,40 +14,41 @@
 //              可那个词是好词。不区分的话好词会被当成可疑词，徽章就废了。
 // rare      —— 整体和词头都少见
 // unverified—— 什么都没查到
-export type Tier = 'ok' | 'head-only' | 'rare' | 'unverified'
+// 查证只回答一件事：**这个词组在真实英文里有没有人用过。**
+//
+// 2026-10-02 砍掉了频率判断。原来还有一档「罕用」（频率低于 1e-8），那是个
+// 方向错误的设计：学术和文学写作里，**精确的词往往就是低频的词**——
+// operationalized、enmeshed、self-effacement 全都不常见，全都是对的。给它们
+// 挂一个像警告的标签，等于在惩罚精确。
+//
+// 这一层存在的唯一理由是 LLM 会造词（真造过 cerebral haughtiness、
+// architecting the initial conditions、pace the beat）。那类词读起来很顺，
+// 作者信了写进稿子才是最坏的结果。存在性检查抓的就是它们，而且**很少触发**
+// ——一个只在真有问题时才响的信号才有人看。
+//
+//   found              —— 语料里有人这么用
+//   collocation-unseen —— 词本身有，但这个组合没见过。对"造搭配"这件事最敏感
+//                         的恰恰是这一档，所以不能把它并进 found
+//   not-found          —— 整体和词头都没查到
+export type Tier = 'found' | 'collocation-unseen' | 'not-found'
 
-// 门槛是相对的，重点是分档本身。这个值来自实测：swat down 1.5e-9（确实罕用）
-// vs hem in 7.1e-8（正常书面词），1e-8 把两者分开。
+/** @deprecated 频率门槛已废弃，保留只为旧数据读取时不炸。 */
 export const RARE_BELOW = 1e-8
 
 // 词头：短语的第一个词。英语里动词短语的信息量基本都在它身上
-// （enmeshed within it → enmeshed；operationalized as independent actors →
-// operationalized），拿它兜底最省事也最准。
+// （enmeshed within it → enmeshed）。
 export function headWord(form: string): string {
   return form.trim().split(/[\s,]+/)[0] ?? ''
 }
 
-// CRITICAL：查不到绝不默认当成已查证。
-// 0 → rare 而不是 unverified：那是"查到了，只是极少"，跟"查不到"是两件事。
-//
-// head 这一层是实测逼出来的：enmeshed within it 是 8.1e-10（看着像可疑词），
-// 而 enmeshed 本身是 7.9e-07（再正常不过）。不兜这一层的话，一整栏好词会被
-// 集体标成罕用/未查证，作者两天就学会无视徽章——那正是 spec §11.1 说的负资产。
-// 但也不能直接拿词头的频率当整体的频率：那会让模型生造的搭配蒙混过关
-// （pace the beat → pace 很常见）。所以单列一档，把"词常见、搭配未见"说出来。
+// 只看有没有，不看多少。任何非零频率都算"有人这么用过"。
+// CRITICAL：查不到绝不默认当成查到了——这一层的全部价值就在于不放过造出来的词。
 export function tierOf(freq: number | null, headFreq?: number | null): Tier {
-  if (freq != null && freq >= RARE_BELOW) return 'ok'
-  if (headFreq != null && headFreq >= RARE_BELOW) return 'head-only'
-  if (freq != null) return 'rare'
-  return 'unverified'
+  if (freq != null && freq > 0) return 'found'
+  if (headFreq != null && headFreq > 0) return 'collocation-unseen'
+  return 'not-found'
 }
 
-// 批量取频率。CRITICAL：取数必须在服务端做。
-// books.google.com/ngrams/json **不返回 Access-Control-Allow-Origin**，浏览器
-// 直连一律被 CORS 拦掉——那会让每个词都变成"未查证"，徽章沦为纯噪音，正是
-// spec §11.1 说的"负资产"（只不过成因是全军覆没而不是误报）。
-// 这个函数因此是注入进来的：实现走 Edge Function（见 client.ts），测试注入假的。
-// 服务端对每个词形返回两个数：整体搭配的频率，和词头的频率（单词形态下两者相同）。
 export type FreqPair = { full: number | null; head: number | null }
 export type FetchFreqs = (forms: string[]) => Promise<Record<string, FreqPair | number | null>>
 
@@ -56,8 +57,25 @@ export type FetchFreqs = (forms: string[]) => Promise<Record<string, FreqPair | 
 // 好词永久钉在"未查证"上。
 // seed：从持久化里读回来的已知档位，用来预热缓存。一个词的历史语料频率不会变，
 // 所以查过的永远不用再查——刷新之后也不该从零开始。
+// 旧数据里存的是废弃的档位名（ok / rare / head-only / unverified）。
+// 读回来时就地迁移，省得为了几个旧值写一次数据库迁移。
+const LEGACY_TIERS: Record<string, Tier> = {
+  ok: 'found',
+  rare: 'found', // 「罕用」本来就是查到了，只是频率低——那不该是个警告
+  'head-only': 'collocation-unseen',
+  unverified: 'not-found',
+}
+
+function migrateTier(v: string): Tier {
+  return (['found', 'collocation-unseen', 'not-found'] as string[]).includes(v)
+    ? (v as Tier)
+    : (LEGACY_TIERS[v] ?? 'not-found')
+}
+
 export function createVerifier(fetchFreqs: FetchFreqs, seed?: Record<string, Tier>) {
-  const cache = new Map<string, Tier>(seed ? Object.entries(seed) : [])
+  const cache = new Map<string, Tier>(
+    seed ? Object.entries(seed).map(([k, v]) => [k, migrateTier(v as string)]) : []
+  )
 
   return async function verify(forms: string[]): Promise<Map<string, Tier>> {
     const unique = Array.from(new Set(forms.filter((f) => f.trim() !== '')))
@@ -80,7 +98,9 @@ export function createVerifier(fetchFreqs: FetchFreqs, seed?: Record<string, Tie
     }
 
     const out = new Map<string, Tier>()
-    for (const f of unique) out.set(f, cache.get(f) ?? 'unverified')
+    for (const f of unique) out.set(f, cache.get(f) ?? 'not-found')
     return out
   }
 }
+
+export { migrateTier }

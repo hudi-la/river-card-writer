@@ -1,12 +1,14 @@
 import type { AiPolicy, Genre, Target } from '../prep/types'
 import type { Tier } from '../prep/verify'
 
+// 查证只回答"真实英文里有没有人这么用过"，不回答"常不常用"。
+// 常不常用由候选自己的「语域」字段说（那是人话判断，不是一个数字）。
 const TIER_LABEL: Record<Tier, string> = {
-  ok: '已查证',
-  'head-only': '词常见 · 搭配未见',
-  rare: '罕用',
-  unverified: '未查证',
+  found: '查到了',
+  'collocation-unseen': '这个搭配没查到',
+  'not-found': '语料里没查到',
 }
+
 const GENRE_LABEL: Record<Genre, string> = { narrative: '叙事', expository: '议论', other: '其他' }
 const POLICY_LABEL: Record<AiPolicy, string> = { strict: '只给词', auto: '给译文' }
 
@@ -58,7 +60,9 @@ export function PrepSidebar({
       {/* 一行表头：左标题、右文体条数。原来我把标题另起一行压在这上面，
           于是边栏顶上出现两行 chrome——那就是页面上看着重复的东西。 */}
       <header className="prep-head">
-        <span className="prep-title">备料 · 当前这张卡</span>
+        <span className="prep-title" title="徽章 = 拿 Google Books 语料查这个词组真有人用过没有。只看有没有，不看常不常用——学术写作里精确的词往往就是低频的词。">
+          备料 · 当前这张卡
+        </span>
         <span className="prep-meta">
           {busy
             ? progress && progress.total > 1
@@ -177,7 +181,7 @@ export function PrepSidebar({
             {t.noSingleWord ? <span className="prep-nosingle">英文没有对应单词</span> : null}
             {/* 折起来时在标题行上留下候选词，展开后由 CSS 藏掉——否则重复 */}
             {t.candidates.map((c) => (
-              <span className="prep-chip" key={c.en} data-tier={tiers.get(c.verifyForm) ?? 'unverified'}>
+              <span className="prep-chip" key={c.en} data-tier={tiers.get(c.verifyForm) ?? 'not-found'}>
                 {c.en}
               </span>
             ))}
@@ -199,7 +203,7 @@ export function PrepSidebar({
 
           <ul className="prep-cands">
             {t.candidates.map((c) => {
-              const tier = tiers.get(c.verifyForm) ?? 'unverified'
+              const tier = tiers.get(c.verifyForm) ?? 'not-found'
               return (
                 <li className="prep-cand" key={c.en} data-tier={tier}>
                   <div className="prep-cand-head">

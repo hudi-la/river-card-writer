@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { tierOf, headWord, createVerifier, RARE_BELOW } from './verify'
+import { tierOf, headWord, createVerifier, migrateTier } from './verify'
 
 describe('headWord', () => {
   it('取短语的第一个词', () => {
@@ -9,44 +9,34 @@ describe('headWord', () => {
   })
 })
 
-describe('tierOf', () => {
-  it('查不到（null）一律是 unverified，绝不默认当成已查证', () => {
-    expect(tierOf(null)).toBe('unverified')
+describe('tierOf —— 只回答"有没有人这么用过"', () => {
+  it('查到就是查到，不管频率多低', () => {
+    // 2026-10-02 砍掉了「罕用」那一档。学术和文学写作里精确的词往往就是低频的
+    // 词（operationalized、enmeshed、self-effacement），给它们挂警告标签等于
+    // 在惩罚精确。
+    expect(tierOf(5.7e-7)).toBe('found')
+    expect(tierOf(1.5e-9)).toBe('found') // swat down，确实少见但确实是英文
+    expect(tierOf(6.8e-11)).toBe('found')
   })
 
-  it('整体搭配少见但词本身常见 → head-only，而不是冤枉它', () => {
-    // 实测数据：enmeshed within it 是 8.1e-10，而 enmeshed 本身是 7.9e-07
-    expect(tierOf(8.1e-10, 7.9e-7)).toBe('head-only')
-    // operationalized as independent actors 整体查不到，词头正常
-    expect(tierOf(null, 1e-6)).toBe('head-only')
+  it('整体没查到但词本身有 → collocation-unseen', () => {
+    // enmeshed within it 整体查不到，enmeshed 本身 7.9e-07
+    expect(tierOf(null, 7.9e-7)).toBe('collocation-unseen')
+    expect(tierOf(0, 7.9e-7)).toBe('collocation-unseen')
   })
 
-  it('整体和词头都少见才算 rare', () => {
-    expect(tierOf(1.5e-9, 1e-9)).toBe('rare')
+  it('这一档不能并进 found——对"造搭配"最敏感的恰恰是它', () => {
+    // pace the beat：pace 很常见，但那个词组是模型造的（英文说的是 walk the beat）
+    expect(tierOf(null, 1e-5)).not.toBe('found')
   })
 
-  it('整体本来就常见时，词头是什么都不影响', () => {
-    expect(tierOf(5.7e-7, null)).toBe('ok')
-    expect(tierOf(5.7e-7, 1e-12)).toBe('ok')
+  it('两个都没查到才是 not-found', () => {
+    expect(tierOf(null, null)).toBe('not-found')
+    expect(tierOf(null)).toBe('not-found')
   })
 
-  it('两个都查不到才是 unverified', () => {
-    expect(tierOf(null, null)).toBe('unverified')
-  })
-  it('频率够高是 ok（用的是实测到的真实频率）', () => {
-    expect(tierOf(5.7e-7)).toBe('ok') // pin down
-    expect(tierOf(7.1e-8)).toBe('ok') // hem in
-    expect(tierOf(9.5e-7)).toBe('ok') // strut
-  })
-  it('频率极低是 rare——真实存在但很少见，标出来但不删', () => {
-    expect(tierOf(1.5e-9)).toBe('rare') // swat down
-  })
-  it('门槛边界：恰好等于门槛算 ok', () => {
-    expect(tierOf(RARE_BELOW)).toBe('ok')
-    expect(tierOf(RARE_BELOW - 1e-12)).toBe('rare')
-  })
-  it('0 算 rare 而不是 unverified——查到了，只是极少', () => {
-    expect(tierOf(0)).toBe('rare')
+  it('查不到绝不默认当成查到了——这一层的全部价值就在于不放过造出来的词', () => {
+    expect(tierOf(null)).not.toBe('found')
   })
 })
 
@@ -61,10 +51,10 @@ describe('createVerifier', () => {
   it('把每个词形映射到它的档位', async () => {
     const verify = createVerifier(async (forms) => fakeBatch(forms))
     const m = await verify(['pin down', 'swat down', 'cerebral haughtiness'])
-    expect(m.get('pin down')).toBe('ok')
-    expect(m.get('swat down')).toBe('rare')
-    // 这个就是模型真的造出来的那个词
-    expect(m.get('cerebral haughtiness')).toBe('unverified')
+    expect(m.get('pin down')).toBe('found')
+    expect(m.get('swat down')).toBe('found') // 少见但确实是英文，不该被警告
+    // 这个是模型真造出来的词，语料里一点痕迹都没有
+    expect(m.get('cerebral haughtiness')).toBe('not-found')
   })
 
   it('一批只发一次请求，重复词形去重', async () => {
@@ -94,8 +84,8 @@ describe('createVerifier', () => {
   it('整批取数抛异常时全降级成 unverified，绝不让整次备料失败', async () => {
     const verify = createVerifier(async () => { throw new Error('CORS blocked') })
     const m = await verify(['anything', 'else'])
-    expect(m.get('anything')).toBe('unverified')
-    expect(m.get('else')).toBe('unverified')
+    expect(m.get('anything')).toBe('not-found')
+    expect(m.get('else')).toBe('not-found')
   })
 
   it('整批失败不写缓存——下次还要再试，免得一次网络抖动把一整批好词永久钉住', async () => {
@@ -106,8 +96,8 @@ describe('createVerifier', () => {
       return fakeBatch(forms)
     })
     const verify = createVerifier(flaky)
-    expect((await verify(['pin down'])).get('pin down')).toBe('unverified')
-    expect((await verify(['pin down'])).get('pin down')).toBe('ok')
+    expect((await verify(['pin down'])).get('pin down')).toBe('not-found')
+    expect((await verify(['pin down'])).get('pin down')).toBe('found')
   })
 
   it('服务端明确说"没查到"（返回 null）是可缓存的结论，不再重查', async () => {
@@ -128,27 +118,36 @@ describe('createVerifier', () => {
 
   it('能用持久化读回来的档位预热——查过的词刷新后也不用再查', async () => {
     const spy = vi.fn(async (forms: string[]) => fakeBatch(forms))
-    const verify = createVerifier(spy, { 'pin down': 'ok', 'swat down': 'rare' })
+    const verify = createVerifier(spy, { 'pin down': 'found', 'swat down': 'found' })
     const m = await verify(['pin down', 'swat down'])
     expect(spy).not.toHaveBeenCalled()
-    expect(m.get('pin down')).toBe('ok')
-    expect(m.get('swat down')).toBe('rare')
+    expect(m.get('pin down')).toBe('found')
   })
 
   it('预热里没有的词照常去查', async () => {
     const spy = vi.fn(async (forms: string[]) => fakeBatch(forms))
-    const verify = createVerifier(spy, { 'pin down': 'ok' })
+    const verify = createVerifier(spy, { 'pin down': 'found' })
     await verify(['pin down', 'swat down'])
     expect(spy.mock.calls[0][0]).toEqual(['swat down'])
   })
 
   it('旧形状（只给一个数）也认——服务端没来得及升级时不至于全军覆没', async () => {
     const verify = createVerifier(async (forms) => Object.fromEntries(forms.map((f) => [f, 5.7e-7])))
-    expect((await verify(['pin down'])).get('pin down')).toBe('ok')
+    expect((await verify(['pin down'])).get('pin down')).toBe('found')
   })
 
   it('服务端给了词头频率时，整体少见的词形落到 head-only', async () => {
-    const verify = createVerifier(async () => ({ 'enmeshed within it': { full: 8.1e-10, head: 7.9e-7 } }))
-    expect((await verify(['enmeshed within it'])).get('enmeshed within it')).toBe('head-only')
+    const verify = createVerifier(async () => ({ 'enmeshed within it': { full: null, head: 7.9e-7 } }))
+    expect((await verify(['enmeshed within it'])).get('enmeshed within it')).toBe('collocation-unseen')
+  })
+
+  it('旧持久化里的档位名就地迁移——不为几个旧值写数据库迁移', () => {
+    expect(migrateTier('ok')).toBe('found')
+    // 「罕用」本来就是查到了，只是频率低——那不该是个警告
+    expect(migrateTier('rare')).toBe('found')
+    expect(migrateTier('head-only')).toBe('collocation-unseen')
+    expect(migrateTier('unverified')).toBe('not-found')
+    expect(migrateTier('found')).toBe('found')
+    expect(migrateTier('啥也不是')).toBe('not-found')
   })
 })

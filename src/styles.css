@@ -1172,12 +1172,14 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
 /* 三档徽章：靠形状 + 明度区分，不只靠颜色——未查证的是空心环加删除线，
    看不出颜色差别也认得出来。 */
 .prep-tier { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; }
-.prep-tier[data-tier='ok'] { color: #2e6b58; background: #e6f0eb; }
-.prep-tier[data-tier='rare'] { color: #8c6d28; background: #f6ecd4; border: 1px solid #ddc9a0; }
-.prep-tier[data-tier='unverified'] { color: #8f3a22; background: #fff; border: 1.5px solid #d9a695; }
+/* 查到了的那一档刻意做得最轻——那是常态，不该抢眼 */
+.prep-tier[data-tier='found'] { color: #6b7a72; background: #eef2f0; font-weight: 600; }
+.prep-tier[data-tier='collocation-unseen'] { color: #8c6d28; background: #f6ecd4; border: 1px solid #ddc9a0; }
+.prep-tier[data-tier='not-found'] { color: #8f3a22; background: #fff; border: 1.5px solid #d9a695; }
 /* 未查证的候选整体降级：作者看得见它没有背书 */
-.prep-cand[data-tier='unverified'] { background: #fcf8f7; margin-left: -14px; margin-right: -14px; padding-left: 14px; padding-right: 14px; }
-.prep-cand[data-tier='unverified'] .prep-en { color: #6b665c; text-decoration: line-through; text-decoration-color: #c99a8a; }
+/* 只有「没查到」才降级显示——那才是可能被模型造出来的那种 */
+.prep-cand[data-tier='not-found'] { background: #fcf8f7; margin-left: -14px; margin-right: -14px; padding-left: 14px; padding-right: 14px; }
+.prep-cand[data-tier='not-found'] .prep-en { color: #6b665c; text-decoration: line-through; text-decoration-color: #c99a8a; }
 
 /* ── 译前备料：跟设计稿对齐的几处 ────────────────────────────────── */
 
@@ -1236,8 +1238,8 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
   background: #f3f1e9;
   color: #4a463d;
 }
-.prep-chip[data-tier='rare'] { background: #f6ecd4; color: #8c6d28; }
-.prep-chip[data-tier='unverified'] {
+.prep-chip[data-tier='collocation-unseen'] { background: #f6ecd4; color: #8c6d28; }
+.prep-chip[data-tier='not-found'] {
   background: #fff;
   border: 1px solid #d9a695;
   color: #8f3a22;
@@ -1332,8 +1334,3 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
 .app--no-nav { grid-template-columns: minmax(0, 1fr); }
 .app--no-nav.app--bilingual { grid-template-columns: minmax(0, 1fr) clamp(300px, 26vw, 456px); }
 
-/* 「词常见 · 搭配未见」：词本身没问题，只是这个组合在语料里没见到。
-   既不该像已查证那样给绿灯，也不该像未查证那样打删除线——它是中间档。 */
-.prep-tier[data-tier='head-only'] { color: #6b665c; background: #f3f1e9; }
-.prep-cand[data-tier='head-only'] .prep-en { text-decoration: none; }
-.prep-chip[data-tier='head-only'] { background: #f3f1e9; color: #4a463d; border: 0; text-decoration: none; }
