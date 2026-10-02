@@ -302,7 +302,14 @@ export function Workspace() {
             </button>
 
             {!readMode && viewKind !== 'box' && (
-              <button className="icon-toggle" data-on={bilingual ? 'true' : undefined} onClick={() => setBilingual((v) => { setNavOpen(v); return !v })} title={bilingual ? '回到单语' : '中英并排'} aria-label={bilingual ? '回到单语' : '中英并排'}>
+              <button className="icon-toggle" data-on={bilingual ? 'true' : undefined} onClick={() => setBilingual((v) => {
+                const next = !v
+                // 进双语：目录让位（横向空间最紧张），备料边栏默认打开——
+                // 那是双语模式的主要用途。退出时各自还原。
+                setNavOpen(!next)
+                setPrepOpen(next)
+                return next
+              })} title={bilingual ? '回到单语' : '中英并排'} aria-label={bilingual ? '回到单语' : '中英并排'}>
                 <Languages size={16} strokeWidth={1.75} aria-hidden="true" />
               </button>
             )}

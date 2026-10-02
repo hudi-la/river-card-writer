@@ -107,4 +107,23 @@ describe('Workspace', () => {
     await userEvent.click(screen.getByLabelText('回到单语'))
     expect(container.querySelector('.rail')).toBeTruthy()
   })
+
+  it('进双语时备料边栏默认打开——那是双语模式的主要用途', async () => {
+    const { container } = render(<Workspace />)
+    await new Promise((r) => setTimeout(r, 0))
+    await userEvent.click(screen.getByLabelText('中英并排'))
+    expect(container.querySelector('.prep-sidebar')).toBeTruthy()
+  })
+
+  it('关掉备料边栏后再进一次双语，它还是打开的——不记上一次的关闭', async () => {
+    const { container } = render(<Workspace />)
+    await new Promise((r) => setTimeout(r, 0))
+    await userEvent.click(screen.getByLabelText('中英并排'))
+    await userEvent.click(screen.getByLabelText('关闭备料栏'))
+    expect(container.querySelector('.prep-sidebar')).toBeNull()
+
+    await userEvent.click(screen.getByLabelText('回到单语'))
+    await userEvent.click(screen.getByLabelText('中英并排'))
+    expect(container.querySelector('.prep-sidebar')).toBeTruthy()
+  })
 })

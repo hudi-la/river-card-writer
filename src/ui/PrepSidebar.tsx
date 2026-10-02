@@ -5,9 +5,6 @@ const TIER_LABEL: Record<Tier, string> = { ok: '已查证', rare: '罕用', unve
 const GENRE_LABEL: Record<Genre, string> = { narrative: '叙事', expository: '议论', other: '其他' }
 const POLICY_LABEL: Record<AiPolicy, string> = { strict: '只给词', auto: '给译文' }
 
-// 展开几条。前两条通常是承重句和歧义那一类（priority 已经排过序），值得占地方；
-// 其余折起来，否则一张卡五六条全展开边栏就是一堵墙。
-const EXPANDED = 2
 
 // 三档徽章。靠形状 + 明度区分，不只靠颜色——未查证的那个是空心环、候选名还带
 // 删除线，即使看不出颜色差别也认得出来。
@@ -71,7 +68,7 @@ export function PrepSidebar({
           </button>
         ) : null}
         {onClose ? (
-          <button className="prep-close" onClick={onClose} title="收起备料" aria-label="收起备料">
+          <button className="prep-close" onClick={onClose} title="关闭备料栏" aria-label="关闭备料栏">
             ×
           </button>
         ) : null}
@@ -165,11 +162,11 @@ export function PrepSidebar({
         </div>
       ) : null}
 
-      {/* 全部可折叠，前 EXPANDED 条默认展开。
-          原来前两条渲染成固定展开的 <section>、其余是 <details>——于是前两条
-          压根没有折叠入口，看着像 bug。同一种东西就该有同一种行为。 */}
+      {/* 全部默认折起，要看哪条点哪条。
+          折起来时标题行上留着靶心名和候选词，扫一眼就知道这张卡有哪些东西；
+          真要看语感和缺点再展开。一张卡五六条全摊开的话边栏就是一堵墙。 */}
       {targets.map((t, i) => (
-        <details className="prep-target" key={`${t.zh}-${i}`} open={i < EXPANDED}>
+        <details className="prep-target" key={`${t.zh}-${i}`}>
           <summary>
             <span className="prep-zh">{t.zh}</span>
             {t.family ? <span className="prep-family">族 · {t.family}</span> : null}

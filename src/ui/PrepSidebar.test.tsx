@@ -100,9 +100,12 @@ describe('PrepSidebar', () => {
     expect(container.textContent).not.toContain('The cat barred the door.')
   })
 
-  it('有 onClose 时给一个 × 可以收起边栏', () => {
+  it('有 onClose 时给一个 × 可以关掉这一栏，名字跟顶栏那个开关区分开', () => {
     const { container } = sidebar({ onClose: () => {} })
-    expect(container.querySelector('.prep-close')).not.toBeNull()
+    const close = container.querySelector('.prep-close')
+    expect(close).not.toBeNull()
+    // 顶栏的面板开关叫「收起备料」；两个控件不该撞同一个无障碍名称
+    expect(close!.getAttribute('aria-label')).toBe('关闭备料栏')
   })
 
   it('空态里给「备这张卡」——那是这张卡的动作，就该待在这张卡的面板里', () => {
@@ -136,13 +139,18 @@ describe('PrepSidebar', () => {
     expect(Array.from(all).every((d) => d.querySelector('summary'))).toBe(true)
   })
 
-  it('前两条默认展开，其余默认折起', () => {
+  it('全部默认折起——要看哪条点哪条', () => {
     const many = [0, 1, 2, 3].map((i) => ({ ...targets[0], zh: `靶心${i}` }))
     const { container } = sidebar({ targets: many })
     const open = Array.from(container.querySelectorAll('details.prep-target')).map(
       (d) => (d as HTMLDetailsElement).open
     )
-    expect(open).toEqual([true, true, false, false])
+    expect(open).toEqual([false, false, false, false])
+  })
+
+  it('折起来时标题行上仍然看得见靶心名，扫一眼就知道这张卡有哪些东西', () => {
+    const { container } = sidebar()
+    expect(container.querySelector('details.prep-target summary .prep-zh')?.textContent).toBe('堵')
   })
 
   it('折叠状态下标题行上仍然看得见候选词和它们的查证档位', () => {
