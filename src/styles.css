@@ -1318,3 +1318,8 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
 .prep-warnings { font-size: 11.5px; color: #8c867a; margin-bottom: 12px; }
 .prep-warnings > summary { cursor: pointer; }
 .prep-warnings ul { margin: 7px 0 0; padding-left: 18px; line-height: 1.65; }
+
+/* 目录收起：最左那一栏整个让出来。
+   双语模式下这是刚需——两栏正文加备料边栏，横向空间本来就不够分。 */
+.app--no-nav { grid-template-columns: minmax(0, 1fr); }
+.app--no-nav.app--bilingual { grid-template-columns: minmax(0, 1fr) clamp(300px, 26vw, 456px); }

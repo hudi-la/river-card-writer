@@ -67,4 +67,44 @@ describe('Workspace', () => {
     expect(useBookStore.getState().library.books.find((b) => b.id === bookId)?.title).toBe('旧标题')
     expect(screen.getByText('旧标题')).toBeTruthy()
   })
+
+  it('默认显示目录；点开关能收起，再点回来', async () => {
+    const { container } = render(<Workspace />)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(container.querySelector('.rail')).toBeTruthy()
+
+    await userEvent.click(screen.getByLabelText('收起目录'))
+    expect(container.querySelector('.rail')).toBeNull()
+    expect(container.querySelector('.app--no-nav')).toBeTruthy()
+
+    await userEvent.click(screen.getByLabelText('打开目录'))
+    expect(container.querySelector('.rail')).toBeTruthy()
+  })
+
+  it('切到双语时目录自动收起——那时横向空间最紧张', async () => {
+    const { container } = render(<Workspace />)
+    await new Promise((r) => setTimeout(r, 0))
+    await userEvent.click(screen.getByLabelText('中英并排'))
+    expect(container.querySelector('.rail')).toBeNull()
+    expect(container.querySelector('.app--bilingual')).toBeTruthy()
+  })
+
+  it('双语里仍然能把目录叫回来——不能一关了之，作者还要跳章节', async () => {
+    const { container } = render(<Workspace />)
+    await new Promise((r) => setTimeout(r, 0))
+    await userEvent.click(screen.getByLabelText('中英并排'))
+    await userEvent.click(screen.getByLabelText('打开目录'))
+    expect(container.querySelector('.rail')).toBeTruthy()
+    // 目录回来了，双语也还在
+    expect(container.querySelector('.app--bilingual')).toBeTruthy()
+  })
+
+  it('退回单语时目录自动回来', async () => {
+    const { container } = render(<Workspace />)
+    await new Promise((r) => setTimeout(r, 0))
+    await userEvent.click(screen.getByLabelText('中英并排'))
+    expect(container.querySelector('.rail')).toBeNull()
+    await userEvent.click(screen.getByLabelText('回到单语'))
+    expect(container.querySelector('.rail')).toBeTruthy()
+  })
 })

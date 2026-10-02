@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, BookOpen, Languages, PanelRight, Pencil, Square } from 'lucide-react'
+import { ArrowLeft, BookOpen, Languages, PanelLeft, PanelRight, Pencil, Square } from 'lucide-react'
 import { useBookStore, type Book } from '../state/bookStore'
 import { usePrefsStore } from '../state/prefsStore'
 import { LeftNav } from './LeftNav'
@@ -89,6 +89,9 @@ export function Workspace() {
   const [bilingual, setBilingual] = useState(false)
   // 备料面板单独一个开关：不想要提词时可以只关面板，中英两栏照样写。
   const [prepOpen, setPrepOpen] = useState(true)
+  // 目录栏。双语模式下最缺的就是横向空间（两栏正文 + 备料边栏），目录那一栏
+  // 该让出来——但不能一关了之，作者还要跳章节，所以给一个开关随时叫回来。
+  const [navOpen, setNavOpen] = useState(true)
   const [prepping, setPrepping] = useState(false)
   // 整章备料的进度。null = 没在跑。实测一次模型调用 24–60 秒，所以进度是必须的
   // ——没有它，作者面对的是几分钟的静默，跟卡死没有区别。
@@ -239,9 +242,13 @@ export function Workspace() {
   const showPrep = showBilingual && prepOpen
 
   return (
-    <div className={readMode ? 'read-shell' : showPrep ? 'app app--bilingual' : 'app'}>
-      {!readMode && <LeftNav />}
-      {!readMode && (
+    <div
+      className={
+        readMode ? 'read-shell' : `app${showPrep ? ' app--bilingual' : ''}${navOpen ? '' : ' app--no-nav'}`
+      }
+    >
+      {!readMode && navOpen && <LeftNav />}
+      {!readMode && navOpen && (
         <div
           className="rail-resize-handle"
           onPointerDown={onHandlePointerDown}
@@ -264,12 +271,18 @@ export function Workspace() {
           <div className="topbar-right">
             {/* 图标按钮。原来「阅读」「单语」的两个字在窄栏里折成上下两行了，
                 所以只留图标——这两个是常用开关，认图标比认字快。 */}
+            {!readMode && (
+              <button className="icon-toggle" data-on={navOpen ? 'true' : undefined} onClick={() => setNavOpen((v) => !v)} title={navOpen ? '收起目录' : '打开目录'} aria-label={navOpen ? '收起目录' : '打开目录'}>
+                <PanelLeft size={16} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+            )}
+
             <button className="icon-toggle" onClick={() => setReadMode((v) => !v)} title={readMode ? '回到编辑' : '排版预览'} aria-label={readMode ? '回到编辑' : '排版预览'}>
               {readMode ? <Pencil size={16} strokeWidth={1.75} aria-hidden="true" /> : <BookOpen size={16} strokeWidth={1.75} aria-hidden="true" />}
             </button>
 
             {!readMode && viewKind !== 'box' && (
-              <button className="icon-toggle" data-on={bilingual ? 'true' : undefined} onClick={() => setBilingual((v) => !v)} title={bilingual ? '回到单语' : '中英并排'} aria-label={bilingual ? '回到单语' : '中英并排'}>
+              <button className="icon-toggle" data-on={bilingual ? 'true' : undefined} onClick={() => setBilingual((v) => { setNavOpen(v); return !v })} title={bilingual ? '回到单语' : '中英并排'} aria-label={bilingual ? '回到单语' : '中英并排'}>
                 <Languages size={16} strokeWidth={1.75} aria-hidden="true" />
               </button>
             )}
