@@ -11,7 +11,7 @@ import { Fragment, type Node as PMNode } from '@tiptap/pm/model'
 import { nanoid } from 'nanoid'
 import { CardView } from './CardView'
 import { Emphasis, Refer, Strike } from './marks'
-import { isValidEn, STALE_SRC, splitEn, mergeEn, type EnState } from './enText'
+import { isValidEn, UNCONFIRMED, splitEn, mergeEn, confirmState, type EnState } from './enText'
 
 export const CardDocument = Document.extend({ content: 'card+' })
 
@@ -544,8 +544,8 @@ export const Card = Node.create({
       },
       // 写英文时那一版中文的指纹。空串 = 显式标记为过期（见 enText.STALE_SRC）。
       enSrc: {
-        default: STALE_SRC,
-        parseHTML: (el) => (el as HTMLElement).getAttribute('data-en-src') || STALE_SRC,
+        default: UNCONFIRMED,
+        parseHTML: (el) => (el as HTMLElement).getAttribute('data-en-src') || UNCONFIRMED,
         renderHTML: (attrs) => (attrs.enSrc ? { 'data-en-src': attrs.enSrc } : {}),
       },
       // 最后一次改动英文的时间（ISO string）。纯信息，不参与任何判断。
@@ -585,7 +585,10 @@ export const Card = Node.create({
             const cardNode = $from.node(cardDepth)
             const paraIndex = $from.index(cardDepth)
             const atBoundary = $from.parentOffset === 0
-            const plan = splitEn(cardNode.attrs.en, cardParagraphTexts(cardNode), paraIndex, atBoundary)
+            const zhBefore = cardParagraphTexts(cardNode)
+            const wasConfirmed =
+              confirmState(cardNode.attrs.en, cardNode.attrs.enSrc || '', zhBefore.join('\n')) === 'confirmed'
+            const plan = splitEn(cardNode.attrs.en, zhBefore, paraIndex, atBoundary, wasConfirmed)
             const now = new Date().toISOString()
             const cardPos = $from.before(cardDepth)
 
@@ -643,10 +646,13 @@ export const Card = Node.create({
             const tr = state.tr
             if (prevCard) {
               const prevPos = cardPos - prevCard.nodeSize
-              const merged = mergeEn(prevCard.attrs.en, curCard.attrs.en, [
-                ...cardParagraphTexts(prevCard),
-                ...cardParagraphTexts(curCard),
-              ])
+              const prevZh = cardParagraphTexts(prevCard)
+              const curZh = cardParagraphTexts(curCard)
+              // 只有两边都确认过，合并结果才算确认——绝不替作者盖章。
+              const bothConfirmed =
+                confirmState(prevCard.attrs.en, prevCard.attrs.enSrc || '', prevZh.join('\n')) === 'confirmed' &&
+                confirmState(curCard.attrs.en, curCard.attrs.enSrc || '', curZh.join('\n')) === 'confirmed'
+              const merged = mergeEn(prevCard.attrs.en, curCard.attrs.en, [...prevZh, ...curZh], bothConfirmed)
               // join 位置：当前 card 与前一个 card 之间的边界点
               tr.join(cardPos)
               applyEnState(tr, prevPos, merged, new Date().toISOString())

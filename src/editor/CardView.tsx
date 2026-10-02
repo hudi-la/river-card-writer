@@ -2,7 +2,7 @@ import { useRef } from 'react'
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react'
 import { GripVertical } from 'lucide-react'
 import { autoCardColor } from './schema'
-import { isStale, isValidEn, zhFingerprint, ZH_JOIN } from './enText'
+import { confirmState, isValidEn, zhFingerprint, UNCONFIRMED, ZH_JOIN } from './enText'
 import { prepHitCount } from './prepHighlight'
 
 // 一段英文 = 一个 <textarea>。
@@ -99,7 +99,7 @@ export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
   // 所以这里必须再兜一层——渲染一份跟中文对不上的英文比什么都不显示更有害。
   const rawEn = node.attrs.en
   const en: string[] | null = isValidEn(rawEn, zhTexts.length) ? rawEn : null
-  const stale = isStale(en, node.attrs.enSrc || '', zhTexts.join(ZH_JOIN))
+  const state = confirmState(en, node.attrs.enSrc || '', zhTexts.join(ZH_JOIN))
 
   // 写回一段英文。只在 blur 时调用——写回会让这个 node view 重渲染，那时焦点
   // 已经离开，所以不会把作者正在打字的光标冲掉。
@@ -111,9 +111,22 @@ export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
     const anyText = next.some((s) => s.trim() !== '')
     updateAttributes({
       en: anyText ? next : null,
-      enSrc: anyText ? zhFingerprint(zhTexts) : '',
+      // CRITICAL：写回只存文字，绝不盖确认章。确认是作者的动作，只有他点
+      // 「确认」时才盖（见 confirm）。改自己的英文不撤销确认——他是作者，
+      // 修自己的字是在继续背书，不是在推翻。
+      ...(anyText ? {} : { enSrc: UNCONFIRMED }),
       enAt: anyText ? new Date().toISOString() : '',
     })
+  }
+
+  // 作者认下这段英文：盖上当前中文的指纹。之后中文一变，指纹对不上，确认自动
+  // 失效——不需要任何地方"记得去撤销"。
+  function confirm() {
+    updateAttributes({ enSrc: zhFingerprint(zhTexts), enAt: new Date().toISOString() })
+  }
+
+  function unconfirm() {
+    updateAttributes({ enSrc: UNCONFIRMED })
   }
 
   // 这张卡有几条靶心。跟装饰器同一个来源，所以正文里高亮几处、这里就说几条。
@@ -125,7 +138,7 @@ export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
       className="card"
       data-card-id={cardId || undefined}
       data-color={color || undefined}
-      data-en-stale={stale ? 'true' : undefined}
+      data-en-state={state}
       style={style}
     >
       <span className="card-drag-handle" aria-hidden="true">
@@ -137,7 +150,11 @@ export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
       {/* contentEditable={false} 把英文栏从 ProseMirror 的可编辑区里摘出来，
           否则 PM 会试图把这里的输入当成文档编辑。 */}
       <aside className="card-en" contentEditable={false}>
-        {stale ? <p className="card-en-stale-note">中文改过，这段英文已过期</p> : null}
+        {state === 'invalidated' ? (
+          <p className="card-en-note" data-kind="invalidated">
+            中文改过，之前的确认已失效
+          </p>
+        ) : null}
         {en == null && hitCount > 0 ? (
           <p className="card-en-hint">{hitCount} 个靶心在右栏 →</p>
         ) : null}
@@ -153,6 +170,19 @@ export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
             onCommit={(text) => commit(i, text)}
           />
         ))}
+        {state !== 'unwritten' ? (
+          <div className="card-en-confirm">
+            {state === 'confirmed' ? (
+              <button type="button" className="is-confirmed" onClick={unconfirm} title="撤回确认">
+                ✓ 你确认过这一段
+              </button>
+            ) : (
+              <button type="button" onClick={confirm}>
+                {state === 'invalidated' ? '重新确认' : '确认这一段'}
+              </button>
+            )}
+          </div>
+        ) : null}
       </aside>
     </NodeViewWrapper>
   )

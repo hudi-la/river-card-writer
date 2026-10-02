@@ -1057,13 +1057,39 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
 .card-en-p[data-style='note'] { font-size: 0.9em; }
 .card-en-p[data-style='note'] { color: #6b665c; }
 
-/* 过期：不弹窗、不打断、不催——只是让它安静地发灰 */
-.card[data-en-stale='true'] .card-en-p { color: #a39d92; }
-.card-en-stale-note {
+/* 英文的四个状态。
+   注意这里刻意**不把未确认的英文涂灰**：涂灰是在说"这东西有问题"，而工具并
+   不知道它有没有问题，它只知道作者还没认。未确认是中性状态，不该报警。
+   只有"认过、但中文又改了"才值得提一句——那是作者自己的承诺失效了。 */
+.card-en-note {
   margin: 0 0 7px;
   font-size: 11px;
   font-weight: 600;
-  color: #9a6a1e;
+}
+.card-en-note[data-kind='invalidated'] { color: #9a6a1e; }
+
+/* 确认过的英文：左侧一条细绿线。安静，但扫一眼就知道哪些认过了。 */
+.card[data-en-state='confirmed'] .card-en {
+  box-shadow: -10px 0 0 -9px #2e6b58;
+}
+
+.card-en-confirm { margin-top: 10px; }
+.card-en-confirm button {
+  border: 1px solid var(--hair);
+  background: #fff;
+  color: var(--muted);
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.card-en-confirm button:hover { border-color: #1f1d1a; color: #1f1d1a; }
+.card-en-confirm button.is-confirmed {
+  border-color: #b8ccc4;
+  background: #eef4f1;
+  color: #2e6b58;
 }
 
 /* 双语时 .app 从两列变三列：目录 | 正文 | 备料边栏。

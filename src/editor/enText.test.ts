@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  fingerprint, isStale, isValidEn, STALE_SRC,
+  fingerprint, confirmState, isValidEn, UNCONFIRMED,
   zhFingerprint, splitEn, mergeEn,
 } from './enText'
 
@@ -19,19 +19,27 @@ describe('fingerprint', () => {
   })
 })
 
-describe('isStale', () => {
-  it('没写过英文（en 为 null）不算过期，算未写', () => {
-    expect(isStale(null, STALE_SRC, '猫堵住了门')).toBe(false)
+describe('confirmState', () => {
+  const zh = '猫堵住了门'
+
+  it('没写过是 unwritten', () => {
+    expect(confirmState(null, UNCONFIRMED, zh)).toBe('unwritten')
   })
-  it('指纹对得上就是新鲜的', () => {
-    const zh = '猫堵住了门'
-    expect(isStale(['The cat barred the door.'], fingerprint(zh), zh)).toBe(false)
+
+  it('写了但没点过确认是 unconfirmed——中性状态，不该报警', () => {
+    expect(confirmState(['The cat barred the door.'], UNCONFIRMED, zh)).toBe('unconfirmed')
   })
-  it('中文改过、指纹对不上就是过期', () => {
-    expect(isStale(['The cat barred the door.'], fingerprint('猫堵住了门'), '猫堵住了窗')).toBe(true)
+
+  it('认过且中文没再变是 confirmed', () => {
+    expect(confirmState(['x'], fingerprint(zh), zh)).toBe('confirmed')
   })
-  it('enSrc 是空串 = 被显式标记为过期（指纹永远匹配不上空串）', () => {
-    expect(isStale(['whatever'], STALE_SRC, '任何中文')).toBe(true)
+
+  it('认过但之后中文改了是 invalidated——作者认的是配那一版中文的那些字', () => {
+    expect(confirmState(['x'], fingerprint('猫堵住了门'), '猫堵住了窗')).toBe('invalidated')
+  })
+
+  it('改空白不算中文变了，确认还在', () => {
+    expect(confirmState(['x'], fingerprint('猫 堵住了门'), '猫  堵住了门 ')).toBe('confirmed')
   })
 })
 
@@ -65,56 +73,80 @@ describe('splitEn', () => {
   const zh = ['第一段', '第二段', '第三段']
   const en = ['One.', 'Two.', 'Three.']
 
-  it('在段落边界下刀且段数对齐：英文在同一个段序号上切开，两半都保持新鲜', () => {
+  it('在段落边界下刀且段数对齐：英文在同一个段序号上切开', () => {
     const r = splitEn(en, zh, 1, true)
     expect(r.first.en).toEqual(['One.'])
     expect(r.second.en).toEqual(['Two.', 'Three.'])
+  })
+
+  it('原来没确认过，切完两半也都没确认——绝不替作者盖章', () => {
+    const r = splitEn(en, zh, 1, true, false)
+    expect(r.first.enSrc).toBe(UNCONFIRMED)
+    expect(r.second.enSrc).toBe(UNCONFIRMED)
+  })
+
+  it('原来确认过，能对齐时两半都保留确认——切一刀没改动任何一个字', () => {
+    const r = splitEn(en, zh, 1, true, true)
     expect(r.first.enSrc).toBe(zhFingerprint(['第一段']))
     expect(r.second.enSrc).toBe(zhFingerprint(['第二段', '第三段']))
+  })
+
+  it('确认过但对不齐时，一律退回未确认——对应关系已经不是作者认过的那个了', () => {
+    const r = splitEn(en, zh, 1, false, true)
+    expect(r.first.enSrc).toBe(UNCONFIRMED)
+    expect(r.second.enSrc).toBe(UNCONFIRMED)
   })
   it('在段落中间下刀：英文整份留给前半张，两半都不新鲜', () => {
     const r = splitEn(en, zh, 1, false)
     expect(r.first.en).toEqual(en)
-    expect(r.first.enSrc).toBe(STALE_SRC)
+    expect(r.first.enSrc).toBe(UNCONFIRMED)
     expect(r.second.en).toBe(null)
   })
   it('英文段数和中文段数不符：不敢对齐，整份留给前半张并标过期', () => {
     const r = splitEn(['Only one.'], zh, 1, true)
     expect(r.first.en).toEqual(['Only one.'])
-    expect(r.first.enSrc).toBe(STALE_SRC)
+    expect(r.first.enSrc).toBe(UNCONFIRMED)
     expect(r.second.en).toBe(null)
   })
   it('没写过英文：两半都还是没写过，不是过期', () => {
     const r = splitEn(null, zh, 1, true)
     expect(r.first.en).toBe(null)
     expect(r.second.en).toBe(null)
-    expect(r.first.enSrc).toBe(STALE_SRC)
+    expect(r.first.enSrc).toBe(UNCONFIRMED)
   })
   it('index 为 0 或等于段数时无法对齐（会切出空的一半）', () => {
-    expect(splitEn(en, zh, 0, true).first.enSrc).toBe(STALE_SRC)
-    expect(splitEn(en, zh, 3, true).first.enSrc).toBe(STALE_SRC)
+    expect(splitEn(en, zh, 0, true).first.enSrc).toBe(UNCONFIRMED)
+    expect(splitEn(en, zh, 3, true).first.enSrc).toBe(UNCONFIRMED)
   })
 })
 
 describe('mergeEn', () => {
-  it('两边都写过：拼接，并按合并后的中文重算指纹，保持新鲜', () => {
+  it('两边都写过：拼接', () => {
     const r = mergeEn(['One.'], ['Two.'], ['第一段', '第二段'])
     expect(r.en).toEqual(['One.', 'Two.'])
+  })
+
+  it('默认不盖确认章——系统替作者认一次是最不该发生的事', () => {
+    expect(mergeEn(['One.'], ['Two.'], ['第一段', '第二段']).enSrc).toBe(UNCONFIRMED)
+  })
+
+  it('只有两边都确认过，合并结果才算确认', () => {
+    const r = mergeEn(['One.'], ['Two.'], ['第一段', '第二段'], true)
     expect(r.enSrc).toBe(zhFingerprint(['第一段', '第二段']))
   })
   it('只有前一张写过：保留它的英文但标过期——那份英文盖不全合并后的中文', () => {
     const r = mergeEn(['One.'], null, ['第一段', '第二段'])
     expect(r.en).toEqual(['One.'])
-    expect(r.enSrc).toBe(STALE_SRC)
+    expect(r.enSrc).toBe(UNCONFIRMED)
   })
   it('只有后一张写过：同样保留并标过期，绝不丢掉作者写过的字', () => {
     const r = mergeEn(null, ['Two.'], ['第一段', '第二段'])
     expect(r.en).toEqual(['Two.'])
-    expect(r.enSrc).toBe(STALE_SRC)
+    expect(r.enSrc).toBe(UNCONFIRMED)
   })
   it('两边都没写过：还是没写过', () => {
     const r = mergeEn(null, null, ['第一段', '第二段'])
     expect(r.en).toBe(null)
-    expect(r.enSrc).toBe(STALE_SRC)
+    expect(r.enSrc).toBe(UNCONFIRMED)
   })
 })

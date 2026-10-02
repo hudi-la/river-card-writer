@@ -75,7 +75,7 @@ describe('CardView', () => {
 })
 
 // ── 译前备料：英文栏 ──────────────────────────────────────────────
-import { zhFingerprint, STALE_SRC } from './enText'
+import { zhFingerprint, UNCONFIRMED } from './enText'
 
 function EnHarness({ en, enSrc }: { en: string[] | null; enSrc: string }) {
   const editor = useEditor({
@@ -119,14 +119,14 @@ describe('CardView 的英文栏', () => {
   })
 
   it('没写过英文时每段给一个空的可写格子，不显示过期', async () => {
-    const { container } = render(<EnHarness en={null} enSrc={STALE_SRC} />)
+    const { container } = render(<EnHarness en={null} enSrc={UNCONFIRMED} />)
     await new Promise((r) => setTimeout(r, 0))
     expect(container.querySelectorAll('aside.card-en .card-en-p').length).toBe(2)
     expect(container.querySelector('section.card')!.getAttribute('data-en-stale')).toBeNull()
   })
 
   it('空态用 placeholder，不另起一行「还没写」——否则空格子和那句话同时出现', async () => {
-    const { container } = render(<EnHarness en={null} enSrc={STALE_SRC} />)
+    const { container } = render(<EnHarness en={null} enSrc={UNCONFIRMED} />)
     await new Promise((r) => setTimeout(r, 0))
     const cells = container.querySelectorAll('aside.card-en .card-en-p')
     expect((cells[0] as HTMLTextAreaElement).placeholder).toBe('还没写')
@@ -145,11 +145,47 @@ describe('CardView 的英文栏', () => {
     expect(reachedRoot).toBe(false)
   })
 
-  it('中文改过、指纹对不上时，卡上出现 data-en-stale', async () => {
+  it('认过但中文又改了 → invalidated，并说明确认已失效', async () => {
     const { container } = render(<EnHarness en={['One.', 'Two.']} enSrc={'f-旧的指纹'} />)
     await new Promise((r) => setTimeout(r, 0))
-    expect(container.querySelector('section.card')!.getAttribute('data-en-stale')).toBe('true')
-    expect(container.textContent).toContain('已过期')
+    expect(container.querySelector('section.card')!.getAttribute('data-en-state')).toBe('invalidated')
+    expect(container.textContent).toContain('确认已失效')
+    expect(container.querySelector('.card-en-confirm button')?.textContent).toBe('重新确认')
+  })
+
+  it('写了但没确认 → unconfirmed，是中性状态：不报警、不涂灰，只给一个确认按钮', async () => {
+    const { container } = render(<EnHarness en={['One.', 'Two.']} enSrc={UNCONFIRMED} />)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(container.querySelector('section.card')!.getAttribute('data-en-state')).toBe('unconfirmed')
+    expect(container.textContent).not.toContain('失效')
+    expect(container.querySelector('.card-en-confirm button')?.textContent).toBe('确认这一段')
+  })
+
+  it('点「确认这一段」盖上当前中文的指纹，状态变 confirmed', async () => {
+    let ed: Editor | undefined
+    function Wrap() {
+      const editor = useEditor({
+        extensions: baseExtensions,
+        immediatelyRender: false,
+        content: { type: 'doc', content: [
+          { type: 'card', attrs: { cardId: 'c0', en: ['One.'], enSrc: UNCONFIRMED },
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: '第一段' }] }] },
+        ] },
+      })
+      if (editor) ed = editor
+      return editor ? <EditorContent editor={editor} /> : null
+    }
+    const { container } = render(<Wrap />)
+    await new Promise((r) => setTimeout(r, 0))
+    ;(container.querySelector('.card-en-confirm button') as HTMLButtonElement).click()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(ed!.getJSON().content![0].attrs!.enSrc).toBe(zhFingerprint(['第一段']))
+  })
+
+  it('没写英文时不出现确认按钮——没东西可认', async () => {
+    const { container } = render(<EnHarness en={null} enSrc={UNCONFIRMED} />)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(container.querySelector('.card-en-confirm')).toBeNull()
   })
 
   it('脏 en（段数不符）当没写过处理，绝不渲染出对不上的英文', async () => {
@@ -204,7 +240,7 @@ describe('CardView 的英文栏', () => {
         content: {
           type: 'doc',
           content: [
-            { type: 'card', attrs: { cardId: 'c0', en: null, enSrc: STALE_SRC },
+            { type: 'card', attrs: { cardId: 'c0', en: null, enSrc: UNCONFIRMED },
               content: [{ type: 'paragraph', content: [{ type: 'text', text: '第一段' }] }] },
           ],
         },
@@ -222,8 +258,32 @@ describe('CardView 的英文栏', () => {
 
     const attrs = ed!.getJSON().content![0].attrs!
     expect(attrs.en).toEqual(['The cat barred the door.'])
-    expect(attrs.enSrc).toBe(zhFingerprint(['第一段']))
     expect(attrs.enAt).not.toBe('')
+    // CRITICAL：写回绝不替作者盖确认章。确认是他的动作，不是打字的副作用。
+    expect(attrs.enSrc).toBe(UNCONFIRMED)
+  })
+
+  it('改自己的英文不撤销确认——作者修自己的字是在继续背书，不是推翻', async () => {
+    let ed: Editor | undefined
+    function Wrap() {
+      const editor = useEditor({
+        extensions: baseExtensions,
+        immediatelyRender: false,
+        content: { type: 'doc', content: [
+          { type: 'card', attrs: { cardId: 'c0', en: ['One.'], enSrc: zhFingerprint(['第一段']) },
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: '第一段' }] }] },
+        ] },
+      })
+      if (editor) ed = editor
+      return editor ? <EditorContent editor={editor} /> : null
+    }
+    const { container } = render(<Wrap />)
+    await new Promise((r) => setTimeout(r, 0))
+    const cell = container.querySelector('.card-en-p') as HTMLTextAreaElement
+    cell.value = 'One, revised.'
+    cell.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(ed!.getJSON().content![0].attrs!.enSrc).toBe(zhFingerprint(['第一段']))
   })
 
   it('回车产生的是字符串里的换行，不是 DOM 节点——所以删得掉、也存得下', async () => {
@@ -235,7 +295,7 @@ describe('CardView 的英文栏', () => {
         content: {
           type: 'doc',
           content: [
-            { type: 'card', attrs: { cardId: 'c0', en: null, enSrc: STALE_SRC },
+            { type: 'card', attrs: { cardId: 'c0', en: null, enSrc: UNCONFIRMED },
               content: [{ type: 'paragraph', content: [{ type: 'text', text: '第一段' }] }] },
           ],
         },
