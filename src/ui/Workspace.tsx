@@ -93,6 +93,10 @@ export function Workspace() {
   // 整章备料的进度。null = 没在跑。实测一次模型调用 24–60 秒，所以进度是必须的
   // ——没有它，作者面对的是几分钟的静默，跟卡死没有区别。
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  // 失败必须留在界面上。原来只弹一个 5 秒的 toast，然后边栏退回"还没备料"——
+  // 于是"失败了"和"从没试过"长得一模一样，作者既不知道发生过什么，也看不到原因。
+  const [prepError, setPrepError] = useState<string | null>(null)
+  const [prepWarnings, setPrepWarnings] = useState<string[]>([])
   // 「停」：不中断已经发出的请求（那次调用的钱已经花了），只是不再发新的。
   const stopRef = useRef(false)
   // 查证结果按词形累积。整个会话共用一个 verifier，所以同一个词只查一次。
@@ -190,15 +194,21 @@ export function Workspace() {
       return
     }
     stopRef.current = false
+    setPrepError(null)
+    setPrepWarnings([])
     setPrepping(true)
     try {
       const out = await runPrep(cards, {
         requestPrep: (zhTexts) => requestPrep(zhTexts, toAiPolicy(book?.aiPolicy)),
         verify,
         onCardDone: (cardId, result) => setCardHints(cardId, result),
+        onWarnings: (w) => setPrepWarnings((prev) => [...prev, ...w]),
         onTiers: (m) => setTiers((prev) => new Map([...prev, ...m])),
         onProgress: (done, total) => setProgress({ done, total }),
-        onError: (_cardId, error) => showToast({ text: `备料失败：${error}`, kind: 'error', durationMs: 5000 }),
+        onError: (_cardId, error) => {
+          setPrepError(error)
+          showToast({ text: `备料失败：${error}`, kind: 'error', durationMs: 5000 })
+        },
         shouldStop: () => stopRef.current,
       })
       const parts = [`${label}：${out.done} 张卡`]
@@ -297,6 +307,8 @@ export function Workspace() {
           busy={prepping}
           progress={progress}
           onPrepCard={prepThisCard}
+          error={prepError}
+          warnings={prepWarnings}
           aiPolicy={toAiPolicy(book.aiPolicy)}
           onPolicyChange={setAiPolicy}
           translation={activeCardId ? book.hints?.[activeCardId]?.translation : undefined}

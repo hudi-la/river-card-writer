@@ -3,13 +3,17 @@ import type { AiPolicy, Candidate, Genre, PrepResult, Target } from './types'
 // 「我没有缺点」的各种说法。模型倾向于用这些糊过去，一律当成没填。
 const EMPTY_LOSES = new Set(['', '无', '没有', 'n/a', 'na', 'none', '—', '-', '不适用'])
 
-// 判断一个字段里是不是塞进了整句英文。启发式：连续 8 个以上的英文单词，或者
-// 出现句末标点后又接着大写开头——那就是句子，不是词典条目该有的东西。
-// 宁可偶尔误伤（作者会看到拒收原因），也不能让成句从侧门溜进来。
+// 判断一个字段里是不是塞进了整句英文。
+//
+// CRITICAL：数的是**最长一段连续英文**，不是全文英文词数。原来按总数算，
+// 而中文学术文体的语感说明里本来就夹满英文术语（relational strategy、
+// attachment theory……），散落的术语加起来轻易就过 8 个——那是个假警报
+// 制造机，而且代价很重：一条候选被误判，整张卡的备料全被拒收。
+// 句子的特征是"连续"，不是"总量"。
 function looksLikeSentence(s: string): boolean {
-  const words = s.match(/[A-Za-z][A-Za-z'-]*/g) ?? []
-  if (words.length >= 8) return true
-  return /[.!?]\s+[A-Z]/.test(s)
+  if (/[.!?]\s+[A-Z]/.test(s)) return true
+  const runs = s.match(/[A-Za-z][A-Za-z'’-]*(?:[ ,]+[A-Za-z][A-Za-z'’-]*)*/g) ?? []
+  return runs.some((run) => run.split(/[ ,]+/).filter(Boolean).length >= 8)
 }
 
 function wordCount(s: string): number {
@@ -17,26 +21,31 @@ function wordCount(s: string): number {
 }
 
 type Fail = { ok: false; error: string }
-type Ok = { ok: true; value: PrepResult }
+// warnings = 被丢掉的候选/靶心及其原因。不是错误——备料照常可用，只是少了几条。
+type Ok = { ok: true; value: PrepResult; warnings: string[] }
 
 function fail(error: string): Fail {
   return { ok: false, error }
 }
 
-function isFail(x: unknown): x is Fail {
-  return !!x && typeof x === 'object' && 'ok' in (x as object) && (x as Fail).ok === false
-}
-
-function parseCandidate(raw: any, where: string): Candidate | Fail {
-  if (!raw || typeof raw !== 'object') return fail(`${where}：候选不是对象`)
+// 返回 null = 这条候选不合格，丢掉它（原因记进 warnings）。
+// 刻意不再整份拒收：一条候选的 verify_form 写长了，不该让作者失去整张卡的
+// 备料——那次调用花了半分钟和真金白银。只有安全相关的问题才硬拒（见
+// parsePrepResponse 里对 translation 的处理）。
+function parseCandidate(raw: any, where: string, warnings: string[]): Candidate | null {
+  const drop = (why: string) => {
+    warnings.push(`${where}：${why}`)
+    return null
+  }
+  if (!raw || typeof raw !== 'object') return drop('有一条候选不是对象，已丢弃')
   const loses = typeof raw.loses === 'string' ? raw.loses : ''
   if (EMPTY_LOSES.has(loses.trim().toLowerCase())) {
-    return fail(`${where}：候选「${raw.en}」缺 loses（它丢了什么）。没有任何候选可以只有优点。`)
+    return drop(`候选「${raw.en}」没说它丢了什么，已丢弃（没有任何候选可以只有优点）`)
   }
   const verifyForm = typeof raw.verify_form === 'string' ? raw.verify_form.trim() : ''
-  if (!verifyForm) return fail(`${where}：候选「${raw.en}」缺 verify_form`)
+  if (!verifyForm) return drop(`候选「${raw.en}」缺 verify_form，已丢弃`)
   if (wordCount(verifyForm) > 5) {
-    return fail(`${where}：verify_form「${verifyForm}」超过 5 个词，语料里查不到，会把好词误报成未查证`)
+    return drop(`候选「${raw.en}」的 verify_form 太长（${verifyForm}），语料里查不到、会误报成未查证，已丢弃`)
   }
   for (const [field, v] of [
     ['nuance', raw.nuance],
@@ -44,7 +53,7 @@ function parseCandidate(raw: any, where: string): Candidate | Fail {
     ['why_fits', raw.why_fits],
   ] as const) {
     if (typeof v === 'string' && looksLikeSentence(v)) {
-      return fail(`${where}：${field} 里出现了整句英文。条目里不该有句子。`)
+      return drop(`候选「${raw.en}」的 ${field} 里出现了整句英文，已丢弃`)
     }
   }
   return {
@@ -57,27 +66,35 @@ function parseCandidate(raw: any, where: string): Candidate | Fail {
   }
 }
 
-function parseTarget(raw: any, genre: Genre, i: number): Target | Fail {
+// 返回 null = 这条靶心不合格（候选全被丢光了），丢掉它。
+function parseTarget(raw: any, genre: Genre, i: number, warnings: string[]): Target | null {
   const where = `第 ${i + 1} 条靶心`
-  if (!raw || typeof raw !== 'object') return fail(`${where}：不是对象`)
+  if (!raw || typeof raw !== 'object') {
+    warnings.push(`${where}：不是对象，已丢弃`)
+    return null
+  }
   // 承重句只存在于议论/学术文体。叙事文没有论点句——模型曾经借这个分类表达
-  // "这条最重要"，那是 priority 的活。
-  if (raw.category === '承重句' && genre !== 'expository') {
-    return fail(`${where}：文体是 ${genre}，不该出现「承重句」分类（那是议论文专属；重要程度用 priority）`)
+  // "这条最重要"，那是 priority 的活。分类错了不值得丢掉整条，改掉就是。
+  let category = String(raw.category ?? '')
+  if (category === '承重句' && genre !== 'expository') {
+    warnings.push(`${where}：${genre} 文体不该有「承重句」分类，已改成普通条目`)
+    category = '动作质感'
   }
   const rawCands = Array.isArray(raw.candidates) ? raw.candidates : []
-  if (rawCands.length === 0) return fail(`${where}：一个候选都没有`)
   const candidates: Candidate[] = []
   for (const rc of rawCands) {
-    const c = parseCandidate(rc, where)
-    if (isFail(c)) return c
-    candidates.push(c)
+    const c = parseCandidate(rc, where, warnings)
+    if (c) candidates.push(c)
+  }
+  if (candidates.length === 0) {
+    warnings.push(`${where}：候选一条都不合格，整条已丢弃`)
+    return null
   }
   const ft = raw.flat_translation ?? {}
   return {
     zh: String(raw.zh ?? ''),
     zhQuote: String(raw.zh_quote ?? ''),
-    category: String(raw.category ?? ''),
+    category,
     priority: Number.isFinite(raw.priority) ? Number(raw.priority) : 3,
     whyZhIsPrecise: String(raw.why_zh_is_precise ?? ''),
     flatTranslation: { text: String(ft.text ?? ''), whyItDies: String(ft.why_it_dies ?? '') },
@@ -103,12 +120,16 @@ export function parsePrepResponse(raw: string, policy: AiPolicy = 'strict'): Ok 
   if (!json || typeof json !== 'object') return fail('返回值不是对象')
   const genre: Genre = ['narrative', 'expository', 'other'].includes(json.genre) ? json.genre : 'other'
   const rawTargets = Array.isArray(json.targets) ? json.targets : []
-  if (rawTargets.length === 0) return fail('一条靶心都没有')
+  if (rawTargets.length === 0) return fail('模型一条靶心都没给')
+  const warnings: string[] = []
   const targets: Target[] = []
   for (let i = 0; i < rawTargets.length; i++) {
-    const t = parseTarget(rawTargets[i], genre, i)
-    if (isFail(t)) return t
-    targets.push(t)
+    const t = parseTarget(rawTargets[i], genre, i, warnings)
+    if (t) targets.push(t)
+  }
+  // 只有全军覆没才硬拒——留一条是一条，那次调用花了半分钟和真钱。
+  if (targets.length === 0) {
+    return fail(`模型给的 ${rawTargets.length} 条靶心没有一条合格：${warnings[0] ?? '形状不对'}`)
   }
   targets.sort((a, b) => a.priority - b.priority)
 
@@ -132,5 +153,6 @@ export function parsePrepResponse(raw: string, policy: AiPolicy = 'strict'): Ok 
       targets,
       ...(translation ? { translation } : {}),
     },
+    warnings,
   }
 }

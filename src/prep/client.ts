@@ -21,7 +21,7 @@ export async function requestPrep(
   zhTexts: string[],
   policy: AiPolicy = 'strict',
   deps: { invoke?: InvokeFn } = {}
-): Promise<{ ok: true; value: PrepResult } | { ok: false; error: string }> {
+): Promise<{ ok: true; value: PrepResult; warnings?: string[] } | { ok: false; error: string }> {
   const invoke = deps.invoke ?? defaultInvoke
   try {
     const { system, user } = buildPrepRequest(zhTexts, policy)

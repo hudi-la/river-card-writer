@@ -10,10 +10,15 @@ export type CardInput = { cardId: string; zhTexts: string[] }
 export const PREP_CONCURRENCY = 3
 
 export type RunPrepDeps = {
-  requestPrep: (zhTexts: string[]) => Promise<{ ok: true; value: PrepResult } | { ok: false; error: string }>
+  requestPrep: (
+    zhTexts: string[]
+  ) => Promise<{ ok: true; value: PrepResult; warnings?: string[] } | { ok: false; error: string }>
   verify: (forms: string[]) => Promise<Map<string, Tier>>
   // 每张卡一完成就交出去，不等整批——边栏因此边跑边长出内容，作者不用干等。
   onCardDone: (cardId: string, result: PrepResult) => void
+  // 被丢掉的候选/靶心及其原因。不是错误——备料照常可用，只是少了几条；
+  // 但作者有权知道，否则他会以为模型就只给了这么点。
+  onWarnings?: (warnings: string[]) => void
   onTiers: (tiers: Map<string, Tier>) => void
   onProgress: (done: number, total: number) => void
   onError: (cardId: string, error: string) => void
@@ -51,6 +56,7 @@ export async function runPrep(
         }
         // 立刻交出去：边栏边跑边长内容。
         deps.onCardDone(card.cardId, r.value)
+        if (r.warnings && r.warnings.length > 0) deps.onWarnings?.(r.warnings)
         return r.value
       })
     )

@@ -154,6 +154,29 @@ describe('PrepSidebar', () => {
     expect(container.querySelectorAll('details.prep-collapsed').length).toBe(0)
   })
 
+  it('失败留在边栏里，说清原因并给再试一次——不是闪一下就没的 toast', () => {
+    const { container } = sidebar({ targets: [], error: '所有候选模型都没答上来（最后一次 503）', onPrepCard: () => {} })
+    expect(container.querySelector('.prep-error')).not.toBeNull()
+    expect(container.textContent).toContain('上一次备料没成')
+    expect(container.textContent).toContain('503')
+    expect(container.querySelector('.prep-error .prep-card-btn')?.textContent).toBe('再试一次')
+  })
+
+  it('有错误时不再显示"还没备料"——失败和从没试过必须长得不一样', () => {
+    const { container } = sidebar({ targets: [], error: '炸了' })
+    expect(container.textContent).not.toContain('这张卡还没备料')
+  })
+
+  it('被丢掉的候选折起来告诉作者，否则他会以为模型就只给了这么点', () => {
+    const { container } = sidebar({ warnings: ['第 1 条靶心：候选「x」没说它丢了什么，已丢弃'] })
+    expect(container.querySelector('.prep-warnings')?.textContent).toContain('有 1 条被丢掉了')
+  })
+
+  it('备料中不显示上一次的错误——那是正在发生的事，不是历史', () => {
+    const { container } = sidebar({ targets: [], error: '炸了', busy: true })
+    expect(container.querySelector('.prep-error')).toBeNull()
+  })
+
   it('英文没有对应单词时明说出来', () => {
     const { container } = sidebar({ targets: [{ ...targets[0], noSingleWord: true }] })
     expect(container.textContent).toContain('英文没有对应单词')

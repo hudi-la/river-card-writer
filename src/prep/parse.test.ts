@@ -29,25 +29,53 @@ describe('parsePrepResponse', () => {
     expect(parsePrepResponse('这不是 JSON').ok).toBe(false)
   })
 
-  it('候选缺 loses 一律拒收——没有任何候选可以只有优点', () => {
-    const r = parsePrepResponse(good({ targets: [goodTarget({ candidates: [goodCandidate({ loses: '' })] })] }))
-    expect(r.ok).toBe(false)
-    if (r.ok) return
-    expect(r.error).toContain('loses')
+  it('候选缺 loses 就丢掉它，并记一条告警——没有任何候选可以只有优点', () => {
+    const r = parsePrepResponse(good({ targets: [goodTarget({
+      candidates: [goodCandidate({ en: '坏的', loses: '' }), goodCandidate({ en: '好的' })] })] }))
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    // 只丢那一条，另一条照常留下——那次调用花了半分钟和真钱，不该整份作废
+    expect(r.value.targets[0].candidates.map((c) => c.en)).toEqual(['好的'])
+    expect(r.warnings.join()).toContain('丢了什么')
   })
 
   it('loses 写成「无」「N/A」这类也算缺', () => {
     for (const v of ['无', 'N/A', 'none', '—', '  ', '不适用']) {
-      expect(parsePrepResponse(good({ targets: [goodTarget({ candidates: [goodCandidate({ loses: v })] })] })).ok).toBe(false)
+      const r = parsePrepResponse(good({ targets: [goodTarget({
+        candidates: [goodCandidate({ en: '坏的', loses: v }), goodCandidate({ en: '好的' })] })] }))
+      expect(r.ok).toBe(true)
+      if (!r.ok) return
+      expect(r.value.targets[0].candidates.map((c) => c.en)).toEqual(['好的'])
     }
   })
 
-  it('verify_form 超过 5 个词就拒收——查不到的词形会让查证层误报', () => {
-    const r = parsePrepResponse(good({ targets: [goodTarget({
-      candidates: [goodCandidate({ verify_form: 'one two three four five six' })] })] }))
+  it('一条靶心的候选全不合格时丢掉整条，但别的靶心还在', () => {
+    const r = parsePrepResponse(good({ targets: [
+      goodTarget({ zh: '全坏', candidates: [goodCandidate({ loses: '无' })] }),
+      goodTarget({ zh: '好的' }),
+    ] }))
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.value.targets.map((t) => t.zh)).toEqual(['好的'])
+  })
+
+  it('全军覆没才硬拒，并把第一条原因说出来', () => {
+    const r = parsePrepResponse(good({ targets: [goodTarget({ candidates: [goodCandidate({ loses: '无' })] })] }))
     expect(r.ok).toBe(false)
     if (r.ok) return
-    expect(r.error).toContain('verify_form')
+    expect(r.error).toContain('没有一条合格')
+  })
+
+  it('verify_form 超过 5 个词就丢掉那条候选——查不到的词形会让查证层误报', () => {
+    const r = parsePrepResponse(good({ targets: [goodTarget({
+      candidates: [
+        goodCandidate({ en: '坏的', verify_form: 'one two three four five six' }),
+        goodCandidate({ en: '好的' }),
+      ] })] }))
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.value.targets[0].candidates.map((c) => c.en)).toEqual(['好的'])
+    expect(r.warnings.join()).toContain('verify_form')
   })
 
   it('verify_form 恰好 5 个词是合法的', () => {
@@ -55,23 +83,39 @@ describe('parsePrepResponse', () => {
       candidates: [goodCandidate({ verify_form: 'one two three four five' })] })] })).ok).toBe(true)
   })
 
-  it('叙事文体里出现「承重句」分类就拒收——叙事没有论点句', () => {
+  it('叙事文体里出现「承重句」分类就改掉它，不丢条目——分类错了不值得丢掉整条', () => {
     const r = parsePrepResponse(good({ genre: 'narrative', targets: [goodTarget({ category: '承重句' })] }))
-    expect(r.ok).toBe(false)
-    if (r.ok) return
-    expect(r.error).toContain('承重句')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.value.targets[0].category).not.toBe('承重句')
+    expect(r.warnings.join()).toContain('承重句')
   })
 
   it('议论文体里「承重句」是合法分类', () => {
     expect(parsePrepResponse(good({ genre: 'expository', targets: [goodTarget({ category: '承重句' })] })).ok).toBe(true)
   })
 
-  it('任何字段里塞进整句英文就拒收——schema 里不该有句子', () => {
+  it('字段里塞进整句英文就丢掉那条候选——条目里不该有句子', () => {
     const r = parsePrepResponse(good({ targets: [goodTarget({
-      candidates: [goodCandidate({ nuance: 'A palm-sized kitten had hemmed the neighbors in their own bedroom and waited.' })] })] }))
-    expect(r.ok).toBe(false)
-    if (r.ok) return
-    expect(r.error).toContain('句子')
+      candidates: [
+        goodCandidate({ en: '坏的', nuance: 'A palm-sized kitten had hemmed the neighbors in their own bedroom and waited.' }),
+        goodCandidate({ en: '好的' }),
+      ] })] }))
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.value.targets[0].candidates.map((c) => c.en)).toEqual(['好的'])
+    expect(r.warnings.join()).toContain('整句英文')
+  })
+
+  it('散落的英文术语不算整句——中文学术文体里本来就夹满英文，按总数算是假警报制造机', () => {
+    // 11 个英文词，但全是散落在中文里的术语，没有一段连续 8 词
+    const nuance = '强调 relational strategy 的 systematic 性，跟 attachment theory 里的 secure base、' +
+      'avoidant pattern、anxious preoccupation 这些 construct 属于同一套 framework'
+    const r = parsePrepResponse(good({ targets: [goodTarget({
+      candidates: [goodCandidate({ nuance })] })] }))
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.value.targets[0].candidates.length).toBe(1)
   })
 
   it('靶心列表为空就拒收', () => {

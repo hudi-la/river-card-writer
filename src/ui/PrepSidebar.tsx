@@ -32,6 +32,8 @@ export function PrepSidebar({
   busy = false,
   progress = null,
   onPrepCard,
+  error = null,
+  warnings = [],
   aiPolicy = 'strict',
   onPolicyChange,
   translation,
@@ -43,6 +45,8 @@ export function PrepSidebar({
   busy?: boolean
   progress?: { done: number; total: number } | null
   onPrepCard?: () => void
+  error?: string | null
+  warnings?: string[]
   aiPolicy?: AiPolicy
   onPolicyChange?: (p: AiPolicy) => void
   translation?: string[]
@@ -121,7 +125,34 @@ export function PrepSidebar({
         </p>
       ) : null}
 
-      {targets.length === 0 && !busy ? (
+      {/* 失败留在界面上，不是闪一下就没。原来只有一个 5 秒的 toast，于是
+          "失败了"和"从没试过"长得一模一样，作者既不知道发生过什么也看不到原因。 */}
+      {error && !busy ? (
+        <div className="prep-error">
+          <p className="prep-error-head">上一次备料没成</p>
+          <p className="prep-error-msg">{error}</p>
+          {onPrepCard ? (
+            <button className="prep-card-btn" onClick={onPrepCard}>
+              再试一次
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* 被丢掉的候选。不是错误——备料能用，只是少了几条；但作者有权知道，
+          否则他会以为模型就只给了这么点。 */}
+      {warnings.length > 0 && !busy ? (
+        <details className="prep-warnings">
+          <summary>有 {warnings.length} 条被丢掉了</summary>
+          <ul>
+            {warnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+
+      {targets.length === 0 && !busy && !error ? (
         <div className="prep-empty">
           <p>
             这张卡还没备料。模型会挑出中文里质感最重、最容易在英译中被压平的地方，为每处给几个词和它们的语感差别——句子由你自己写。
