@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react'
 import { GripVertical } from 'lucide-react'
 import { autoCardColor } from './schema'
@@ -7,72 +7,119 @@ import {
   confirmState,
   enToText,
   isValidEn,
-  textToEn,
+  paragraphsToHtml,
+  readParagraphs,
   UNCONFIRMED,
   zhFingerprint,
   ZH_JOIN,
 } from './enText'
 import { prepHitCount } from './prepHighlight'
 
-// 一张卡的英文 = 一个 <textarea>。空行分段。
+// 一张卡的英文 = 一组真的 <p>。
 //
-// 为什么不是"一段一个盒子"：原来是，那是为了跟中文逐段对应。作者 2026-10-02
-// 指出那个理由已经不存在了——段数不锁 1:1 了，行内标记在纯文本里本来就进不去，
-// 确认也早就是手动按钮。而拆成一段一格要付的代价是实打实的：textarea 的选区
-// 只存在于它自己内部，原生选择跨不过两个 textarea，所以作者想把上下两块一起
-// 选中拿去别处看一眼都做不到。一卡一格之后，整张卡的英文能自由拖选、复制。
+// 为什么是 contenteditable 而不是 textarea：作者要每段首行缩进，跟中文栏一致。
+// text-indent 作用于一个块盒的第一行，而一个 textarea 不管里面有多少换行都只是
+// **一个**块盒——第二段的首行在 CSS 里根本不存在，没法单独上样式。要 per 段
+// 缩进，这一栈就必须是真的段落元素。
 //
-// 为什么是 textarea 而不是 contentEditable：后者试过，造成两个真 bug——Enter
-// 插出的 DOM 节点不在模型里（删不掉、存不下），粘贴把别处的字号和 HTML 带进
-// 正文。textarea 从结构上就只装纯文本。
+// 换过来要付的代价，和各自的防线（2026-10-02 跟作者讲清楚过）：
 //
-// 非受控 + 失焦写回：受控组件每次击键都要重渲染，容易跟光标打架；写回发生在
-// 失焦之后，那时焦点已经离开，不会把正在打字的位置冲掉。
+//   1. 光标可能被重渲染踢回开头。React 不管 contenteditable 的子节点，任何一次
+//      碰到内容的重渲染都会。防线：innerHTML 只在挂载时写一次，打字期间绝不碰；
+//      外部改动（切卡/合卡重算了 en）靠 key 带签名整个换一个，跟原来 textarea
+//      的 defaultValue 刷新是同一个机制。
+//   2. ProseMirror 可能来抢选区。英文栏靠 aside 的 contentEditable={false} 隔在
+//      PM 可编辑区外，但塞一个真能编辑的子节点进去，"选区归谁"是有歧义的。
+//      防线：键盘/输入/粘贴事件一律 stopPropagation，不让 PM 的 keymap 看见。
+//   3. Cmd+Z 会和 PM 的历史打架。没有干净的防线——用 execCommand 插入粘贴内容
+//      是为了至少留在浏览器的原生撤销栈里。
 //
-// 高度走纯 CSS（外层 .card-en-cell 的 ::after 复制同一份文字当影子，把它撑到
-// 真实高度），不用 JS 量。原来用的是 el.scrollHeight——而 .card-en 平时是
-// display:none，textarea 在隐藏状态下挂载时 scrollHeight 读出来是 0，高度就被
-// 钉死成一行；开关备料边栏导致栏宽变化时同样会失准。
-// 任何"量一次就记住"的做法在这里都会过期，CSS 不会。
+// 为什么是 contenteditable="true" 而不是 "plaintext-only"：试过后者，不行。在
+// plaintext-only 下回车插进去的是一个**字符级的 \n**，留在同一个 <p> 里——整栈
+// 仍然只是一个块盒，跟 textarea 没有区别，每段缩进照样做不到（2026-10-02 在真
+// 浏览器里实测确认）。'true' 下回车会把当前 <p> 切成两个真的 <p>，每段才各自
+// 拿到首行缩进。代价是富文本命令和带格式的粘贴有了入口，所以下面两道闸是
+// **必须**的，不是保险：粘贴只取 text/plain；Cmd+B/I/U 直接拦掉。
+// 真有东西漏进来，readParagraphs 只读文字，写回时也只会存下纯文本。
+//
+// 读回来按块走 DOM（readParagraphs），不是 textContent。这条是当初裸 contenteditable
+// 真出 bug 的地方：textContent 把回车产生的块边界吃掉，所以看到的换行从没被存下来。
+// 往返相等有测试直接跑（见 enText.test.ts）。
+//
+// 非受控 + 失焦写回：跟原来一样。写回发生在失焦之后，不会冲掉正在打字的位置。
+// 高度不用再操心——真段落自然撑开，原来那套 ::after 影子测高的土办法可以不要了。
 function EnField({
-  value,
+  paragraphs,
   style,
   placeholder,
   onCommit,
 }: {
-  value: string
+  paragraphs: string[]
   style: string
   placeholder?: string
-  onCommit: (text: string) => void
+  onCommit: (paragraphs: string[]) => void
 }) {
-  const wrap = useRef<HTMLDivElement>(null)
+  const ref = useRef<HTMLDivElement>(null)
+
+  // CRITICAL：依赖数组故意是空的。innerHTML 只在挂载时写一次——打字期间重写
+  // children 等于把光标踢回第一个字。外部换了值时整个组件会被 key 换掉（见
+  // CardView 里的 key），所以不会漏更新。
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.setAttribute('contenteditable', 'true')
+    el.innerHTML = paragraphsToHtml(paragraphs)
+    syncEmpty(el)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 空态标记给 CSS 用——contenteditable 没有 placeholder。写出去的空内容是
+  // <p><br></p>（得有东西撑着，否则光标进不去），所以 :empty 选不中它。
+  function syncEmpty(el: HTMLElement) {
+    el.toggleAttribute('data-empty', readParagraphs(el).length === 0)
+  }
 
   return (
-    <div className="card-en-cell" ref={wrap} data-value={value}>
-      <textarea
-        className="card-en-p"
-        data-style={style}
-        aria-label="这张卡的英文"
-        defaultValue={value}
-        rows={1}
-        spellCheck
-        placeholder={placeholder}
-        onInput={(e) => {
-          if (wrap.current) wrap.current.dataset.value = e.currentTarget.value
-        }}
-        onBlur={(e) => onCommit(e.currentTarget.value)}
-        // CRITICAL：拦住事件，别让它们冒到 ProseMirror 的根上去。
-        // 这个 textarea 在 PM 可编辑区内部（靠 aside 的 contentEditable={false}
-        // 隔开），但 DOM 事件照样会冒泡；PM 的 keymap 抓 Backspace / Enter 等键，
-        // 那是原来"英文格子里删不掉行"的另一半原因。
-        // Enter 不用再特殊处理：一卡一格，回车就是回车，空行就是分段。
-        onKeyDown={(e) => e.stopPropagation()}
-        onKeyUp={(e) => e.stopPropagation()}
-        onPaste={(e) => e.stopPropagation()}
-        onCut={(e) => e.stopPropagation()}
-        onDragStart={(e) => e.stopPropagation()}
-      />
-    </div>
+    <div
+      ref={ref}
+      className="card-en-p"
+      data-style={style}
+      data-placeholder={placeholder}
+      role="textbox"
+      aria-multiline="true"
+      aria-label="这张卡的英文"
+      spellCheck
+      suppressContentEditableWarning
+      onInput={(e) => syncEmpty(e.currentTarget)}
+      onBlur={(e) => onCommit(readParagraphs(e.currentTarget))}
+      // 粘贴只取 text/plain。contenteditable="true" 下浏览器默认会把源格式
+      // （字号、颜色、HTML）一起带进来，所以这道闸是必须的。
+      // 用 execCommand 插入——它过时但到处都在，而且插入会留在浏览器的原生
+      // 撤销栈里，这是 Cmd+Z 在这一栈唯一还能指望的东西。
+      onPaste={(e) => {
+        e.stopPropagation()
+        const text = e.clipboardData?.getData('text/plain')
+        if (text == null) return
+        e.preventDefault()
+        if (typeof document.execCommand === 'function') {
+          document.execCommand('insertText', false, text)
+          syncEmpty(e.currentTarget)
+        }
+      }}
+      // CRITICAL：拦住事件，别让它们冒到 ProseMirror 的根上去。PM 的 keymap 抓
+      // Backspace / Enter 等键，那是原来"英文格子里删不掉行"的另一半原因。
+      onKeyDown={(e) => {
+        e.stopPropagation()
+        // 拦掉富文本命令。contenteditable="true" 给了它们入口，而英文栏存的是
+        // 纯文本——让 Cmd+B 插进一个 <b>，它会在失焦时被 readParagraphs 读没，
+        // 作者看见"加粗了又没了"，比一开始就按不动更让人迷惑。
+        if ((e.metaKey || e.ctrlKey) && 'biu'.includes(e.key.toLowerCase())) e.preventDefault()
+      }}
+      onKeyUp={(e) => e.stopPropagation()}
+      onBeforeInput={(e) => e.stopPropagation()}
+      onCut={(e) => e.stopPropagation()}
+      onDragStart={(e) => e.stopPropagation()}
+    />
   )
 }
 
@@ -109,8 +156,7 @@ export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
 
   // 写回这张卡的英文。只在 blur 时调用——写回会让这个 node view 重渲染，那时
   // 焦点已经离开，所以不会把作者正在打字的光标冲掉。
-  function commit(text: string) {
-    const next = textToEn(text)
+  function commit(next: string[]) {
     const anyText = next.length > 0
     if (enToText(en) === enToText(anyText ? next : null)) return
     updateAttributes({
@@ -166,13 +212,12 @@ export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
           <p className="card-en-hint">{hitCount} 个靶心在右栏 →</p>
         ) : null}
         {/* 块样式：整张卡只有一个段落时跟着它走（章/节这类标题卡就是这种），
-            否则一律按正文。一卡一格之后不可能再逐段继承——textarea 里没有
-            "段"这个东西可供单独上样式。 */}
+            否则一律按正文。英文自己不存样式。 */}
         <EnField
-          // key 带上当前值：外部改动（切卡/合卡重算了 en）时整个换一个，从而
-          // 刷新 defaultValue。打字期间不会触发——我们只在失焦时写回。
+          // key 带上当前值：外部改动（切卡/合卡重算了 en）时整个换一个，从而重写
+          // innerHTML。打字期间不会触发——我们只在失焦时写回。
           key={`${cardId ?? 'n'}-${enToText(en)}`}
-          value={enToText(en)}
+          paragraphs={en ?? []}
           style={zhStyles.length === 1 ? zhStyles[0] : 'body'}
           placeholder={en == null ? '开始写…' : undefined}
           onCommit={commit}

@@ -167,3 +167,63 @@ export function textToEn(text: string): string[] {
     .split(/\n{2,}/)
     .filter((p) => p.trim() !== '')
 }
+
+// ── DOM ↔ 段落数组 ───────────────────────────────────────────────────────
+//
+// 英文那一栈是真的段落元素（contenteditable），不是 textarea。换过来的唯一理由
+// 是作者要的每段首行缩进：text-indent 作用于块盒的第一行，而一个 textarea 不管
+// 里面多少换行都只是**一个**块盒，第二段的首行在 CSS 里根本不存在。
+//
+// 代价和防线写在 CardView 的 EnField 上面。这里只放两个纯函数——写出去和读回来，
+// 往返必须严格相等，那条是这整件事的安全底线，所以它有测试直接跑往返。
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+// 段落数组 → HTML。段内的换行（作者按 Shift+Enter 敲的软断行）写成 <br>。
+// 空段落给一个 <br>，否则那个 <p> 没有高度、光标进不去。
+export function paragraphsToHtml(paragraphs: string[]): string {
+  if (paragraphs.length === 0) return '<p><br></p>'
+  return paragraphs
+    .map((p) => `<p>${p === '' ? '<br>' : escapeHtml(p).replace(/\n/g, '<br>')}</p>`)
+    .join('')
+}
+
+// 一个节点里的文字，<br> 算一个换行。
+function textOf(node: Node): string {
+  if (node.nodeType === 3) return node.nodeValue ?? ''
+  if (node.nodeType !== 1) return ''
+  const el = node as Element
+  if (el.tagName === 'BR') return '\n'
+  let out = ''
+  el.childNodes.forEach((c) => (out += textOf(c)))
+  return out
+}
+
+// 块级元素：浏览器在 contenteditable 里按回车生成什么，各家不完全一样——Chrome
+// 给 <div>，别处可能给 <p>。两个都当段落边界，所以换浏览器不会变形。
+const BLOCK_TAGS = new Set(['P', 'DIV', 'SECTION', 'ARTICLE', 'BLOCKQUOTE', 'LI'])
+
+// DOM → 段落数组。
+// 顶层可能混着裸文本节点：有些浏览器把第一行留成裸文本、后面几行才包进块里。
+// 那些裸文本归到"当前这一段"，碰到块级元素才结算。
+export function readParagraphs(el: HTMLElement): string[] {
+  const paras: string[] = []
+  let current = ''
+  const flush = () => {
+    if (current.trim() !== '') paras.push(current)
+    current = ''
+  }
+  el.childNodes.forEach((node) => {
+    if (node.nodeType === 1 && BLOCK_TAGS.has((node as Element).tagName)) {
+      flush()
+      const t = textOf(node)
+      if (t.trim() !== '') paras.push(t)
+    } else {
+      current += textOf(node)
+    }
+  })
+  flush()
+  return paras
+}

@@ -1002,69 +1002,55 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
 }
 .river--bilingual .card-en { display: block; }
 
-/* 高度自适应，纯 CSS，不量任何东西。
-   做法：外层 grid 里放两个重叠的东西——真正的 textarea，和一个 ::after 影子
-   （content 复制同一份文字、visibility:hidden）。影子按真实文字撑开高度，
-   textarea 被拉伸到同样高。
-   为什么不用 JS 量 scrollHeight：.card-en 平时是 display:none，textarea 在隐藏
-   状态下挂载时 scrollHeight 读出来是 0，高度就被钉死成一行；开关备料边栏导致
-   栏宽变化时同样会失准。任何"量一次就记住"的做法都会过期，CSS 不会。
-   content 末尾那个空格是必须的：没有它，结尾的换行会被折叠，最后一行撑不出来。 */
-.card-en-cell { display: grid; }
-.card-en-cell::after {
-  content: attr(data-value) ' ';
-  visibility: hidden;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.card-en-cell > .card-en-p,
-.card-en-cell::after {
-  grid-area: 1 / 1 / 2 / 2;
-  min-height: 1.85em;
-  margin: 0;
-  padding: 0;
-  border: 0;
+/* 英文那一栈是真的段落元素（contenteditable），不是 textarea。换过来的唯一理由
+   是作者要的每段首行缩进：text-indent 作用于块盒的第一行，一个 textarea 不管里面
+   多少换行都只是一个块盒，第二段的首行在 CSS 里不存在。代价写在 CardView 的
+   EnField 上面。
+   顺带省掉的东西：高度不用再管了。真段落自然撑开，原来那套"::after 影子复制同一
+   份文字来测高"的土办法（因为 .card-en 平时 display:none、textarea 量出来是 0）
+   连同 .card-en-cell 包装一起拆了。 */
+.card-en-p {
+  position: relative;
+  outline: none;
+  color: #2a2722;
   font-family: Georgia, 'Times New Roman', serif;
   font-size: inherit;
-  line-height: 1.8;
   letter-spacing: inherit;
-  /* 首行缩进，跟中文栏的 .card-body p 一致——两栏的段落节奏因此能互相对读。
-     textarea 和撑高度的 ::after 影子都得加：只给 textarea 的话影子的折行位置
-     跟它对不上，量出来的高度就是错的。 */
+  min-height: 1.85em;
+}
+/* 每段一个真的 <p>，所以首行缩进能逐段生效——跟中文栏的 .card-body p 一致，
+   两栏的段落节奏因此能互相对读。 */
+.card-en-p p {
+  margin: 0;
+  line-height: 1.8;
   text-indent: 2em;
 }
-
-/* textarea 还要洗掉浏览器默认的那套外框，让它看起来就是正文的一部分 */
-.card-en-p {
-  width: 100%;
-  box-sizing: border-box;
-  outline: none;
-  resize: none;
-  overflow: hidden;
-  background: transparent;
-  color: #2a2722;
+/* contenteditable 没有 placeholder。空内容写出去是 <p><br></p>（得有东西撑着，
+   否则光标进不去），所以 :empty 选不中——用 JS 挂的 data-empty，见 EnField。
+   绝对定位，免得占一行把真正的第一段顶下去。 */
+.card-en-p[data-empty]::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  top: 0;
+  left: 0;
+  color: #bdb7ab;
+  font-style: italic;
+  pointer-events: none;
 }
-.card-en-p::placeholder { color: #bdb7ab; font-style: italic; }
-/* 不给边框、不给底色、不给聚焦线——这是写作面，不是表单字段。一卡一格之后
-   也不再需要"光标在哪一段"的指示：整张卡就一个框。 */
 
-/* 英文段落的样式按序号从中文继承，所以这里跟着正文的语义样式走。
-   CRITICAL：字号/缩进这类影响排版的，必须同时作用在影子（::after）上——
-   只改 textarea 的话影子还按正文字号算，标题格子的高度就是错的。 */
-.card-en-cell:has(> [data-style='chapter'])::after,
-.card-en-p[data-style='chapter'] { font-size: 1.4em; font-weight: 600; text-indent: 0; }
-.card-en-cell:has(> [data-style='h1'])::after,
-.card-en-p[data-style='h1'] { font-size: 1.2em; font-weight: 600; text-indent: 0; }
-.card-en-cell:has(> [data-style='h2'])::after,
-.card-en-p[data-style='h2'] { font-size: 1.08em; font-weight: 600; text-indent: 0; }
-.card-en-cell:has(> [data-style='bullet'])::after,
-.card-en-p[data-style='bullet'] { padding-left: 1.2em; text-indent: -0.7em; }
-.card-en-cell:has(> [data-style='quote'])::after,
-.card-en-p[data-style='quote'] { padding-left: 1em; border-left: 2px solid #ddd9cf; text-indent: 0; }
-.card-en-p[data-style='quote'] { color: #5c5649; }
-.card-en-cell:has(> [data-style='note'])::after,
-.card-en-p[data-style='note'] { font-size: 0.9em; text-indent: 0; }
-.card-en-p[data-style='note'] { color: #6b665c; }
+/* 块样式从中文继承（整张卡只有一个中文段时才继承，见 CardView）。
+   一律写在内层 p 上：外层是编辑宿主，样式挂在它身上会被 p 的 margin/indent 覆盖。 */
+.card-en-p[data-style='chapter'] p { font-size: 1.4em; font-weight: 600; text-indent: 0; }
+.card-en-p[data-style='h1'] p { font-size: 1.2em; font-weight: 600; text-indent: 0; }
+.card-en-p[data-style='h2'] p { font-size: 1.08em; font-weight: 600; text-indent: 0; }
+.card-en-p[data-style='bullet'] p { padding-left: 1.2em; text-indent: -0.7em; }
+.card-en-p[data-style='quote'] p {
+  padding-left: 1em;
+  border-left: 2px solid #ddd9cf;
+  text-indent: 0;
+  color: #5c5649;
+}
+.card-en-p[data-style='note'] p { font-size: 0.9em; color: #6b665c; }
 
 
 /* 英文的四个状态。

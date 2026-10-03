@@ -7,6 +7,8 @@ import {
   fingerprint,
   isValidEn,
   mergeEn,
+  paragraphsToHtml,
+  readParagraphs,
   splitEn,
   textToEn,
   zhFingerprint,
@@ -213,5 +215,54 @@ describe('enToText / textToEn：存的是段落数组，编辑的是一整块文
 
   it('还没写过英文时摊出来是空字符串', () => {
     expect(enToText(null)).toBe('')
+  })
+})
+
+describe('paragraphsToHtml / readParagraphs：写出去和读回来必须严格相等', () => {
+  const read = (html: string) => {
+    const el = document.createElement('div')
+    el.innerHTML = html
+    return readParagraphs(el)
+  }
+
+  it('往返不变形', () => {
+    for (const ps of [
+      ['One.'],
+      ['One.', 'Two.'],
+      ['One.', 'Two.', 'Three.'],
+      ['Line one.\nLine two.'],
+      ['One.', 'Two.\nstill two.', 'Three.'],
+    ]) {
+      expect(read(paragraphsToHtml(ps))).toEqual(ps)
+    }
+  })
+
+  it('HTML 特殊字符不会被当成标签——作者写 a < b 就得存成 a < b', () => {
+    expect(read(paragraphsToHtml(['a < b & c > d']))).toEqual(['a < b & c > d'])
+    expect(paragraphsToHtml(['<b>x</b>'])).toBe('<p>&lt;b&gt;x&lt;/b&gt;</p>')
+    expect(read(paragraphsToHtml(['<b>x</b>']))).toEqual(['<b>x</b>'])
+  })
+
+  it('浏览器按回车给 div 还是 p 都当段落边界——换浏览器不会变形', () => {
+    expect(read('<div>One.</div><div>Two.</div>')).toEqual(['One.', 'Two.'])
+    expect(read('<p>One.</p><div>Two.</div>')).toEqual(['One.', 'Two.'])
+  })
+
+  it('顶层的裸文本节点归到当前这一段——有些浏览器第一行不包块', () => {
+    expect(read('One.<div>Two.</div>')).toEqual(['One.', 'Two.'])
+    expect(read('One.<br>still one.<div>Two.</div>')).toEqual(['One.\nstill one.', 'Two.'])
+  })
+
+  it('空段落不存，但写出去时得有 <br> 撑着——否则光标进不去', () => {
+    expect(paragraphsToHtml([])).toBe('<p><br></p>')
+    expect(paragraphsToHtml(['', 'Two.'])).toBe('<p><br></p><p>Two.</p>')
+    expect(read('<p><br></p><p>Two.</p>')).toEqual(['Two.'])
+    expect(read('<p><br></p>')).toEqual([])
+  })
+
+  it('粘贴万一带进了行内标签，读回来只剩文字——纯文本是硬保证', () => {
+    expect(read('<p>plain <b>bold</b> <span style="font-size:40px">big</span></p>')).toEqual([
+      'plain bold big',
+    ])
   })
 })
