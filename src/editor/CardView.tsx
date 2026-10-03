@@ -3,7 +3,15 @@ import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/re
 import { GripVertical } from 'lucide-react'
 import { autoCardColor } from './schema'
 import { useBookStore } from '../state/bookStore'
-import { mergeEnCells, confirmState, isValidEn, zhFingerprint, UNCONFIRMED, ZH_JOIN } from './enText'
+import {
+  confirmState,
+  isValidEn,
+  mergeEnCells,
+  splitEnCell,
+  UNCONFIRMED,
+  zhFingerprint,
+  ZH_JOIN,
+} from './enText'
 import { prepHitCount } from './prepHighlight'
 
 // 一段英文 = 一个 <textarea>。
@@ -30,21 +38,21 @@ function EnCell({
   value,
   style,
   index,
-  extra,
   placeholder,
   caret,
   onCommit,
   onMergeBackward,
+  onSplit,
   onCaretApplied,
 }: {
   value: string
   style: string
   index: number
-  extra?: boolean
   placeholder?: string
   caret?: number
   onCommit: (text: string) => void
   onMergeBackward: (index: number, currentText: string | null) => boolean
+  onSplit: (index: number, currentText: string, caret: number) => void
   onCaretApplied: () => void
 }) {
   const wrap = useRef<HTMLDivElement>(null)
@@ -60,13 +68,12 @@ function EnCell({
   }, [caret, onCaretApplied])
 
   return (
-    <div className="card-en-cell" ref={wrap} data-value={value} data-extra={extra ? '' : undefined}>
+    <div className="card-en-cell" ref={wrap} data-value={value}>
       <textarea
         ref={ta}
         className="card-en-p"
         data-style={style}
-        aria-label={extra ? `第 ${index + 1} 段的英文（中文没有这一段）` : `第 ${index + 1} 段的英文`}
-        title={extra ? '中文里没有对应的这一段' : undefined}
+        aria-label={`第 ${index + 1} 段的英文`}
         defaultValue={value}
         rows={1}
         spellCheck
@@ -89,6 +96,13 @@ function EnCell({
           const el = e.currentTarget
           const atHead = el.selectionStart === 0 && el.selectionEnd === 0
           const atTail = el.selectionStart === el.value.length && el.selectionEnd === el.value.length
+          // Enter = 另起一段，跟中文栏一致（中文那边 Enter 就是分段）。
+          // 段内换行留给 Shift+Enter——textarea 本来就会插一个 \n，不拦就是了。
+          if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            e.preventDefault()
+            onSplit(index, el.value, el.selectionStart)
+            return
+          }
           if (e.key === 'Backspace' && atHead) {
             if (onMergeBackward(index, el.value)) e.preventDefault()
           } else if (e.key === 'Delete' && atTail) {
@@ -165,6 +179,20 @@ export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
     return true
   }
 
+  // 作者在光标处把这一段拆成两段。mergeBackward 的另一半。
+  function split(index: number, currentText: string, caret: number) {
+    const r = splitEnCell(en, index, currentText, caret)
+    const anyText = r.en.some((t) => t.trim() !== '')
+    updateAttributes({
+      en: anyText ? r.en : null,
+      ...(anyText ? {} : { enSrc: UNCONFIRMED }),
+      enAt: anyText ? new Date().toISOString() : '',
+    })
+    // 整卡还是全空（在空格子里按 Enter）时什么都没发生，别留一个等不到格子的
+    // 待落光标——它会在以后某一格刚好出现在那个序号上时突然抢走焦点。
+    if (anyText) setPendingCaret({ index: r.focusIndex, caret: r.caret })
+  }
+
   // 写回一段英文。只在 blur 时调用——写回会让这个 node view 重渲染，那时焦点
   // 已经离开，所以不会把作者正在打字的光标冲掉。
   function commit(index: number, text: string) {
@@ -237,10 +265,9 @@ export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
             value={en ? en[i] : ''}
             style={zhStyles[i] ?? 'body'}
             index={i}
-            // 中文那边没有这一段。不拦不删——作者自己决定合回去还是留着。
-            extra={i >= zhTexts.length}
             caret={pendingCaret?.index === i ? pendingCaret.caret : undefined}
             onMergeBackward={mergeBackward}
+            onSplit={split}
             onCaretApplied={clearCaret}
             placeholder={en == null && i === 0 ? '开始写…' : undefined}
             onCommit={(text) => commit(i, text)}

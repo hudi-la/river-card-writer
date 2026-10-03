@@ -7,6 +7,7 @@ import {
   mergeEn,
   mergeEnCells,
   splitEn,
+  splitEnCell,
   zhFingerprint,
 } from './enText'
 
@@ -192,5 +193,47 @@ describe('mergeEnCells：作者自己改英文的分段', () => {
     // 中文 2 段、英文 4 段：把第 4 段并进第 3 段
     const r = mergeEnCells(['A.', 'B.', 'C.', 'D.'], 3, 'D.')
     expect(r!.en).toEqual(['A.', 'B.', 'C. D.'])
+  })
+})
+
+describe('splitEnCell：作者自己加一段英文', () => {
+  it('在光标处拆成两段，光标跟到新那段的开头', () => {
+    const r = splitEnCell(['One. Two.', 'Three.'], 0, 'One. Two.', 'One. '.length)
+    expect(r).toEqual({ en: ['One.', 'Two.', 'Three.'], focusIndex: 1, caret: 0 })
+  })
+
+  it('接缝处剥掉空白，跟 mergeEnCells 补空格正好互逆', () => {
+    const split = splitEnCell(['One. Two.'], 0, 'One. Two.', 'One. '.length)
+    expect(split.en).toEqual(['One.', 'Two.'])
+    const back = mergeEnCells(split.en, 1, 'Two.')
+    expect(back!.en).toEqual(['One. Two.'])
+  })
+
+  it('在段尾按 Enter 就是开一个空段——这是"加一段"最常走的路', () => {
+    const r = splitEnCell(['One.'], 0, 'One.', 'One.'.length)
+    expect(r.en).toEqual(['One.', ''])
+    expect(r.focusIndex).toBe(1)
+  })
+
+  it('在段首按 Enter，前面留一个空段，光标留在原文那一段', () => {
+    const r = splitEnCell(['One.'], 0, 'One.', 0)
+    expect(r.en).toEqual(['', 'One.'])
+    expect(r.focusIndex).toBe(1)
+  })
+
+  it('拆后面的段不动前面的段', () => {
+    const r = splitEnCell(['A.', 'B. C.', 'D.'], 1, 'B. C.', 'B. '.length)
+    expect(r.en).toEqual(['A.', 'B.', 'C.', 'D.'])
+    expect(r.focusIndex).toBe(2)
+  })
+
+  it('用的是格子里的实时文字，不是写回过的旧值', () => {
+    const r = splitEnCell(['旧值'], 0, 'Just typed. More.', 'Just typed. '.length)
+    expect(r.en).toEqual(['Just typed.', 'More.'])
+  })
+
+  it('还没写过英文时也能拆，不会把别的格子变出内容来', () => {
+    const r = splitEnCell(null, 2, 'One. Two.', 'One. '.length)
+    expect(r.en).toEqual(['', '', 'One.', 'Two.'])
   })
 })

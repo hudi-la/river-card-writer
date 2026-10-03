@@ -149,3 +149,28 @@ export function mergeEnCells(
   // 边界"的位置，就跟任何编辑器里段首退格的手感一样。
   return { en: next, caret: joined.length - cur.length }
 }
+
+// 在光标处把第 index 段英文拆成两段。这是 mergeEnCells 的另一半：中译英有时要
+// 加一个中文里没有的过渡段或主题句，那就得能拆。
+//
+// 手势取 Enter，跟中文栏一致——中文那边 Enter 就是另起一段。段内换行留给
+// Shift+Enter（textarea 本来就会插一个 \n，不拦就是了）。
+//
+// 接缝处剥掉空白：Enter 按在句末的空格后面时，前一段不该留个拖尾空格。这跟
+// mergeEnCells 在接缝补空格正好互为逆操作——拆了再合回去，拿到的是原来那一段。
+export function splitEnCell(
+  en: string[] | null,
+  index: number,
+  currentText: string,
+  caret: number
+): { en: string[]; focusIndex: number; caret: number } {
+  // en 为 null = 压根没写过英文，别的格子确实都是空的，所以从空串补起是安全的
+  // （跟 commit 里那条"绝不从零重建"的禁令不冲突：那条禁的是把已有的英文覆盖掉）。
+  const base = en ? [...en] : []
+  while (base.length < index) base.push('')
+  const before = currentText.slice(0, caret).trimEnd()
+  const after = currentText.slice(caret).trimStart()
+  const next = [...base.slice(0, index), before, after, ...base.slice(index + 1)]
+  // 光标跟到新的那一段的开头——作者按 Enter 就是要开始写下一段。
+  return { en: next, focusIndex: index + 1, caret: 0 }
+}

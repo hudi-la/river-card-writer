@@ -264,6 +264,91 @@ describe('CardView 的英文栏', () => {
     expect(Array.from(cells).map((c) => c.getAttribute('data-value'))).toEqual(['One.', 'Two.'])
   })
 
+  it('按 Enter 在光标处另起一段，光标跟到新那段的开头', async () => {
+    let ed: Editor | undefined
+    const { container } = render(
+      <EnHarness en={['One. Two.', 'X.']} enSrc={zhFingerprint(['第一段', '第二段'])} onReady={(e) => (ed = e)} />,
+    )
+    await new Promise((r) => setTimeout(r, 0))
+    const first = container.querySelectorAll('.card-en-p')[0] as HTMLTextAreaElement
+    first.focus()
+    first.setSelectionRange('One. '.length, 'One. '.length)
+    fireEvent.keyDown(first, { key: 'Enter' })
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(ed!.getJSON().content![0].attrs!.en).toEqual(['One.', 'Two.', 'X.'])
+    const tas = container.querySelectorAll('.card-en-p')
+    expect(document.activeElement).toBe(tas[1])
+    expect((tas[1] as HTMLTextAreaElement).selectionStart).toBe(0)
+  })
+
+  it('段尾按 Enter 开一个空段——中文只有两段时英文因此变成三格', async () => {
+    let ed: Editor | undefined
+    const { container } = render(
+      <EnHarness en={['One.', 'Two.']} enSrc={zhFingerprint(['第一段', '第二段'])} onReady={(e) => (ed = e)} />,
+    )
+    await new Promise((r) => setTimeout(r, 0))
+    const second = container.querySelectorAll('.card-en-p')[1] as HTMLTextAreaElement
+    second.focus()
+    second.setSelectionRange(second.value.length, second.value.length)
+    fireEvent.keyDown(second, { key: 'Enter' })
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(ed!.getJSON().content![0].attrs!.en).toEqual(['One.', 'Two.', ''])
+    expect(container.querySelectorAll('.card-en-cell').length).toBe(3)
+  })
+
+  it('Enter 用的是格子里的实时文字，不是写回过的旧值', async () => {
+    let ed: Editor | undefined
+    const { container } = render(
+      <EnHarness en={['旧值', 'X.']} enSrc={zhFingerprint(['第一段', '第二段'])} onReady={(e) => (ed = e)} />,
+    )
+    await new Promise((r) => setTimeout(r, 0))
+    const first = container.querySelectorAll('.card-en-p')[0] as HTMLTextAreaElement
+    first.value = 'Just typed. More.'
+    fireEvent.input(first)
+    first.focus()
+    first.setSelectionRange('Just typed. '.length, 'Just typed. '.length)
+    fireEvent.keyDown(first, { key: 'Enter' })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(ed!.getJSON().content![0].attrs!.en).toEqual(['Just typed.', 'More.', 'X.'])
+  })
+
+  it('Shift+Enter 不分段——段内换行照旧由 textarea 自己插', async () => {
+    let ed: Editor | undefined
+    const { container } = render(
+      <EnHarness en={['One.', 'Two.']} enSrc={zhFingerprint(['第一段', '第二段'])} onReady={(e) => (ed = e)} />,
+    )
+    await new Promise((r) => setTimeout(r, 0))
+    const first = container.querySelectorAll('.card-en-p')[0] as HTMLTextAreaElement
+    first.focus()
+    first.setSelectionRange(first.value.length, first.value.length)
+    const ev = fireEvent.keyDown(first, { key: 'Enter', shiftKey: true })
+    expect(ev).toBe(true) // 没有 preventDefault，浏览器自己插 \n
+    await new Promise((r) => setTimeout(r, 0))
+    expect(ed!.getJSON().content![0].attrs!.en).toEqual(['One.', 'Two.'])
+  })
+
+  it('拆了再合回去，拿到的是原来那一段', async () => {
+    let ed: Editor | undefined
+    const { container } = render(
+      <EnHarness en={['One. Two.']} enSrc={zhFingerprint(['第一段', '第二段'])} onReady={(e) => (ed = e)} />,
+    )
+    await new Promise((r) => setTimeout(r, 0))
+    const first = container.querySelectorAll('.card-en-p')[0] as HTMLTextAreaElement
+    first.focus()
+    first.setSelectionRange('One. '.length, 'One. '.length)
+    fireEvent.keyDown(first, { key: 'Enter' })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(ed!.getJSON().content![0].attrs!.en).toEqual(['One.', 'Two.'])
+
+    // 光标此刻就在第二格的开头，直接退格合回去
+    const second = document.activeElement as HTMLTextAreaElement
+    fireEvent.keyDown(second, { key: 'Backspace' })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(ed!.getJSON().content![0].attrs!.en).toEqual(['One. Two.'])
+  })
+
   it('段首按 Backspace，这一段并进上一段，光标落在接缝上', async () => {
     let ed: Editor | undefined
     const { container } = render(
@@ -356,31 +441,8 @@ describe('CardView 的英文栏', () => {
     fireEvent.keyDown(fourth, { key: 'Backspace' })
     await new Promise((r) => setTimeout(r, 0))
     expect(ed!.getJSON().content![0].attrs!.en).toEqual(['A.', 'B.', 'C. D.'])
-    // 合掉一段之后只剩一段是多余的
-    const cells = Array.from(container.querySelectorAll('.card-en-cell'))
-    expect(cells.map((c) => c.hasAttribute('data-extra'))).toEqual([false, false, true])
-  })
-
-  it('英文比中文多出来的段落带 data-extra 标记——段数不锁死，但多出来的得看得见', async () => {
-    const { container } = render(
-      <EnHarness en={['One.', 'Two.', 'Three.', 'Four.']} enSrc={zhFingerprint(['第一段', '第二段'])} />,
-    )
-    await new Promise((r) => setTimeout(r, 0))
-    const cells = Array.from(container.querySelectorAll('.card-en-cell'))
-    // 中文两段、英文四段：两边取大，四格全都在，后两格标成"中文没有这一段"
-    expect(cells.length).toBe(4)
-    expect(cells.map((c) => c.hasAttribute('data-extra'))).toEqual([false, false, true, true])
-    const tas = container.querySelectorAll('.card-en-p')
-    expect(tas[1].getAttribute('title')).toBeNull()
-    expect(tas[2].getAttribute('title')).toBe('中文里没有对应的这一段')
-  })
-
-  it('英文段数少于中文时没有 data-extra——空格子是"还没写"，不是"多出来"', async () => {
-    const { container } = render(<EnHarness en={['One.']} enSrc={zhFingerprint(['第一段', '第二段'])} />)
-    await new Promise((r) => setTimeout(r, 0))
-    const cells = Array.from(container.querySelectorAll('.card-en-cell'))
-    expect(cells.length).toBe(2)
-    expect(cells.some((c) => c.hasAttribute('data-extra'))).toBe(false)
+    // 中文 2 段、英文合成 3 段：格子数取两边较大值
+    expect(container.querySelectorAll('.card-en-cell').length).toBe(3)
   })
 
   it('打字时影子跟着变，所以格子边打边长', async () => {
