@@ -181,13 +181,22 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-// 段落数组 → HTML。段内的换行（作者按 Shift+Enter 敲的软断行）写成 <br>。
-// 空段落给一个 <br>，否则那个 <p> 没有高度、光标进不去。
+// 一个换行就是一段，跟中文栏一致——中文那边也没有"段内软断行"这种东西。
+//
+// 这条规则同时是一次数据修复。中间有一版是"一卡一个纯文本框、**空行**分段"，
+// 而作者段落之间敲的是单个回车，于是写回时整张卡的英文被并成了数组里的一条，
+// 中间留着 \n。那样渲染出来只有一个 <p>，只有它的第一行能缩进——作者看到的就是
+// 这个（2026-10-03 截图）。在这里把 \n 也当段界拆开，旧数据一读就恢复成多段，
+// 不用迁移脚本；下次失焦写回时顺手存成拆好的样子。
+export function splitParagraphs(paragraphs: string[]): string[] {
+  return paragraphs.flatMap((p) => p.split('\n')).filter((p) => p.trim() !== '')
+}
+
+// 段落数组 → HTML。空内容给一个 <p><br></p>，否则那个 <p> 没有高度、光标进不去。
 export function paragraphsToHtml(paragraphs: string[]): string {
-  if (paragraphs.length === 0) return '<p><br></p>'
-  return paragraphs
-    .map((p) => `<p>${p === '' ? '<br>' : escapeHtml(p).replace(/\n/g, '<br>')}</p>`)
-    .join('')
+  const flat = splitParagraphs(paragraphs)
+  if (flat.length === 0) return '<p><br></p>'
+  return flat.map((p) => `<p>${escapeHtml(p)}</p>`).join('')
 }
 
 // 一个节点里的文字，<br> 算一个换行。
@@ -208,22 +217,23 @@ const BLOCK_TAGS = new Set(['P', 'DIV', 'SECTION', 'ARTICLE', 'BLOCKQUOTE', 'LI'
 // DOM → 段落数组。
 // 顶层可能混着裸文本节点：有些浏览器把第一行留成裸文本、后面几行才包进块里。
 // 那些裸文本归到"当前这一段"，碰到块级元素才结算。
+// 最后统一过一遍 splitParagraphs：<br> 在 textOf 里变成 \n，而换行就是段界，
+// 所以存进去的段落里永远不含 \n——这让"存 → 读 → 存"是幂等的。
 export function readParagraphs(el: HTMLElement): string[] {
   const paras: string[] = []
   let current = ''
   const flush = () => {
-    if (current.trim() !== '') paras.push(current)
+    if (current !== '') paras.push(current)
     current = ''
   }
   el.childNodes.forEach((node) => {
     if (node.nodeType === 1 && BLOCK_TAGS.has((node as Element).tagName)) {
       flush()
-      const t = textOf(node)
-      if (t.trim() !== '') paras.push(t)
+      paras.push(textOf(node))
     } else {
       current += textOf(node)
     }
   })
   flush()
-  return paras
+  return splitParagraphs(paras)
 }

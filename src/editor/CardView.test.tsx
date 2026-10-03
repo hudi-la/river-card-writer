@@ -144,12 +144,13 @@ describe('CardView 的英文栏', () => {
     expect(container.querySelector('.card-en-p')!.getAttribute('contenteditable')).toBeTruthy()
   })
 
-  it('段内的软断行写成 <br>，不是新的段落', async () => {
-    const { container } = render(<EnHarness en={['One.\nstill one.', 'Two.']} enSrc={'x'} />)
+  it('旧数据里并成一条的英文，一打开就恢复成多段——否则只有第一段能缩进', async () => {
+    // 中间有一版"空行分段"，而作者段落之间敲的是单个回车，于是整张卡的英文被
+    // 并成了数组里的一条。这是作者 2026-10-03 截图里看到的那个样子。
+    const { container } = render(<EnHarness en={['One.\nTwo.\nThree.']} enSrc={'x'} />)
     await new Promise((r) => setTimeout(r, 0))
     const ps = container.querySelector('.card-en-p')!.querySelectorAll('p')
-    expect(ps.length).toBe(2)
-    expect(ps[0].querySelectorAll('br').length).toBe(1)
+    expect(Array.from(ps).map((p) => p.textContent)).toEqual(['One.', 'Two.', 'Three.'])
   })
 
   it('没写过英文时标 data-empty，占位文字由 CSS 挂上去——不占一行', async () => {

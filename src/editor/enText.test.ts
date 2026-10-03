@@ -226,15 +226,23 @@ describe('paragraphsToHtml / readParagraphs：写出去和读回来必须严格�
   }
 
   it('往返不变形', () => {
-    for (const ps of [
-      ['One.'],
-      ['One.', 'Two.'],
-      ['One.', 'Two.', 'Three.'],
-      ['Line one.\nLine two.'],
-      ['One.', 'Two.\nstill two.', 'Three.'],
-    ]) {
+    for (const ps of [['One.'], ['One.', 'Two.'], ['One.', 'Two.', 'Three.']]) {
       expect(read(paragraphsToHtml(ps))).toEqual(ps)
     }
+  })
+
+  it('一个换行就是一段——旧数据里并成一条的英文，一读就恢复成多段', () => {
+    // 中间有一版"空行分段"，而作者敲的是单个回车，于是整张卡被并成了数组里的一条
+    const legacy = ['One.\nTwo.\nThree.']
+    expect(read(paragraphsToHtml(legacy))).toEqual(['One.', 'Two.', 'Three.'])
+    // 恢复之后每段都是独立的 <p>，首行缩进才逐段生效
+    expect(paragraphsToHtml(legacy)).toBe('<p>One.</p><p>Two.</p><p>Three.</p>')
+  })
+
+  it('存 → 读 → 存 是幂等的：存进去的段落里永远不含换行', () => {
+    const once = read(paragraphsToHtml(['One.\nTwo.', 'Three.']))
+    expect(once.every((p) => !p.includes('\n'))).toBe(true)
+    expect(read(paragraphsToHtml(once))).toEqual(once)
   })
 
   it('HTML 特殊字符不会被当成标签——作者写 a < b 就得存成 a < b', () => {
@@ -250,12 +258,13 @@ describe('paragraphsToHtml / readParagraphs：写出去和读回来必须严格�
 
   it('顶层的裸文本节点归到当前这一段——有些浏览器第一行不包块', () => {
     expect(read('One.<div>Two.</div>')).toEqual(['One.', 'Two.'])
-    expect(read('One.<br>still one.<div>Two.</div>')).toEqual(['One.\nstill one.', 'Two.'])
+    // <br> 也是段界：浏览器按 Shift+Enter 插的就是它，而换行就是一段
+    expect(read('One.<br>Two.<div>Three.</div>')).toEqual(['One.', 'Two.', 'Three.'])
   })
 
   it('空段落不存，但写出去时得有 <br> 撑着——否则光标进不去', () => {
     expect(paragraphsToHtml([])).toBe('<p><br></p>')
-    expect(paragraphsToHtml(['', 'Two.'])).toBe('<p><br></p><p>Two.</p>')
+    expect(paragraphsToHtml(['', 'Two.'])).toBe('<p>Two.</p>')
     expect(read('<p><br></p><p>Two.</p>')).toEqual(['Two.'])
     expect(read('<p><br></p>')).toEqual([])
   })
