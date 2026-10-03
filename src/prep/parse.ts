@@ -156,3 +156,51 @@ export function parsePrepResponse(raw: string, policy: AiPolicy = 'strict'): Ok 
     warnings,
   }
 }
+
+// 加词的返回值：一条条目，不是一份备料。
+//
+// 复用 parseCandidate 的全部校验（loses 必填、verify_form ≤5 词、字段里不许有
+// 整句英文），但不校验备料特有的东西——文体、承重句、优先级在这里都不适用。
+// 候选全不合格才算失败：留一条是一条，那次调用花了时间和钱。
+export function parseWordResponse(
+  raw: string,
+  phrase: string
+): { ok: true; value: Target; warnings: string[] } | { ok: false; error: string } {
+  let json: any
+  try {
+    json = JSON.parse(raw)
+  } catch {
+    return fail('模型没有返回合法 JSON')
+  }
+  if (!json || typeof json !== 'object') return fail('返回值不是对象')
+
+  const warnings: string[] = []
+  const rawCands = Array.isArray(json.candidates) ? json.candidates : []
+  const candidates: Candidate[] = []
+  for (const rc of rawCands) {
+    const c = parseCandidate(rc, `「${phrase}」`, warnings)
+    if (c) candidates.push(c)
+  }
+  if (candidates.length === 0) {
+    return fail(`没能为「${phrase}」给出可用的候选：${warnings[0] ?? '模型返回里一个候选都没有'}`)
+  }
+
+  const ft = json.flat_translation ?? {}
+  return {
+    ok: true,
+    value: {
+      // 模型给的 zh 可能跟作者划的略有出入；以作者划的为准，那是他指的东西。
+      zh: String(json.zh ?? '').trim() || phrase,
+      zhQuote: '',
+      category: '作者指定',
+      priority: 0, // 排最前：他自己要的，比模型捞的更该先看见
+      whyZhIsPrecise: String(json.why_zh_is_precise ?? ''),
+      flatTranslation: { text: String(ft.text ?? ''), whyItDies: String(ft.why_it_dies ?? '') },
+      candidates,
+      noSingleWord: json.no_single_word === true,
+      family: String(json.family ?? ''),
+      byAuthor: true,
+    },
+    warnings,
+  }
+}

@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabase'
-import { buildPrepRequest } from './prompt'
-import { parsePrepResponse } from './parse'
-import type { AiPolicy, PrepResult } from './types'
+import { buildPrepRequest, buildWordRequest } from './prompt'
+import { parsePrepResponse, parseWordResponse } from './parse'
+import type { AiPolicy, PrepResult, Target } from './types'
 import type { FetchFreqs } from './verify'
 
 // invoke 抽成可注入的依赖：测试不能真的打到线上 Edge Function。跟 triggerSave /
@@ -20,11 +20,11 @@ function defaultInvoke(name: string, opts: { body: unknown }) {
 export async function requestPrep(
   zhTexts: string[],
   policy: AiPolicy = 'strict',
-  deps: { invoke?: InvokeFn; focus?: string; settled?: Record<string, string> } = {}
+  deps: { invoke?: InvokeFn; settled?: Record<string, string> } = {}
 ): Promise<{ ok: true; value: PrepResult; warnings?: string[] } | { ok: false; error: string }> {
   const invoke = deps.invoke ?? defaultInvoke
   try {
-    const { system, user } = buildPrepRequest(zhTexts, policy, deps.focus, deps.settled)
+    const { system, user } = buildPrepRequest(zhTexts, policy, deps.settled)
     const { data, error } = await invoke('prep', { body: { kind: 'model', system, user } })
     if (error) return { ok: false, error: error.message }
     if (data?.error) return { ok: false, error: String(data.error) }
@@ -46,5 +46,26 @@ export function makeFetchFreqs(deps: { invoke?: InvokeFn } = {}): FetchFreqs {
     if (error) throw new Error(error.message)
     if (!data?.freqs) throw new Error('服务端没有返回 freqs')
     return data.freqs as Awaited<ReturnType<FetchFreqs>>
+  }
+}
+
+// 加词：问一个词该用哪个英文，返回一条条目。
+// 跟 requestPrep 是两条路，因为那是两个问题——备料是"这段里哪些地方值得下
+// 功夫"，加词是"这个词用哪个英文好"。合在一起会让模型做它不该做的判断。
+export async function requestWord(
+  zhTexts: string[],
+  phrase: string,
+  deps: { invoke?: InvokeFn; settled?: Record<string, string> } = {}
+): Promise<{ ok: true; value: Target; warnings: string[] } | { ok: false; error: string }> {
+  const invoke = deps.invoke ?? defaultInvoke
+  try {
+    const { system, user } = buildWordRequest(zhTexts, phrase, deps.settled)
+    const { data, error } = await invoke('prep', { body: { kind: 'model', system, user } })
+    if (error) return { ok: false, error: error.message }
+    if (data?.error) return { ok: false, error: String(data.error) }
+    if (!data?.text) return { ok: false, error: '服务端没有返回内容' }
+    return parseWordResponse(data.text, phrase)
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { requestPrep, makeFetchFreqs } from './client'
+import { requestPrep, requestWord, makeFetchFreqs } from './client'
 
 const validResponse = JSON.stringify({
   genre: 'narrative',
@@ -105,5 +105,32 @@ describe('requestPrep 的档位', () => {
     await requestPrep(['x'], 'auto', { invoke })
     expect(seen[1].length).toBeGreaterThan(seen[0].length)
     expect(seen[1].startsWith(seen[0])).toBe(true)
+  })
+})
+
+describe('requestWord', () => {
+  const ok = JSON.stringify({
+    zh: '编入', why_zh_is_precise: '写进去',
+    flat_translation: { text: 'put into', why_it_dies: '太泛' },
+    family: '注入', no_single_word: false,
+    candidates: [{ en: 'encode', verify_form: 'encode', register: '技术', nuance: '编码', why_fits: '贴', loses: '偏机械' }],
+  })
+
+  it('发的是加词的提示词，不是备料那一份', async () => {
+    const seen: string[] = []
+    const invoke = vi.fn(async (_n: string, o: { body: any }) => {
+      seen.push(o.body.system)
+      return { data: { text: ok } as any, error: null }
+    })
+    const r = await requestWord(['第一段'], '编入', { invoke })
+    expect(r.ok).toBe(true)
+    expect(seen[0]).not.toContain('靶心')
+    expect(seen[0]).toContain('这个词用哪个英文好')
+  })
+
+  it('失败不抛出', async () => {
+    const invoke = vi.fn(async () => ({ data: null, error: { message: '没登录' } }))
+    const r = await requestWord(['x'], '编入', { invoke })
+    expect(r.ok).toBe(false)
   })
 })

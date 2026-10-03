@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildPrepRequest, PREP_SYSTEM, PREP_AUTO } from './prompt'
+import { buildPrepRequest, buildWordRequest, PREP_SYSTEM, PREP_AUTO } from './prompt'
 
 describe('buildPrepRequest', () => {
   it('system 是提示词正文，user 只装中文', () => {
@@ -60,34 +60,47 @@ describe('术语表进提示词', () => {
   })
 
   it('有的话列进去，并要求排第一', () => {
-    const r = buildPrepRequest(['第一段'], 'strict', undefined, { 关系策略: 'relational strategy' })
+    const r = buildPrepRequest(['第一段'], 'strict', { 关系策略: 'relational strategy' })
     expect(r.system).toContain('已经定下来的译法')
     expect(r.system).toContain('「关系策略」→ relational strategy')
   })
 
-  it('术语表排在 focus 之前——它整篇共用，放前面缓存前缀才留得住', () => {
-    const r = buildPrepRequest(['第一段'], 'strict', '堵', { 关系策略: 'relational strategy' })
-    expect(r.system.indexOf('已经定下来的译法')).toBeLessThan(r.system.indexOf('只为作者指定的那个词'))
-  })
-
   it('空的中文或英文不进表', () => {
-    const r = buildPrepRequest(['x'], 'strict', undefined, { 关系策略: '', '': 'x' })
+    const r = buildPrepRequest(['x'], 'strict', { 关系策略: '', '': 'x' })
     expect(r.system).not.toContain('已经定下来的译法')
   })
 })
 
-describe('划词备料', () => {
-  it('给了 focus 就加上"只做这一条"那段，并带上那个词', () => {
-    const r = buildPrepRequest(['第一段'], 'strict', '一爪子按下')
-    expect(r.system).toContain('只为作者指定的那个词')
-    expect(r.system).toContain('一爪子按下')
+describe('加词：跟备料是两份提示词', () => {
+  it('加词的提示词小一个数量级——它不该做挑靶心、判文体那些事', () => {
+    const w = buildWordRequest(['第一段'], '编入')
+    const p = buildPrepRequest(['第一段'])
+    expect(w.system.length).toBeLessThan(p.system.length / 2)
   })
 
-  it('没给 focus 就不加', () => {
-    expect(buildPrepRequest(['第一段']).system).not.toContain('只为作者指定的那个词')
+  it('加词的提示词里没有备料那套（靶心、文体、承重句、优先级）', () => {
+    const w = buildWordRequest(['第一段'], '编入').system
+    for (const absent of ['靶心', '承重句', 'priority', 'genre']) {
+      expect(w).not.toContain(absent)
+    }
   })
 
-  it('空白的 focus 不算', () => {
-    expect(buildPrepRequest(['第一段'], 'strict', '   ').system).not.toContain('只为作者指定的那个词')
+  it('但该守的规矩一条没少', () => {
+    const w = buildWordRequest(['第一段'], '编入').system
+    for (const must of ['短处', 'verify_form', '不要给整句英文', 'ridicule']) {
+      expect(w).toContain(must)
+    }
+  })
+
+  it('user 里带整段中文当语境，并点明是哪个词', () => {
+    const r = buildWordRequest(['第一段', '第二段'], '编入')
+    expect(r.user).toContain('第一段')
+    expect(r.user).toContain('第二段')
+    expect(r.user).toContain('「编入」')
+  })
+
+  it('已定译法照样带上——术语一致跟哪个功能无关', () => {
+    const r = buildWordRequest(['x'], '编入', { 关系策略: 'relational strategy' })
+    expect(r.system).toContain('「关系策略」→ relational strategy')
   })
 })

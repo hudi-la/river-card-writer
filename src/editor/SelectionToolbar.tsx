@@ -84,8 +84,8 @@ export function SelectionToolbar({ editor }: { editor: Editor }) {
     </button>
   )
 
-  // 划词备料：工具条最后一格。模型捞的是它认为重要的，而作者卡在哪儿只有他
-  // 知道——这两件事不该互相取代，所以是补一条，不是换一批。
+  // 加词：工具条最后一格。跟备料是两个功能——备料是"这段里哪些地方值得下
+  // 功夫"（模型挑），加词是"这个词用哪个英文好"（作者指）。
   const prepPhrase = usePrepBridge((st) => st.prepPhrase)
 
   return (
@@ -144,8 +144,8 @@ export function SelectionToolbar({ editor }: { editor: Editor }) {
           <button
             type="button"
             className="sel-prep"
-            title="为这个词备料，加到右边栏"
-            aria-label="为这个词备料"
+            title="问这个词该用哪个英文，加到右边栏"
+            aria-label="问这个词该用哪个英文"
             onMouseDown={(e) => {
               keepSelection(e)
               const { from, to } = editor.state.selection
@@ -153,7 +153,7 @@ export function SelectionToolbar({ editor }: { editor: Editor }) {
               if (phrase) prepPhrase(phrase)
             }}
           >
-            备料
+            加词
           </button>
         </div>
       ) : null}

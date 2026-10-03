@@ -11,12 +11,11 @@ import { PrepSidebar } from './PrepSidebar'
 import { useActiveCardId } from './useActiveCardId'
 import { useEditorBridge } from '../state/editorBridge'
 import { useToastStore } from '../state/toastStore'
-import { requestPrep, makeFetchFreqs } from '../prep/client'
+import { requestPrep, requestWord, makeFetchFreqs } from '../prep/client'
 import { createVerifier, type Tier } from '../prep/verify'
 import { runPrep, type CardInput } from '../prep/runPrep'
 import { toAiPolicy } from '../prep/types'
 import { usePrepBridge } from '../state/prepBridge'
-import { pickFocusedTarget } from '../prep/focusTarget'
 
 const FONT_STACK: Record<'serif' | 'sans', string> = {
   serif: "Georgia,'Songti SC','Noto Serif',serif",
@@ -259,44 +258,44 @@ export function Workspace() {
     }
   }
 
-  // 划词备料：只为作者自己划出来的那个词做一条，追加到这张卡已有的提词上。
-  // 追加而不是覆盖——他划一个词是在"补一条"，不是在说"前面那些不要了"。
-  const prepPhraseOnCard = async (phrase: string) => {
+  // 加词：作者在中文里划了一个词，问它该用哪个英文。
+  //
+  // 这是跟备料**不同的功能**，所以走不同的提示词和不同的解析器。备料是"通读
+  // 这段，找出质感最重的地方"；加词只回答"这个词用哪个英文好"——他已经指了，
+  // 不需要任何挑选判断。原来的做法是把完整的备料提示词发过去再追加一句"只输出
+  // 一条"，然后在代码里把多出来的滤掉，那是让模型做它不该做的事再去收拾结果。
+  const addWordOnCard = async (phrase: string) => {
     const showToast = useToastStore.getState().show
     const card = cardsFromEditor().find((c) => c.cardId === activeCardId)
     if (!card) return
     if (preppingCards.has(card.cardId)) return
     setPreppingCards((prev) => new Set([...prev, card.cardId]))
     try {
-      const r = await requestPrep(card.zhTexts, toAiPolicy(book?.aiPolicy), { focus: phrase, settled: book?.settled })
+      const r = await requestWord(card.zhTexts, phrase, { settled: book?.settled })
       if (!r.ok) {
         setPrepErrors((prev) => ({ ...prev, [card.cardId]: r.error }))
-        showToast({ text: `备料失败：${r.error}`, kind: 'error', durationMs: 5000 })
-        return
-      }
-      // 只取作者划的那一条。模型可能把整张卡重新分析一遍返回一堆——那不是他
-      // 要的，也会在追加时跟已有条目撞名。
-      const one = pickFocusedTarget(r.value.targets, phrase)
-      if (!one) {
-        showToast({ text: `没能为「${phrase}」做出条目`, kind: 'info' })
+        showToast({ text: `加词失败：${r.error}`, kind: 'error', durationMs: 5000 })
         return
       }
       const before = book?.hints?.[card.cardId]?.targets.length ?? 0
-      appendCardHints(card.cardId, { ...r.value, targets: [{ ...one, byAuthor: true }] })
+      appendCardHints(card.cardId, {
+        genre: book?.hints?.[card.cardId]?.genre ?? 'other',
+        genreReason: '',
+        targets: [r.value],
+      })
       const after = useBookStore.getState().activeBook()?.hints?.[card.cardId]?.targets.length ?? 0
       if (after === before && before > 0) {
-        showToast({ text: `「${one.zh}」已经在备料里了`, kind: 'info' })
+        showToast({ text: `「${r.value.zh}」已经在里面了`, kind: 'info' })
         return
       }
-      const forms = one.candidates.map((c) => c.verifyForm)
       try {
-        const m = await verify(forms)
+        const m = await verify(r.value.candidates.map((c) => c.verifyForm))
         setTiers((prev) => new Map([...prev, ...m]))
         mergeVerified(Object.fromEntries(m))
       } catch {
-        // 查不到就维持原样，不影响已经落地的提词
+        // 查不到就维持原样，不影响已经落地的条目
       }
-      showToast({ text: `「${one.zh}」已加到备料`, kind: 'success' })
+      showToast({ text: `「${r.value.zh}」已加进来`, kind: 'success' })
     } finally {
       setPreppingCards((prev) => {
         const next = new Set(prev)
@@ -309,7 +308,7 @@ export function Workspace() {
   // 把触发函数登记给划词工具条。双语+备料栏开着时才给，否则那个按钮点了没地方显示。
   useEffect(() => {
     const on = bilingual && prepOpen && !readMode && viewKind !== 'box'
-    setPrepPhrase(on ? (p: string) => void prepPhraseOnCard(p) : null)
+    setPrepPhrase(on ? (p: string) => void addWordOnCard(p) : null)
     return () => setPrepPhrase(null)
   })
 

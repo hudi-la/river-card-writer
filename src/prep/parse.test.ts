@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parsePrepResponse } from './parse'
+import { parsePrepResponse, parseWordResponse } from './parse'
 
 function goodCandidate(over: Record<string, unknown> = {}) {
   return { en: 'hem in', verify_form: 'hem in', register: '书面', nuance: '包围', why_fits: '贴', loses: '没有对峙感', ...over }
@@ -190,5 +190,55 @@ describe('档位决定要不要收整句译文', () => {
         nuance: 'A palm-sized kitten had hemmed the neighbors in their own bedroom and waited.' })] })],
     })
     expect(parsePrepResponse(bad, 'auto').ok).toBe(false)
+  })
+})
+
+describe('parseWordResponse —— 加词返回一条条目', () => {
+  const good = (over: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      zh: '编入', why_zh_is_precise: '强调写进去而不是说出来',
+      flat_translation: { text: 'put into', why_it_dies: '太泛' },
+      family: '把规则注入容器', no_single_word: false,
+      candidates: [goodCandidate({ en: 'encode' })], ...over,
+    })
+
+  it('解析出一条，并打上「作者指定」的标记', () => {
+    const r = parseWordResponse(good(), '编入')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.value.zh).toBe('编入')
+    expect(r.value.byAuthor).toBe(true)
+    expect(r.value.candidates.map((c) => c.en)).toEqual(['encode'])
+  })
+
+  it('优先级排最前——作者自己要的比模型捞的更该先看见', () => {
+    const r = parseWordResponse(good(), '编入')
+    expect(r.ok && r.value.priority).toBe(0)
+  })
+
+  it('模型给的 zh 跟作者划的不一致时，以作者划的为准', () => {
+    const r = parseWordResponse(good({ zh: '' }), '编入三个 agents')
+    expect(r.ok && r.value.zh).toBe('编入三个 agents')
+  })
+
+  it('候选的那套校验一条没少：缺短处的被丢掉', () => {
+    const r = parseWordResponse(good({
+      candidates: [goodCandidate({ en: '坏的', loses: '无' }), goodCandidate({ en: '好的' })],
+    }), '编入')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.value.candidates.map((c) => c.en)).toEqual(['好的'])
+    expect(r.warnings.length).toBe(1)
+  })
+
+  it('候选全不合格才算失败，并说明原因', () => {
+    const r = parseWordResponse(good({ candidates: [goodCandidate({ loses: '无' })] }), '编入')
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.error).toContain('编入')
+  })
+
+  it('不是 JSON 就拒收，不抛出', () => {
+    expect(parseWordResponse('不是 JSON', '编入').ok).toBe(false)
   })
 })
