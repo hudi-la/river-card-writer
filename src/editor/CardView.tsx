@@ -1,9 +1,9 @@
-import { useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react'
 import { GripVertical } from 'lucide-react'
 import { autoCardColor } from './schema'
 import { useBookStore } from '../state/bookStore'
-import { confirmState, isValidEn, zhFingerprint, UNCONFIRMED, ZH_JOIN } from './enText'
+import { mergeEnCells, confirmState, isValidEn, zhFingerprint, UNCONFIRMED, ZH_JOIN } from './enText'
 import { prepHitCount } from './prepHighlight'
 
 // 一段英文 = 一个 <textarea>。
@@ -32,20 +32,37 @@ function EnCell({
   index,
   extra,
   placeholder,
+  caret,
   onCommit,
+  onMergeBackward,
+  onCaretApplied,
 }: {
   value: string
   style: string
   index: number
   extra?: boolean
   placeholder?: string
+  caret?: number
   onCommit: (text: string) => void
+  onMergeBackward: (index: number, currentText: string | null) => boolean
+  onCaretApplied: () => void
 }) {
   const wrap = useRef<HTMLDivElement>(null)
+  const ta = useRef<HTMLTextAreaElement>(null)
+
+  // 刚刚合过段：把光标放回接缝上。合并会换掉 key、这一格重新挂载，所以这个
+  // effect 正好在新的 textarea 上跑一次。
+  useEffect(() => {
+    if (caret == null || !ta.current) return
+    ta.current.focus()
+    ta.current.setSelectionRange(caret, caret)
+    onCaretApplied()
+  }, [caret, onCaretApplied])
 
   return (
     <div className="card-en-cell" ref={wrap} data-value={value} data-extra={extra ? '' : undefined}>
       <textarea
+        ref={ta}
         className="card-en-p"
         data-style={style}
         aria-label={extra ? `第 ${index + 1} 段的英文（中文没有这一段）` : `第 ${index + 1} 段的英文`}
@@ -64,7 +81,22 @@ function EnCell({
         // 这个 textarea 在 PM 可编辑区内部（靠 aside 的 contentEditable={false}
         // 隔开），但 DOM 事件照样会冒泡；PM 的 keymap 抓 Backspace / Enter 等键，
         // 那是原来"英文格子里删不掉行"的另一半原因。
-        onKeyDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          e.stopPropagation()
+          // 段首退格 = 并进上一段；段尾 Delete = 把下一段并进来。就是所有编辑器
+          // 里改分段的那两个手势，不另发明按钮。
+          // 只在没有选区时才算（有选区的 Backspace/Delete 是删掉选中的字）。
+          const el = e.currentTarget
+          const atHead = el.selectionStart === 0 && el.selectionEnd === 0
+          const atTail = el.selectionStart === el.value.length && el.selectionEnd === el.value.length
+          if (e.key === 'Backspace' && atHead) {
+            if (onMergeBackward(index, el.value)) e.preventDefault()
+          } else if (e.key === 'Delete' && atTail) {
+            // 从接缝的另一侧发起，合的还是同一道缝：把 index+1 并进 index。
+            // 传 null = "那一格的文字用存着的值"：它没有焦点，焦点离开时就写回过了。
+            if (onMergeBackward(index + 1, null)) e.preventDefault()
+          }
+        }}
         onKeyUp={(e) => e.stopPropagation()}
         onPaste={(e) => e.stopPropagation()}
         onCut={(e) => e.stopPropagation()}
@@ -107,6 +139,31 @@ export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
   // 要不要删。少于中文段数时补空格子。
   const cellCount = Math.max(zhTexts.length, en?.length ?? 0)
   const state = confirmState(en, node.attrs.enSrc || '', zhTexts.join(ZH_JOIN))
+
+  // 刚合过段之后光标该落在哪一格的哪个位置。合并会换掉那一格的 key、让它重新
+  // 挂载，所以得由父这边告诉它"你挂载完把光标放到这里"。
+  const [pendingCaret, setPendingCaret] = useState<{ index: number; caret: number } | null>(null)
+  const clearCaret = useCallback(() => setPendingCaret(null), [])
+
+  // 作者把第 index 段并进第 index-1 段。返回有没有真的合——没合的话调用方让
+  // Backspace/Delete 照常删字符。
+  // currentText 为 null 表示"那一格的文字用存着的值"：只有带焦点的那一格可能
+  // 有没写回的改动，别的格子失焦时都写回过了。
+  function mergeBackward(index: number, currentText: string | null): boolean {
+    if (en == null || index < 1 || index >= cellCount) return false
+    const text = currentText ?? en[index] ?? ''
+    const r = mergeEnCells(en, index, text)
+    if (!r) return false
+    const anyText = r.en.some((t) => t.trim() !== '')
+    updateAttributes({
+      en: anyText ? r.en : null,
+      // 跟 commit 一样：改自己的英文不撤销确认，但全删空了就退回"没写过"。
+      ...(anyText ? {} : { enSrc: UNCONFIRMED }),
+      enAt: anyText ? new Date().toISOString() : '',
+    })
+    setPendingCaret({ index: index - 1, caret: r.caret })
+    return true
+  }
 
   // 写回一段英文。只在 blur 时调用——写回会让这个 node view 重渲染，那时焦点
   // 已经离开，所以不会把作者正在打字的光标冲掉。
@@ -182,6 +239,9 @@ export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
             index={i}
             // 中文那边没有这一段。不拦不删——作者自己决定合回去还是留着。
             extra={i >= zhTexts.length}
+            caret={pendingCaret?.index === i ? pendingCaret.caret : undefined}
+            onMergeBackward={mergeBackward}
+            onCaretApplied={clearCaret}
             placeholder={en == null && i === 0 ? '开始写…' : undefined}
             onCommit={(text) => commit(i, text)}
           />

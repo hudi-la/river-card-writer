@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, fireEvent } from '@testing-library/react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import { baseExtensions, autoCardColor, CARD_PALETTE } from './schema'
 
@@ -77,7 +77,15 @@ describe('CardView', () => {
 // ── 译前备料：英文栏 ──────────────────────────────────────────────
 import { zhFingerprint, UNCONFIRMED } from './enText'
 
-function EnHarness({ en, enSrc }: { en: string[] | null; enSrc: string }) {
+function EnHarness({
+  en,
+  enSrc,
+  onReady,
+}: {
+  en: string[] | null
+  enSrc: string
+  onReady?: (editor: Editor) => void
+}) {
   const editor = useEditor({
     extensions: baseExtensions,
     immediatelyRender: false,
@@ -96,6 +104,7 @@ function EnHarness({ en, enSrc }: { en: string[] | null; enSrc: string }) {
     },
   })
   if (!editor) return null
+  onReady?.(editor)
   return <EditorContent editor={editor} />
 }
 
@@ -253,6 +262,103 @@ describe('CardView 的英文栏', () => {
     const cells = container.querySelectorAll('.card-en-cell')
     expect(cells.length).toBe(2)
     expect(Array.from(cells).map((c) => c.getAttribute('data-value'))).toEqual(['One.', 'Two.'])
+  })
+
+  it('段首按 Backspace，这一段并进上一段，光标落在接缝上', async () => {
+    let ed: Editor | undefined
+    const { container } = render(
+      <EnHarness en={['One.', 'Two.']} enSrc={zhFingerprint(['第一段', '第二段'])} onReady={(e) => (ed = e)} />,
+    )
+    await new Promise((r) => setTimeout(r, 0))
+    const tas = container.querySelectorAll('.card-en-p')
+    const second = tas[1] as HTMLTextAreaElement
+    second.focus()
+    second.setSelectionRange(0, 0)
+    fireEvent.keyDown(second, { key: 'Backspace' })
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(ed!.getJSON().content![0].attrs!.en).toEqual(['One. Two.'])
+    // 光标回到接缝：第一格、'One. ' 之后
+    const first = container.querySelectorAll('.card-en-p')[0] as HTMLTextAreaElement
+    expect(document.activeElement).toBe(first)
+    expect(first.selectionStart).toBe('One. '.length)
+  })
+
+  it('段首 Backspace 用的是格子里的实时文字，不是写回过的旧值', async () => {
+    let ed: Editor | undefined
+    const { container } = render(
+      <EnHarness en={['One.', 'Two.']} enSrc={zhFingerprint(['第一段', '第二段'])} onReady={(e) => (ed = e)} />,
+    )
+    await new Promise((r) => setTimeout(r, 0))
+    const second = container.querySelectorAll('.card-en-p')[1] as HTMLTextAreaElement
+    // 刚敲完就退格，还没失焦——写回还没发生
+    second.value = 'Two, just typed.'
+    fireEvent.input(second)
+    second.focus()
+    second.setSelectionRange(0, 0)
+    fireEvent.keyDown(second, { key: 'Backspace' })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(ed!.getJSON().content![0].attrs!.en).toEqual(['One. Two, just typed.'])
+  })
+
+  it('段尾按 Delete，把下一段并进来——同一道缝，从另一侧发起', async () => {
+    let ed: Editor | undefined
+    const { container } = render(
+      <EnHarness en={['One.', 'Two.']} enSrc={zhFingerprint(['第一段', '第二段'])} onReady={(e) => (ed = e)} />,
+    )
+    await new Promise((r) => setTimeout(r, 0))
+    const first = container.querySelectorAll('.card-en-p')[0] as HTMLTextAreaElement
+    first.focus()
+    first.setSelectionRange(first.value.length, first.value.length)
+    fireEvent.keyDown(first, { key: 'Delete' })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(ed!.getJSON().content![0].attrs!.en).toEqual(['One. Two.'])
+  })
+
+  it('第一段的段首 Backspace 不合段，也不吞掉按键', async () => {
+    let ed: Editor | undefined
+    const { container } = render(
+      <EnHarness en={['One.', 'Two.']} enSrc={zhFingerprint(['第一段', '第二段'])} onReady={(e) => (ed = e)} />,
+    )
+    await new Promise((r) => setTimeout(r, 0))
+    const first = container.querySelectorAll('.card-en-p')[0] as HTMLTextAreaElement
+    first.focus()
+    first.setSelectionRange(0, 0)
+    const ev = fireEvent.keyDown(first, { key: 'Backspace' })
+    expect(ev).toBe(true) // 没有 preventDefault
+    await new Promise((r) => setTimeout(r, 0))
+    expect(ed!.getJSON().content![0].attrs!.en).toEqual(['One.', 'Two.'])
+  })
+
+  it('有选区时的 Backspace 照常删选中的字，不合段', async () => {
+    let ed: Editor | undefined
+    const { container } = render(
+      <EnHarness en={['One.', 'Two.']} enSrc={zhFingerprint(['第一段', '第二段'])} onReady={(e) => (ed = e)} />,
+    )
+    await new Promise((r) => setTimeout(r, 0))
+    const second = container.querySelectorAll('.card-en-p')[1] as HTMLTextAreaElement
+    second.focus()
+    second.setSelectionRange(0, 3) // 选中 'Two'
+    fireEvent.keyDown(second, { key: 'Backspace' })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(ed!.getJSON().content![0].attrs!.en).toEqual(['One.', 'Two.'])
+  })
+
+  it('中文那边没有对应段落的多余段，能用 Backspace 合回去', async () => {
+    let ed: Editor | undefined
+    const { container } = render(
+      <EnHarness en={['A.', 'B.', 'C.', 'D.']} enSrc={zhFingerprint(['第一段', '第二段'])} onReady={(e) => (ed = e)} />,
+    )
+    await new Promise((r) => setTimeout(r, 0))
+    const fourth = container.querySelectorAll('.card-en-p')[3] as HTMLTextAreaElement
+    fourth.focus()
+    fourth.setSelectionRange(0, 0)
+    fireEvent.keyDown(fourth, { key: 'Backspace' })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(ed!.getJSON().content![0].attrs!.en).toEqual(['A.', 'B.', 'C. D.'])
+    // 合掉一段之后只剩一段是多余的
+    const cells = Array.from(container.querySelectorAll('.card-en-cell'))
+    expect(cells.map((c) => c.hasAttribute('data-extra'))).toEqual([false, false, true])
   })
 
   it('英文比中文多出来的段落带 data-extra 标记——段数不锁死，但多出来的得看得见', async () => {

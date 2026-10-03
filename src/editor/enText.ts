@@ -120,3 +120,32 @@ export function mergeEn(
   if (a == null || b == null) return { en: (a ?? b) as string[], enSrc: UNCONFIRMED }
   return { en: [...a, ...b], enSrc: bothConfirmed ? zhFingerprint(mergedZhTexts) : UNCONFIRMED }
 }
+
+// 把第 index 段英文并进第 index-1 段。段数不再锁 1:1（见 isValidEn 的注释和
+// spec §14）之后，作者必须能自己改英文的分段——否则他只是看得见多出来的段，
+// 却动不了它。这是那次松绑欠下的另一半。
+//
+// 为什么要把当前这一格的实时文字（currentText）传进来，而不是直接用 en[index]：
+// 格子是非受控的 textarea、失焦才写回。作者可能刚敲完就按 Backspace，这时
+// en[index] 还是上一次写回的旧值。上一格不存在这个问题——焦点离开它时就已经
+// 写回过了。
+//
+// 接缝处补不补空格：两边都非空、且接缝两侧都不是空白时补一个。英文段落拼接
+// 要空格；但作者自己敲在段尾的换行（\n）得原样留着，所以不能一律 trim。
+export function mergeEnCells(
+  en: string[] | null,
+  index: number,
+  currentText: string
+): { en: string[]; caret: number } | null {
+  if (en == null || index < 1) return null
+  const prev = en[index - 1] ?? ''
+  const cur = currentText
+  let joined: string
+  if (prev === '') joined = cur
+  else if (cur === '') joined = prev
+  else joined = prev + (/\s$/.test(prev) || /^\s/.test(cur) ? '' : ' ') + cur
+  const next = [...en.slice(0, index - 1), joined, ...en.slice(index + 1)]
+  // 光标停在接缝上——作者刚刚按的是 Backspace，他期待光标落在"刚才删掉的那个
+  // 边界"的位置，就跟任何编辑器里段首退格的手感一样。
+  return { en: next, caret: joined.length - cur.length }
+}

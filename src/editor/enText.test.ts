@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
-  fingerprint, confirmState, isValidEn, UNCONFIRMED,
-  zhFingerprint, splitEn, mergeEn,
+  UNCONFIRMED,
+  confirmState,
+  fingerprint,
+  isValidEn,
+  mergeEn,
+  mergeEnCells,
+  splitEn,
+  zhFingerprint,
 } from './enText'
 
 describe('fingerprint', () => {
@@ -150,5 +156,41 @@ describe('mergeEn', () => {
     const r = mergeEn(null, null, ['第一段', '第二段'])
     expect(r.en).toBe(null)
     expect(r.enSrc).toBe(UNCONFIRMED)
+  })
+})
+
+describe('mergeEnCells：作者自己改英文的分段', () => {
+  it('把后一段并进前一段，接缝补一个空格，光标停在接缝上', () => {
+    const r = mergeEnCells(['One.', 'Two.', 'Three.'], 1, 'Two.')
+    expect(r).toEqual({ en: ['One. Two.', 'Three.'], caret: 'One. '.length })
+  })
+
+  it('用的是传进来的实时文字，不是 en[index]——格子失焦才写回，en 可能是旧的', () => {
+    const r = mergeEnCells(['One.', '旧值'], 1, 'Two, just typed.')
+    expect(r!.en).toEqual(['One. Two, just typed.'])
+  })
+
+  it('接缝两侧已有空白就不再补——作者敲在段尾的换行原样留着', () => {
+    expect(mergeEnCells(['One.\n', 'Two.'], 1, 'Two.')!.en).toEqual(['One.\nTwo.'])
+    expect(mergeEnCells(['One.', ' Two.'], 1, ' Two.')!.en).toEqual(['One. Two.'])
+  })
+
+  it('有一边是空的就不补空格，也不留下多余的空白', () => {
+    expect(mergeEnCells(['', 'Two.'], 1, 'Two.')).toEqual({ en: ['Two.'], caret: 0 })
+    expect(mergeEnCells(['One.', ''], 1, '')).toEqual({ en: ['One.'], caret: 'One.'.length })
+  })
+
+  it('第一段没有"前一段"可并，返回 null（让 Backspace 照常删字符）', () => {
+    expect(mergeEnCells(['One.', 'Two.'], 0, 'One.')).toBeNull()
+  })
+
+  it('压根没写过英文时没有可合的东西', () => {
+    expect(mergeEnCells(null, 1, 'x')).toBeNull()
+  })
+
+  it('合的是中文那边没有对应段落的多余段时，照样能合回去', () => {
+    // 中文 2 段、英文 4 段：把第 4 段并进第 3 段
+    const r = mergeEnCells(['A.', 'B.', 'C.', 'D.'], 3, 'D.')
+    expect(r!.en).toEqual(['A.', 'B.', 'C. D.'])
   })
 })
