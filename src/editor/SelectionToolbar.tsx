@@ -3,6 +3,7 @@ import { BubbleMenu } from '@tiptap/react/menus'
 import { useEditorState, type Editor } from '@tiptap/react'
 import { CARD_PALETTE, type ParagraphStyle } from './schema'
 import { IconBody, IconBullet, IconChapter, IconH1, IconH2, IconNote, IconQuote } from './toolbarIcons'
+import { usePrepBridge } from '../state/prepBridge'
 
 // 工具栏上的每个按钮都是它自己的「样本」：段落样式画成小图（见 toolbarIcons），
 // 行内标记直接拿一个「字」加上真实效果（着重号 / 「」/ 删除线）。名字只留在
@@ -83,6 +84,10 @@ export function SelectionToolbar({ editor }: { editor: Editor }) {
     </button>
   )
 
+  // 划词备料：工具条最后一格。模型捞的是它认为重要的，而作者卡在哪儿只有他
+  // 知道——这两件事不该互相取代，所以是补一条，不是换一批。
+  const prepPhrase = usePrepBridge((st) => st.prepPhrase)
+
   return (
     <BubbleMenu
       editor={editor}
@@ -134,6 +139,24 @@ export function SelectionToolbar({ editor }: { editor: Editor }) {
           }}
         />
       </div>
+      {prepPhrase ? (
+        <div className="sel-group">
+          <button
+            type="button"
+            className="sel-prep"
+            title="为这个词备料，加到右边栏"
+            aria-label="为这个词备料"
+            onMouseDown={(e) => {
+              keepSelection(e)
+              const { from, to } = editor.state.selection
+              const phrase = editor.state.doc.textBetween(from, to, ' ').trim()
+              if (phrase) prepPhrase(phrase)
+            }}
+          >
+            备料
+          </button>
+        </div>
+      ) : null}
     </BubbleMenu>
   )
 }

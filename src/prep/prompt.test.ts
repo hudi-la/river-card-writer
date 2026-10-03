@@ -53,3 +53,41 @@ describe('档位决定提示词', () => {
     expect(PREP_AUTO).toContain('仍然不许出现整句英文')
   })
 })
+
+describe('术语表进提示词', () => {
+  it('没有已定译法时不加那一段', () => {
+    expect(buildPrepRequest(['第一段'], 'strict').system).not.toContain('已经定下来的译法')
+  })
+
+  it('有的话列进去，并要求排第一', () => {
+    const r = buildPrepRequest(['第一段'], 'strict', undefined, { 关系策略: 'relational strategy' })
+    expect(r.system).toContain('已经定下来的译法')
+    expect(r.system).toContain('「关系策略」→ relational strategy')
+  })
+
+  it('术语表排在 focus 之前——它整篇共用，放前面缓存前缀才留得住', () => {
+    const r = buildPrepRequest(['第一段'], 'strict', '堵', { 关系策略: 'relational strategy' })
+    expect(r.system.indexOf('已经定下来的译法')).toBeLessThan(r.system.indexOf('只为作者指定的那个词'))
+  })
+
+  it('空的中文或英文不进表', () => {
+    const r = buildPrepRequest(['x'], 'strict', undefined, { 关系策略: '', '': 'x' })
+    expect(r.system).not.toContain('已经定下来的译法')
+  })
+})
+
+describe('划词备料', () => {
+  it('给了 focus 就加上"只做这一条"那段，并带上那个词', () => {
+    const r = buildPrepRequest(['第一段'], 'strict', '一爪子按下')
+    expect(r.system).toContain('只为作者指定的那个词')
+    expect(r.system).toContain('一爪子按下')
+  })
+
+  it('没给 focus 就不加', () => {
+    expect(buildPrepRequest(['第一段']).system).not.toContain('只为作者指定的那个词')
+  })
+
+  it('空白的 focus 不算', () => {
+    expect(buildPrepRequest(['第一段'], 'strict', '   ').system).not.toContain('只为作者指定的那个词')
+  })
+})

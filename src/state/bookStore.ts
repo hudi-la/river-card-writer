@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid'
 import { mergeImported, mergeUniversalCards } from './backup'
 import type { AiPolicy, PrepResult } from '../prep/types'
 import type { Tier } from '../prep/verify'
-import { usedCandidates, mergeUsed } from '../prep/usedWords'
+import { usedCandidates, mergeUsed, settledPairs } from '../prep/usedWords'
 import { pushSnapshot, decideSnapshot } from './snapshots'
 
 export const EMPTY_DOC = { type: 'doc', content: [{ type: 'card', content: [{ type: 'paragraph' }] }] }
@@ -44,11 +44,14 @@ export function isValidCover(raw: any): raw is Cover {
 // used：作者在确认过的段落里真正用上的候选词 → 用过几次。
 // 挂在"确认"上而不是"打字"上：确认是作者唯一一次明确说"这段我认了"，那一刻
 // 写下的英文就是他的选择——不会把写到一半又删掉的词记成数。
+// settled：中文词 → 作者已经确认用过的英文。这是备料唯一的跨卡上下文——
+// 没有它，同一个概念在不同卡上会被译成不同说法，而一篇论文里换着词说比用一个
+// 不够完美的词更糟。
 // verified：词形 → 查证档位。必须持久化，否则刷新后每个候选都落到"未查证"，
 // 好词被集体冤枉、徽章沦为纯噪音（spec §11.1 说的那个负资产）。
 // 一个词的历史语料频率不会变，所以这份记录永不过期，也能用来预热查证器。
 // 两个都是可选字段，老书读出来是 undefined、行为零变化，跟 cover/subtitle 同一个路子。
-export type Book = { id: string; title: string; doc: any; boxes: Box[]; updatedAt?: string; cover?: Cover; subtitle?: string; author?: string; hints?: Record<string, PrepResult>; aiPolicy?: AiPolicy; verified?: Record<string, Tier>; used?: Record<string, number> }
+export type Book = { id: string; title: string; doc: any; boxes: Box[]; updatedAt?: string; cover?: Cover; subtitle?: string; author?: string; hints?: Record<string, PrepResult>; aiPolicy?: AiPolicy; verified?: Record<string, Tier>; used?: Record<string, number>; settled?: Record<string, string> }
 export type Library = { books: Book[]; activeBookId: string | null; universalBoxes: Box[] }
 
 // 库级通用盒子：不属于任何一本书，跨所有书共享同一份实例。Phase 14 起支持
@@ -108,6 +111,7 @@ type BookState = {
   updateDoc: (doc: object) => void
   setAiPolicy: (policy: AiPolicy) => void
   setCardHints: (cardId: string, result: PrepResult) => void
+  appendCardHints: (cardId: string, result: PrepResult) => void
   mergeVerified: (tiers: Record<string, Tier>) => void
   recordConfirmedUse: (cardId: string, enText: string) => void
   openDoc: () => void
@@ -819,9 +823,15 @@ export const useBookStore = create<BookState>((set, get) => {
       const targets = get().activeBook()?.hints?.[cardId]?.targets
       if (!targets || targets.length === 0) return
       const words = usedCandidates(targets, enText)
-      if (words.length === 0) return
+      const pairs = settledPairs(targets, enText)
+      if (words.length === 0 && Object.keys(pairs).length === 0) return
       withActiveBook((book) => ({
-        book: { ...book, used: mergeUsed(book.used, words) },
+        book: {
+          ...book,
+          used: mergeUsed(book.used, words),
+          // 后确认的覆盖先确认的：作者改主意时以最近一次为准
+          settled: { ...(book.settled ?? {}), ...pairs },
+        },
         result: undefined,
       }))
     },
@@ -831,6 +841,21 @@ export const useBookStore = create<BookState>((set, get) => {
         book: { ...book, verified: { ...(book.verified ?? {}), ...tiers } },
         result: undefined,
       }))
+    },
+    // 划词备料用：把新条目追加到这张卡已有的提词上，而不是整份换掉。
+    // 作者划一个词是在"补一条"，不是在说"前面那些不要了"。
+    appendCardHints: (cardId, result) => {
+      withActiveBook((book) => {
+        const prev = book.hints?.[cardId]
+        if (!prev) return { book: { ...book, hints: { ...(book.hints ?? {}), [cardId]: result } }, result: undefined }
+        // 同一个词重复划就替换掉旧的那条，不堆重复
+        const incoming = new Set(result.targets.map((t) => t.zh))
+        const merged = {
+          ...prev,
+          targets: [...result.targets, ...prev.targets.filter((t) => !incoming.has(t.zh))],
+        }
+        return { book: { ...book, hints: { ...book.hints, [cardId]: merged } }, result: undefined }
+      })
     },
     setCardHints: (cardId, result) => {
       withActiveBook((book) => ({

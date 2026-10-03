@@ -15,6 +15,7 @@ import { requestPrep, makeFetchFreqs } from '../prep/client'
 import { createVerifier, type Tier } from '../prep/verify'
 import { runPrep, type CardInput } from '../prep/runPrep'
 import { toAiPolicy } from '../prep/types'
+import { usePrepBridge } from '../state/prepBridge'
 
 const FONT_STACK: Record<'serif' | 'sans', string> = {
   serif: "Georgia,'Songti SC','Noto Serif',serif",
@@ -84,6 +85,8 @@ export function Workspace() {
   const setCardHints = useBookStore((s) => s.setCardHints)
   const setAiPolicy = useBookStore((s) => s.setAiPolicy)
   const mergeVerified = useBookStore((s) => s.mergeVerified)
+  const appendCardHints = useBookStore((s) => s.appendCardHints)
+  const setPrepPhrase = usePrepBridge((s) => s.setPrepPhrase)
   const railDragRef = useRef<RailDragState | null>(null)
 
   // 双语并排：本地开关（离开这本书自然重置）。开着时每张卡变两列、右边出备料边栏。
@@ -223,7 +226,7 @@ export function Workspace() {
     setPreppingCards((prev) => new Set([...prev, ...ids]))
     try {
       const out = await runPrep(cards, {
-        requestPrep: (zhTexts) => requestPrep(zhTexts, toAiPolicy(book?.aiPolicy)),
+        requestPrep: (zhTexts) => requestPrep(zhTexts, toAiPolicy(book?.aiPolicy), { settled: book?.settled }),
         verify,
         onCardDone: (cardId, result) => setCardHints(cardId, result),
         onWarnings: (w) => {
@@ -255,6 +258,47 @@ export function Workspace() {
       setProgress(null)
     }
   }
+
+  // 划词备料：只为作者自己划出来的那个词做一条，追加到这张卡已有的提词上。
+  // 追加而不是覆盖——他划一个词是在"补一条"，不是在说"前面那些不要了"。
+  const prepPhraseOnCard = async (phrase: string) => {
+    const showToast = useToastStore.getState().show
+    const card = cardsFromEditor().find((c) => c.cardId === activeCardId)
+    if (!card) return
+    if (preppingCards.has(card.cardId)) return
+    setPreppingCards((prev) => new Set([...prev, card.cardId]))
+    try {
+      const r = await requestPrep(card.zhTexts, toAiPolicy(book?.aiPolicy), { focus: phrase, settled: book?.settled })
+      if (!r.ok) {
+        setPrepErrors((prev) => ({ ...prev, [card.cardId]: r.error }))
+        showToast({ text: `备料失败：${r.error}`, kind: 'error', durationMs: 5000 })
+        return
+      }
+      appendCardHints(card.cardId, r.value)
+      const forms = r.value.targets.flatMap((tg) => tg.candidates.map((c) => c.verifyForm))
+      try {
+        const m = await verify(forms)
+        setTiers((prev) => new Map([...prev, ...m]))
+        mergeVerified(Object.fromEntries(m))
+      } catch {
+        // 查不到就维持原样，不影响已经落地的提词
+      }
+      showToast({ text: `「${phrase}」已加到备料`, kind: 'success' })
+    } finally {
+      setPreppingCards((prev) => {
+        const next = new Set(prev)
+        next.delete(card.cardId)
+        return next
+      })
+    }
+  }
+
+  // 把触发函数登记给划词工具条。双语+备料栏开着时才给，否则那个按钮点了没地方显示。
+  useEffect(() => {
+    const on = bilingual && prepOpen && !readMode && viewKind !== 'box'
+    setPrepPhrase(on ? (p: string) => void prepPhraseOnCard(p) : null)
+    return () => setPrepPhrase(null)
+  })
 
   // 「备这张卡」：一次调用，只等你现在要写的那一段。显式动作，所以总是重跑。
   const prepThisCard = () => {
@@ -396,7 +440,6 @@ export function Workspace() {
           aiPolicy={toAiPolicy(book.aiPolicy)}
           onPolicyChange={setAiPolicy}
           translation={activeCardId ? book.hints?.[activeCardId]?.translation : undefined}
-          onClose={() => setPrepOpen(false)}
         />
       )}
     </div>

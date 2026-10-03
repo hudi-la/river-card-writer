@@ -45,7 +45,6 @@ export function PrepSidebar({
   aiPolicy = 'strict',
   onPolicyChange,
   translation,
-  onClose,
 }: {
   targets: Target[]
   genre: Genre
@@ -60,26 +59,19 @@ export function PrepSidebar({
   aiPolicy?: AiPolicy
   onPolicyChange?: (p: AiPolicy) => void
   translation?: string[]
-  onClose?: () => void
 }) {
   return (
     <aside className="prep-sidebar">
-      {/* 表头只留真正能动的两个：重备和关闭。
-          原来还有「备料 · 当前这张卡」和「议论 · 8 条」——前者边栏的位置本身
-          就说明了，后者是个没人会用的计数。作者说这些都不需要，他是对的。 */}
-      <header className="prep-head">
-        <span className="prep-meta">{busy ? (progress && progress.total > 1 ? `备料中 ${progress.done}/${progress.total}` : '备料中…') : ''}</span>
-        {targets.length > 0 && !busy && onPrepCard ? (
-          <button className="prep-redo" onClick={onPrepCard} title="重新备这张卡">
-            重备
-          </button>
-        ) : null}
-        {onClose ? (
-          <button className="prep-close" onClick={onClose} title="关闭备料栏" aria-label="关闭备料栏">
-            ×
-          </button>
-        ) : null}
-      </header>
+      {/* 表头只在备料中时出现。
+          × 跟顶栏那个面板开关是同一件事，重复；「重备」几乎没人用——真要重算
+          不如直接划词备那个具体的词。两个都去掉之后，表头平时就该是空的。 */}
+      {busy ? (
+        <header className="prep-head">
+          <span className="prep-meta">
+            {progress && progress.total > 1 ? `备料中 ${progress.done}/${progress.total}` : '备料中…'}
+          </span>
+        </header>
+      ) : null}
 
       {/* 这份稿子允许 AI 做到哪一档。spec §9.4：这个开关设错了不会报错，等发现时
           稿子已经在对方手里，只能靠让状态一直在眼前来防——所以它常驻在这儿，

@@ -59,17 +59,6 @@ describe('PrepSidebar', () => {
     expect(Array.from(badges).every((b) => b.getAttribute('data-tier') === 'not-found')).toBe(true)
   })
 
-  it('表头只留真正能动的两个：重备和关闭', () => {
-    // 原来还有「备料 · 当前这张卡」和「议论 · N 条」——前者边栏的位置本身就
-    // 说明了，后者是个没人会用的计数。
-    const { container } = sidebar({ onPrepCard: () => {}, onClose: () => {} })
-    const head = container.querySelector('header')!
-    expect(head.textContent).not.toContain('当前这张卡')
-    expect(head.textContent).not.toContain('条')
-    expect(head.querySelector('.prep-redo')).not.toBeNull()
-    expect(head.querySelector('.prep-close')).not.toBeNull()
-  })
-
   it('档位状态在边栏里，一直看得见——这个开关设错了不会报错', () => {
     const { container } = sidebar()
     expect(container.querySelector('[data-ai-policy="strict"]')).not.toBeNull()
@@ -110,23 +99,10 @@ describe('PrepSidebar', () => {
     expect(container.textContent).not.toContain('The cat barred the door.')
   })
 
-  it('有 onClose 时给一个 × 可以关掉这一栏，名字跟顶栏那个开关区分开', () => {
-    const { container } = sidebar({ onClose: () => {} })
-    const close = container.querySelector('.prep-close')
-    expect(close).not.toBeNull()
-    // 顶栏的面板开关叫「收起备料」；两个控件不该撞同一个无障碍名称
-    expect(close!.getAttribute('aria-label')).toBe('关闭备料栏')
-  })
-
   it('空态里给「备这张卡」——那是这张卡的动作，就该待在这张卡的面板里', () => {
     const onPrepCard = () => {}
     const { container } = sidebar({ targets: [], onPrepCard })
     expect(container.querySelector('.prep-card-btn')?.textContent).toBe('备这张卡')
-  })
-
-  it('有内容时表头给一个轻量的「重备」，不占主按钮的位置', () => {
-    const { container } = sidebar({ onPrepCard: () => {} })
-    expect(container.querySelector('.prep-redo')?.textContent).toBe('重备')
   })
 
   it('还没备料时给一句说明，不是空白', () => {
@@ -171,6 +147,16 @@ describe('PrepSidebar', () => {
     expect(Array.from(chips).slice(0, 3).map((c) => c.getAttribute('data-tier'))).toEqual([
       'found', 'collocation-unseen', 'not-found',
     ])
+  })
+
+  it('不备料时表头是空的——× 跟顶栏开关重复，「重备」几乎没人用，都去掉了', () => {
+    const { container } = sidebar()
+    expect(container.querySelector('header')).toBeNull()
+  })
+
+  it('备料中才出表头，只说进度', () => {
+    const { container } = sidebar({ busy: true, progress: { done: 1, total: 3 } })
+    expect(container.querySelector('header')?.textContent).toContain('备料中 1/3')
   })
 
   it('作者用过的词标出来——下次遇到就知道这是他的词', () => {

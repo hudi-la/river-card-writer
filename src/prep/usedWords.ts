@@ -30,3 +30,23 @@ export function mergeUsed(
   for (const w of words) next[w] = (next[w] ?? 0) + 1
   return next
 }
+
+
+// 作者这次确认里，哪个中文词他用了哪个英文。
+// 跟 usedCandidates 分开是因为两边用途不同：那个给徽章（"你用过"），
+// 这个给提示词（整篇的术语表，保证同一个概念不换着词说）。
+export function settledPairs(targets: Target[], confirmedText: string): Record<string, string> {
+  const hay = ` ${confirmedText.toLowerCase().replace(/[^a-z0-9'’-]+/g, ' ')} `
+  const out: Record<string, string> = {}
+  for (const t of targets) {
+    for (const c of t.candidates) {
+      const needle = c.en.toLowerCase().replace(/[^a-z0-9'’-]+/g, ' ').trim()
+      if (!needle) continue
+      if (hay.includes(` ${needle} `)) {
+        // 同一个中文词若命中多个候选，取第一个——targets 里候选是按推荐度排的
+        if (!out[t.zh]) out[t.zh] = c.en
+      }
+    }
+  }
+  return out
+}

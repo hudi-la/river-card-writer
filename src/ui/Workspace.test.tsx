@@ -119,7 +119,7 @@ describe('Workspace', () => {
     const { container } = render(<Workspace />)
     await new Promise((r) => setTimeout(r, 0))
     await userEvent.click(screen.getByLabelText('中英并排'))
-    await userEvent.click(screen.getByLabelText('关闭备料栏'))
+    await userEvent.click(screen.getByLabelText('收起备料'))
     expect(container.querySelector('.prep-sidebar')).toBeNull()
 
     await userEvent.click(screen.getByLabelText('回到单语'))

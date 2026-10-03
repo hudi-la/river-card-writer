@@ -20,11 +20,11 @@ function defaultInvoke(name: string, opts: { body: unknown }) {
 export async function requestPrep(
   zhTexts: string[],
   policy: AiPolicy = 'strict',
-  deps: { invoke?: InvokeFn } = {}
+  deps: { invoke?: InvokeFn; focus?: string; settled?: Record<string, string> } = {}
 ): Promise<{ ok: true; value: PrepResult; warnings?: string[] } | { ok: false; error: string }> {
   const invoke = deps.invoke ?? defaultInvoke
   try {
-    const { system, user } = buildPrepRequest(zhTexts, policy)
+    const { system, user } = buildPrepRequest(zhTexts, policy, deps.focus, deps.settled)
     const { data, error } = await invoke('prep', { body: { kind: 'model', system, user } })
     if (error) return { ok: false, error: error.message }
     if (data?.error) return { ok: false, error: String(data.error) }

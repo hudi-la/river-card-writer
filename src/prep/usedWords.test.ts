@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { usedCandidates, mergeUsed } from './usedWords'
+import { usedCandidates, mergeUsed, settledPairs } from './usedWords'
 import type { Target } from './types'
 
 function target(...ens: string[]): Target {
@@ -51,5 +51,21 @@ describe('mergeUsed', () => {
 
   it('空输入不动原数据', () => {
     expect(mergeUsed({ strut: 3 }, [])).toEqual({ strut: 3 })
+  })
+})
+
+describe('settledPairs', () => {
+  it('记下中文词对应作者实际用的英文', () => {
+    const t = target('hem in', 'trap')
+    expect(settledPairs([t], 'it would hem in the neighbors')).toEqual({ 堵: 'hem in' })
+  })
+
+  it('同一个中文词命中多个候选时取推荐度最高的那个', () => {
+    const t = target('hem in', 'trap')
+    expect(settledPairs([t], 'it would hem in and trap them')).toEqual({ 堵: 'hem in' })
+  })
+
+  it('一个都没用上就不记', () => {
+    expect(settledPairs([target('hem in')], 'It blocked the doorway.')).toEqual({})
   })
 })
