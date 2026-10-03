@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   UNCONFIRMED,
+  collectEnText,
   confirmState,
   fingerprint,
   isValidEn,
@@ -235,5 +236,34 @@ describe('splitEnCell：作者自己加一段英文', () => {
   it('还没写过英文时也能拆，不会把别的格子变出内容来', () => {
     const r = splitEnCell(null, 2, 'One. Two.', 'One. '.length)
     expect(r.en).toEqual(['', '', 'One.', 'Two.'])
+  })
+})
+
+describe('collectEnText：把整篇英文收成能粘走的纯文本', () => {
+  const doc = (...cards: Array<string[] | null>) => ({
+    type: 'doc',
+    content: cards.map((en) => ({ type: 'card', attrs: { en }, content: [] })),
+  })
+
+  it('跨卡按顺序收齐，段落之间空一行', () => {
+    expect(collectEnText(doc(['One.', 'Two.'], ['Three.']))).toBe('One.\n\nTwo.\n\nThree.')
+  })
+
+  it('还没写英文的卡直接跳过，不留空档', () => {
+    expect(collectEnText(doc(['One.'], null, ['Two.']))).toBe('One.\n\nTwo.')
+  })
+
+  it('空段落不输出——段尾按 Enter 开出来的空段不该在粘贴结果里留白行', () => {
+    expect(collectEnText(doc(['One.', '', '  ', 'Two.']))).toBe('One.\n\nTwo.')
+  })
+
+  it('段内作者自己敲的换行原样留着', () => {
+    expect(collectEnText(doc(['Line one.\nLine two.']))).toBe('Line one.\nLine two.')
+  })
+
+  it('形状不对的 en 跳过，不崩', () => {
+    expect(collectEnText(doc('不是数组' as never, ['One.']))).toBe('One.')
+    expect(collectEnText(null)).toBe('')
+    expect(collectEnText({})).toBe('')
   })
 })

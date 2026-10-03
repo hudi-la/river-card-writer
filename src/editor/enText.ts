@@ -174,3 +174,25 @@ export function splitEnCell(
   // 光标跟到新的那一段的开头——作者按 Enter 就是要开始写下一段。
   return { en: next, focusIndex: index + 1, caret: 0 }
 }
+
+// 把整篇的英文收成一段连续的纯文本。
+//
+// 为什么需要这个：每段英文是一个独立的 textarea，而 textarea 的选区只存在于它
+// 自己内部——原生选择跨不过两个 textarea，所以作者拖鼠标选不到"上下两块一起"。
+// 那个结构是故意的（contentEditable 会把 HTML 和字号带进正文、所见非所存，见
+// CardView 顶上的注释），不该为了能拖选就拆掉。缺的是一个出口，不是选区。
+//
+// 段落之间空一行：粘到别处时段落边界看得出来。段内作者自己敲的换行（Shift+Enter
+// 插的 \n）原样留着——那是他写的东西。空段落不输出。
+export function collectEnText(doc: unknown): string {
+  const cards = (doc as { content?: unknown[] } | null)?.content ?? []
+  const paras: string[] = []
+  for (const card of cards) {
+    const en = (card as { attrs?: { en?: unknown } } | null)?.attrs?.en
+    if (!Array.isArray(en)) continue
+    for (const p of en) {
+      if (typeof p === 'string' && p.trim() !== '') paras.push(p)
+    }
+  }
+  return paras.join('\n\n')
+}
