@@ -986,7 +986,13 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
    （单语写作）卡片的排版和以前一字不差。
    并排不是"两个编辑器并列"而是"每张卡自己是两列"，于是只有一个滚动条、
    中英天然永远对齐，一行滚动同步代码都不用写。 */
-.card-en { display: none; }
+/* 中文那边是一整个 ProseMirror 文档，所有卡在同一个编辑宿主里，所以中文本来
+   就能跨卡拖选。可那样一拖，经过的英文栏会被一起框上（原生选区按 DOM 顺序走，
+   不管它在视觉上是另一栏）。英文并不会真被复制走——它存在 card 的 attrs 里，
+   ProseMirror 复制的是模型——但框上去就是在骗眼睛。所以让整条英文栏不参与
+   文档选区，只把里面那个输入框放出来：框内照旧随便选。 */
+.card-en { display: none; user-select: none; -webkit-user-select: none; }
+.card-en-p { user-select: text; -webkit-user-select: text; }
 
 .river--bilingual .card {
   display: grid;
@@ -1039,9 +1045,8 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
   color: #2a2722;
 }
 .card-en-p::placeholder { color: #bdb7ab; font-style: italic; }
-/* 不给边框、不给底色——这是写作面，不是表单字段。只用一条细的左侧竖线
-   说明"光标在这一段"，够用且不打断视线。 */
-.card-en-p:focus { box-shadow: -8px 0 0 -7px #a8543f; }
+/* 不给边框、不给底色、不给聚焦线——这是写作面，不是表单字段。一卡一格之后
+   也不再需要"光标在哪一段"的指示：整张卡就一个框。 */
 
 /* 英文段落的样式按序号从中文继承，所以这里跟着正文的语义样式走。
    CRITICAL：字号/缩进这类影响排版的，必须同时作用在影子（::after）上——
