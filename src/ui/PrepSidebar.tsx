@@ -1,4 +1,6 @@
+import { useEffect, useRef } from 'react'
 import type { AiPolicy, Genre, Target } from '../prep/types'
+import { usePrepBridge } from '../state/prepBridge'
 import type { Tier } from '../prep/verify'
 
 // 徽章只在有话说的时候才出声。
@@ -60,6 +62,21 @@ export function PrepSidebar({
   onPolicyChange?: (p: AiPolicy) => void
   translation?: string[]
 }) {
+  // 鼠标划过正文里的靶心词时滚到对应那一条并点亮它。
+  // 只滚不展开：条目多起来之后"找不着"才是问题，展开是作者自己的动作；
+  // 鼠标一扫就弹开一片反而更乱。
+  const hoveredTerm = usePrepBridge((s) => s.hoveredTerm)
+  const entryRefs = useRef(new Map<string, HTMLElement>())
+  useEffect(() => {
+    if (!hoveredTerm) return
+    const el = entryRefs.current.get(hoveredTerm)
+    // 守一下：滚动只是个辅助动作，不该有把整个边栏炸掉的权力。
+    // （jsdom 里就没有这个 API——而那正说明它不是哪儿都有。）
+    if (typeof el?.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }, [hoveredTerm])
+
   return (
     <aside className="prep-sidebar">
       {/* 表头只在备料中时出现。
@@ -168,11 +185,12 @@ export function PrepSidebar({
         <details
           className="prep-target"
           key={`${t.zh}-${i}`}
+          ref={(el) => { if (el) entryRefs.current.set(t.zh, el) }}
           data-by-author={t.byAuthor ? 'true' : undefined}
+          data-hovered={hoveredTerm === t.zh ? 'true' : undefined}
         >
           <summary>
             <span className="prep-zh">{t.zh}</span>
-            {t.byAuthor ? <span className="prep-by-author">你要的</span> : null}
             {t.family ? <span className="prep-family">族 · {t.family}</span> : null}
             {t.noSingleWord ? <span className="prep-nosingle">英文没有对应单词</span> : null}
             {/* 折起来时在标题行上留下候选词，展开后由 CSS 藏掉——否则重复 */}

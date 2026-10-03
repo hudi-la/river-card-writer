@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
 import { PrepSidebar } from './PrepSidebar'
+import { usePrepBridge } from '../state/prepBridge'
 import type { Target } from '../prep/types'
 import type { Tier } from '../prep/verify'
 
@@ -208,13 +209,32 @@ describe('PrepSidebar', () => {
     expect(container.textContent).not.toContain('丢了 ·')
   })
 
-  it('作者自己划词要来的条目标出来——跟模型捞的分开，方便找', () => {
+  it('作者自己划词要来的条目只用左边那条线区分，不再挂小标签', () => {
     const mine = [{ ...targets[0], zh: '我划的', byAuthor: true }, { ...targets[0], zh: '模型捞的' }]
     const { container } = sidebar({ targets: mine })
     const all = container.querySelectorAll('details.prep-target')
     expect(all[0].getAttribute('data-by-author')).toBe('true')
     expect(all[1].getAttribute('data-by-author')).toBeNull()
-    expect(all[0].querySelector('.prep-by-author')?.textContent).toBe('你要的')
-    expect(all[1].querySelector('.prep-by-author')).toBeNull()
+    expect(container.querySelector('.prep-by-author')).toBeNull()
+  })
+
+  it('鼠标划过正文里的靶心词时，右栏对应那一条点亮', () => {
+    usePrepBridge.getState().setHoveredTerm('堵')
+    const { container } = sidebar()
+    expect(container.querySelector('details.prep-target')?.getAttribute('data-hovered')).toBe('true')
+    usePrepBridge.getState().setHoveredTerm(null)
+  })
+
+  it('没划到任何词时谁都不点亮', () => {
+    usePrepBridge.getState().setHoveredTerm(null)
+    const { container } = sidebar()
+    expect(container.querySelector('[data-hovered]')).toBeNull()
+  })
+
+  it('划到的词在这张卡里没有对应条目时，也不乱点亮别的', () => {
+    usePrepBridge.getState().setHoveredTerm('别的词')
+    const { container } = sidebar()
+    expect(container.querySelector('[data-hovered]')).toBeNull()
+    usePrepBridge.getState().setHoveredTerm(null)
   })
 })

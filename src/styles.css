@@ -1374,3 +1374,14 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
   font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px;
   color: #7d3d2d; background: #f5e4de;
 }
+
+/* 鼠标划过正文里的靶心词时，右栏对应那一条点亮。
+   条目多起来之后，正文的橙色词和右边哪张卡对应、光看是找不着的。
+   只点亮不展开——找不着才是问题，展开是作者自己的动作，鼠标一扫就弹开
+   一片反而更乱。 */
+.prep-target[data-hovered] {
+  box-shadow: 0 0 0 2px #d98b7a;
+  background: #fffaf7;
+}
+/* 正文那一侧也给个回应，让人知道这两头是连着的 */
+.prep-hit:hover { background: rgba(217, 119, 55, 0.45); }

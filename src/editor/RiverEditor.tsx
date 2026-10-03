@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { baseExtensions, findCardInDoc } from './schema'
 import { ActiveCard, PrepHighlight, PREP_HIGHLIGHT_REFRESH } from './prepHighlight'
+import { usePrepBridge } from '../state/prepBridge'
 import { useBookStore, EMPTY_DOC } from '../state/bookStore'
 import { useEditorBridge } from '../state/editorBridge'
 import { SelectionToolbar } from './SelectionToolbar'
@@ -222,6 +223,30 @@ export function RiverEditor() {
     setEditor(editor ?? null)
     return () => setEditor(null)
   }, [editor, setEditor])
+
+  // 鼠标划过正文里的靶心词时，告诉备料边栏是哪一个——它会滚过去并点亮。
+  // 用事件委托挂在编辑器根上：装饰器是 ProseMirror 画的，React 碰不到那些
+  // 节点，没法给它们挂 onMouseEnter。
+  useEffect(() => {
+    if (!editor) return
+    const root = editor.view.dom
+    const setHovered = usePrepBridge.getState().setHoveredTerm
+    const onOver = (e: Event) => {
+      const hit = (e.target as HTMLElement | null)?.closest?.('.prep-hit') as HTMLElement | null
+      if (hit) setHovered(hit.dataset.prepTerm ?? null)
+    }
+    const onOut = (e: Event) => {
+      const hit = (e.target as HTMLElement | null)?.closest?.('.prep-hit')
+      if (hit) setHovered(null)
+    }
+    root.addEventListener('mouseover', onOver)
+    root.addEventListener('mouseout', onOut)
+    return () => {
+      root.removeEventListener('mouseover', onOver)
+      root.removeEventListener('mouseout', onOut)
+      setHovered(null)
+    }
+  }, [editor])
 
   // 提词变了但文档没变时，ProseMirror 不会自己重算装饰器（它只在 doc 变化时重跑）。
   // 订阅 hints 的引用变化，发一个空事务带 refresh meta 逼它重算一次——备料边跑边

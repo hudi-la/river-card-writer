@@ -93,7 +93,12 @@ function build(doc: any, getTerms: (cardId: string) => string[]): DecorationSet 
       const text = para.textContent
       for (const r of findTermRanges(text, terms)) {
         decos.push(
-          Decoration.inline(paraPos + 1 + r.from, paraPos + 1 + r.to, { class: 'prep-hit' })
+          Decoration.inline(paraPos + 1 + r.from, paraPos + 1 + r.to, {
+            class: 'prep-hit',
+            // 带上它是哪个词：鼠标划过时据此定位到右栏对应的那一条。
+            // 条目多起来之后，正文里的橙色词和右边哪张卡对应，光看是找不着的。
+            'data-prep-term': text.slice(r.from, r.to),
+          })
         )
       }
       paraPos += para.nodeSize

@@ -8,9 +8,14 @@ import { create } from 'zustand'
 type PrepBridgeState = {
   prepPhrase: ((phrase: string) => void) | null
   setPrepPhrase: (fn: ((phrase: string) => void) | null) => void
+  // 鼠标正划过正文里的哪个靶心词。备料边栏据此滚到对应的那一条并点亮它。
+  hoveredTerm: string | null
+  setHoveredTerm: (term: string | null) => void
 }
 
 export const usePrepBridge = create<PrepBridgeState>((set) => ({
   prepPhrase: null,
   setPrepPhrase: (fn) => set({ prepPhrase: fn }),
+  hoveredTerm: null,
+  setHoveredTerm: (term) => set({ hoveredTerm: term }),
 }))

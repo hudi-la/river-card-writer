@@ -57,6 +57,13 @@ describe('PrepHighlight 扩展', () => {
 
   const hits = (e: Editor) => e.view.dom.querySelectorAll('.prep-hit')
 
+  it('每个高亮带上它是哪个词——鼠标划过时据此定位右栏', () => {
+    const e = editorWith({ c0: ['巡逻', '昂首挺胸'] })
+    const hits = Array.from(e.view.dom.querySelectorAll('.prep-hit')) as HTMLElement[]
+    expect(hits.map((h) => h.dataset.prepTerm)).toEqual(['昂首挺胸', '巡逻'])
+    e.destroy()
+  })
+
   it('把该卡的靶心词标成 .prep-hit', () => {
     const e = editorWith({ c0: ['巡逻', '昂首挺胸'] })
     expect(hits(e).length).toBe(2)
