@@ -3,12 +3,12 @@ import {
   UNCONFIRMED,
   collectEnText,
   confirmState,
+  enToText,
   fingerprint,
   isValidEn,
   mergeEn,
-  mergeEnCells,
   splitEn,
-  splitEnCell,
+  textToEn,
   zhFingerprint,
 } from './enText'
 
@@ -161,84 +161,6 @@ describe('mergeEn', () => {
   })
 })
 
-describe('mergeEnCells：作者自己改英文的分段', () => {
-  it('把后一段并进前一段，接缝补一个空格，光标停在接缝上', () => {
-    const r = mergeEnCells(['One.', 'Two.', 'Three.'], 1, 'Two.')
-    expect(r).toEqual({ en: ['One. Two.', 'Three.'], caret: 'One. '.length })
-  })
-
-  it('用的是传进来的实时文字，不是 en[index]——格子失焦才写回，en 可能是旧的', () => {
-    const r = mergeEnCells(['One.', '旧值'], 1, 'Two, just typed.')
-    expect(r!.en).toEqual(['One. Two, just typed.'])
-  })
-
-  it('接缝两侧已有空白就不再补——作者敲在段尾的换行原样留着', () => {
-    expect(mergeEnCells(['One.\n', 'Two.'], 1, 'Two.')!.en).toEqual(['One.\nTwo.'])
-    expect(mergeEnCells(['One.', ' Two.'], 1, ' Two.')!.en).toEqual(['One. Two.'])
-  })
-
-  it('有一边是空的就不补空格，也不留下多余的空白', () => {
-    expect(mergeEnCells(['', 'Two.'], 1, 'Two.')).toEqual({ en: ['Two.'], caret: 0 })
-    expect(mergeEnCells(['One.', ''], 1, '')).toEqual({ en: ['One.'], caret: 'One.'.length })
-  })
-
-  it('第一段没有"前一段"可并，返回 null（让 Backspace 照常删字符）', () => {
-    expect(mergeEnCells(['One.', 'Two.'], 0, 'One.')).toBeNull()
-  })
-
-  it('压根没写过英文时没有可合的东西', () => {
-    expect(mergeEnCells(null, 1, 'x')).toBeNull()
-  })
-
-  it('合的是中文那边没有对应段落的多余段时，照样能合回去', () => {
-    // 中文 2 段、英文 4 段：把第 4 段并进第 3 段
-    const r = mergeEnCells(['A.', 'B.', 'C.', 'D.'], 3, 'D.')
-    expect(r!.en).toEqual(['A.', 'B.', 'C. D.'])
-  })
-})
-
-describe('splitEnCell：作者自己加一段英文', () => {
-  it('在光标处拆成两段，光标跟到新那段的开头', () => {
-    const r = splitEnCell(['One. Two.', 'Three.'], 0, 'One. Two.', 'One. '.length)
-    expect(r).toEqual({ en: ['One.', 'Two.', 'Three.'], focusIndex: 1, caret: 0 })
-  })
-
-  it('接缝处剥掉空白，跟 mergeEnCells 补空格正好互逆', () => {
-    const split = splitEnCell(['One. Two.'], 0, 'One. Two.', 'One. '.length)
-    expect(split.en).toEqual(['One.', 'Two.'])
-    const back = mergeEnCells(split.en, 1, 'Two.')
-    expect(back!.en).toEqual(['One. Two.'])
-  })
-
-  it('在段尾按 Enter 就是开一个空段——这是"加一段"最常走的路', () => {
-    const r = splitEnCell(['One.'], 0, 'One.', 'One.'.length)
-    expect(r.en).toEqual(['One.', ''])
-    expect(r.focusIndex).toBe(1)
-  })
-
-  it('在段首按 Enter，前面留一个空段，光标留在原文那一段', () => {
-    const r = splitEnCell(['One.'], 0, 'One.', 0)
-    expect(r.en).toEqual(['', 'One.'])
-    expect(r.focusIndex).toBe(1)
-  })
-
-  it('拆后面的段不动前面的段', () => {
-    const r = splitEnCell(['A.', 'B. C.', 'D.'], 1, 'B. C.', 'B. '.length)
-    expect(r.en).toEqual(['A.', 'B.', 'C.', 'D.'])
-    expect(r.focusIndex).toBe(2)
-  })
-
-  it('用的是格子里的实时文字，不是写回过的旧值', () => {
-    const r = splitEnCell(['旧值'], 0, 'Just typed. More.', 'Just typed. '.length)
-    expect(r.en).toEqual(['Just typed.', 'More.'])
-  })
-
-  it('还没写过英文时也能拆，不会把别的格子变出内容来', () => {
-    const r = splitEnCell(null, 2, 'One. Two.', 'One. '.length)
-    expect(r.en).toEqual(['', '', 'One.', 'Two.'])
-  })
-})
-
 describe('collectEnText：把整篇英文收成能粘走的纯文本', () => {
   const doc = (...cards: Array<string[] | null>) => ({
     type: 'doc',
@@ -265,5 +187,31 @@ describe('collectEnText：把整篇英文收成能粘走的纯文本', () => {
     expect(collectEnText(doc('不是数组' as never, ['One.']))).toBe('One.')
     expect(collectEnText(null)).toBe('')
     expect(collectEnText({})).toBe('')
+  })
+})
+
+describe('enToText / textToEn：存的是段落数组，编辑的是一整块文字', () => {
+  it('空行分段，往返不变形', () => {
+    expect(enToText(['One.', 'Two.'])).toBe('One.\n\nTwo.')
+    expect(textToEn('One.\n\nTwo.')).toEqual(['One.', 'Two.'])
+  })
+
+  it('段内单个换行是作者自己的断行，不当成分段', () => {
+    expect(textToEn('Line one.\nLine two.')).toEqual(['Line one.\nLine two.'])
+    expect(enToText(['Line one.\nLine two.'])).toBe('Line one.\nLine two.')
+  })
+
+  it('多敲的空行归一成一个空行——写回时顺手收拾一次', () => {
+    expect(textToEn('One.\n\n\n\nTwo.')).toEqual(['One.', 'Two.'])
+  })
+
+  it('空白段落不存', () => {
+    expect(textToEn('One.\n\n   \n\nTwo.')).toEqual(['One.', 'Two.'])
+    expect(textToEn('   ')).toEqual([])
+    expect(textToEn('')).toEqual([])
+  })
+
+  it('还没写过英文时摊出来是空字符串', () => {
+    expect(enToText(null)).toBe('')
   })
 })

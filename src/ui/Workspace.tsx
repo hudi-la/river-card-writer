@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, BookOpen, Check, Clipboard, Languages, PanelLeft, PanelRight, Pencil, Square } from 'lucide-react'
+import { ArrowLeft, BookOpen, Languages, PanelLeft, PanelRight, Pencil, Square } from 'lucide-react'
 import { useBookStore, type Book } from '../state/bookStore'
 import { usePrefsStore } from '../state/prefsStore'
 import { LeftNav } from './LeftNav'
@@ -10,7 +10,6 @@ import { TypesetView } from './TypesetView'
 import { PrepSidebar } from './PrepSidebar'
 import { useActiveCardId } from './useActiveCardId'
 import { useEditorBridge } from '../state/editorBridge'
-import { collectEnText } from '../editor/enText'
 import { useToastStore } from '../state/toastStore'
 import { requestPrep, requestWord, makeFetchFreqs } from '../prep/client'
 import { createVerifier, type Tier } from '../prep/verify'
@@ -358,27 +357,6 @@ export function Workspace() {
   // 不渲染，而不是读 undefined 崩掉。App 下一次渲染通常会跟着 shell 回书柜。
   if (!book) return null
 
-  // 复制英文的反馈：'' / 'done' / 'fail'。1.6 秒后自己退回去，不留一个要手动
-  // 关掉的提示。
-  const [copied, setCopied] = useState<'' | 'done' | 'fail'>('')
-
-  // 整篇英文。拖鼠标选不了"上下两块一起"——每段是一个独立的 textarea，原生选区
-  // 跨不过去（见 collectEnText 的注释）。所以给一个出口。
-  // 取实时的 editor 文档而不是 book.doc：刚敲的字可能还没同步到 store。
-  async function copyEn() {
-    const doc = useEditorBridge.getState().editor?.getJSON() ?? book!.doc
-    const text = collectEnText(doc)
-    if (!text) return
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied('done')
-    } catch {
-      // 剪贴板可能被权限或非安全上下文拦掉。宁可说一声，也别让作者以为复制成功了。
-      setCopied('fail')
-    }
-    setTimeout(() => setCopied(''), 1600)
-  }
-
   const showBilingual = bilingual && !readMode && viewKind !== 'box'
   const showPrep = showBilingual && prepOpen
 
@@ -435,22 +413,6 @@ export function Workspace() {
               </button>
             )}
 
-            {/* 整篇英文复制走。只在双语模式出现——那是英文存在的地方。 */}
-            {showBilingual && (
-              <button
-                className="icon-toggle"
-                data-on={copied === 'done' ? 'true' : undefined}
-                onClick={copyEn}
-                title={copied === 'fail' ? '复制失败，浏览器拦了剪贴板' : copied === 'done' ? '整篇英文已复制' : '复制整篇英文'}
-                aria-label={copied === 'fail' ? '复制失败' : copied === 'done' ? '整篇英文已复制' : '复制整篇英文'}
-              >
-                {copied === 'done' ? (
-                  <Check size={16} strokeWidth={2} aria-hidden="true" />
-                ) : (
-                  <Clipboard size={16} strokeWidth={1.75} aria-hidden="true" />
-                )}
-              </button>
-            )}
 
             {/* 备料面板的开关，跟边栏右上角那个 × 是同一件事 */}
             {showBilingual && (

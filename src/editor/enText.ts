@@ -121,59 +121,7 @@ export function mergeEn(
   return { en: [...a, ...b], enSrc: bothConfirmed ? zhFingerprint(mergedZhTexts) : UNCONFIRMED }
 }
 
-// 把第 index 段英文并进第 index-1 段。段数不再锁 1:1（见 isValidEn 的注释和
-// spec §14）之后，作者必须能自己改英文的分段——否则他只是看得见多出来的段，
-// 却动不了它。这是那次松绑欠下的另一半。
-//
-// 为什么要把当前这一格的实时文字（currentText）传进来，而不是直接用 en[index]：
-// 格子是非受控的 textarea、失焦才写回。作者可能刚敲完就按 Backspace，这时
-// en[index] 还是上一次写回的旧值。上一格不存在这个问题——焦点离开它时就已经
-// 写回过了。
-//
-// 接缝处补不补空格：两边都非空、且接缝两侧都不是空白时补一个。英文段落拼接
-// 要空格；但作者自己敲在段尾的换行（\n）得原样留着，所以不能一律 trim。
-export function mergeEnCells(
-  en: string[] | null,
-  index: number,
-  currentText: string
-): { en: string[]; caret: number } | null {
-  if (en == null || index < 1) return null
-  const prev = en[index - 1] ?? ''
-  const cur = currentText
-  let joined: string
-  if (prev === '') joined = cur
-  else if (cur === '') joined = prev
-  else joined = prev + (/\s$/.test(prev) || /^\s/.test(cur) ? '' : ' ') + cur
-  const next = [...en.slice(0, index - 1), joined, ...en.slice(index + 1)]
-  // 光标停在接缝上——作者刚刚按的是 Backspace，他期待光标落在"刚才删掉的那个
-  // 边界"的位置，就跟任何编辑器里段首退格的手感一样。
-  return { en: next, caret: joined.length - cur.length }
-}
 
-// 在光标处把第 index 段英文拆成两段。这是 mergeEnCells 的另一半：中译英有时要
-// 加一个中文里没有的过渡段或主题句，那就得能拆。
-//
-// 手势取 Enter，跟中文栏一致——中文那边 Enter 就是另起一段。段内换行留给
-// Shift+Enter（textarea 本来就会插一个 \n，不拦就是了）。
-//
-// 接缝处剥掉空白：Enter 按在句末的空格后面时，前一段不该留个拖尾空格。这跟
-// mergeEnCells 在接缝补空格正好互为逆操作——拆了再合回去，拿到的是原来那一段。
-export function splitEnCell(
-  en: string[] | null,
-  index: number,
-  currentText: string,
-  caret: number
-): { en: string[]; focusIndex: number; caret: number } {
-  // en 为 null = 压根没写过英文，别的格子确实都是空的，所以从空串补起是安全的
-  // （跟 commit 里那条"绝不从零重建"的禁令不冲突：那条禁的是把已有的英文覆盖掉）。
-  const base = en ? [...en] : []
-  while (base.length < index) base.push('')
-  const before = currentText.slice(0, caret).trimEnd()
-  const after = currentText.slice(caret).trimStart()
-  const next = [...base.slice(0, index), before, after, ...base.slice(index + 1)]
-  // 光标跟到新的那一段的开头——作者按 Enter 就是要开始写下一段。
-  return { en: next, focusIndex: index + 1, caret: 0 }
-}
 
 // 把整篇的英文收成一段连续的纯文本。
 //
@@ -195,4 +143,27 @@ export function collectEnText(doc: unknown): string {
     }
   }
   return paras.join('\n\n')
+}
+
+// ── 存的是段落数组，编辑的是一整块文字 ──────────────────────────────────
+//
+// 英文一卡一个输入框，不再一段一个盒子。作者的论证（2026-10-02）：当初把英文
+// 按段切开，是为了跟中文逐段对应；而对应买到的三样东西现在全没了——段数已经
+// 不锁 1:1，行内标记在纯文本里根本进不去，确认也早就是手动按钮。剩下的唯一
+// 好处是按序号继承块样式，不值得为它把结构卡死。
+//
+// 存储仍然是 string[]（一个元素 = 一段）：旧数据不用迁移，splitEn/mergeEn 在
+// 中英段数刚好相等时照旧能按序号对齐，备料和 collectEnText 也不用改。变的只是
+// 编辑时把它摊成一块文字、写回时再切回来。
+//
+// 空行分段。段内单个换行是作者自己的断行，原样留着。
+
+export function enToText(en: string[] | null): string {
+  return en ? en.join('\n\n') : ''
+}
+
+export function textToEn(text: string): string[] {
+  return text
+    .split(/\n{2,}/)
+    .filter((p) => p.trim() !== '')
 }

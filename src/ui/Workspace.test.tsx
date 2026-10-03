@@ -81,50 +81,6 @@ describe('Workspace', () => {
     expect(container.querySelector('.rail')).toBeTruthy()
   })
 
-  it('复制整篇英文：跨卡收齐，段落之间空一行', async () => {
-    const written: string[] = []
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText: async (t: string) => void written.push(t) },
-    })
-    useBookStore.getState().updateDoc({
-      type: 'doc',
-      content: [
-        { type: 'card', attrs: { cardId: 'c0', en: ['One.', 'Two.'] }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '第一段' }] }] },
-        { type: 'card', attrs: { cardId: 'c1', en: ['Three.'] }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '第二段' }] }] },
-      ],
-    })
-    render(<Workspace />)
-    await new Promise((r) => setTimeout(r, 0))
-    await userEvent.click(screen.getByLabelText('中英并排'))
-    await userEvent.click(screen.getByLabelText('复制整篇英文'))
-    expect(written).toEqual(['One.\n\nTwo.\n\nThree.'])
-    // 复制成功后按钮自己说一声
-    expect(screen.getByLabelText('整篇英文已复制')).toBeTruthy()
-  })
-
-  it('剪贴板被拦掉时说"复制失败"，不假装成功了', async () => {
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText: async () => { throw new Error('denied') } },
-    })
-    useBookStore.getState().updateDoc({
-      type: 'doc',
-      content: [{ type: 'card', attrs: { cardId: 'c0', en: ['One.'] }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '第一段' }] }] }],
-    })
-    render(<Workspace />)
-    await new Promise((r) => setTimeout(r, 0))
-    await userEvent.click(screen.getByLabelText('中英并排'))
-    await userEvent.click(screen.getByLabelText('复制整篇英文'))
-    expect(screen.getByLabelText('复制失败')).toBeTruthy()
-  })
-
-  it('单语模式下不显示复制英文——那里没有英文', async () => {
-    render(<Workspace />)
-    await new Promise((r) => setTimeout(r, 0))
-    expect(screen.queryByLabelText('复制整篇英文')).toBeNull()
-  })
-
   it('切到双语时目录自动收起——那时横向空间最紧张', async () => {
     const { container } = render(<Workspace />)
     await new Promise((r) => setTimeout(r, 0))

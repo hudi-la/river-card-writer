@@ -1,85 +1,62 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRef } from 'react'
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react'
 import { GripVertical } from 'lucide-react'
 import { autoCardColor } from './schema'
 import { useBookStore } from '../state/bookStore'
 import {
   confirmState,
+  enToText,
   isValidEn,
-  mergeEnCells,
-  splitEnCell,
+  textToEn,
   UNCONFIRMED,
   zhFingerprint,
   ZH_JOIN,
 } from './enText'
 import { prepHitCount } from './prepHighlight'
 
-// 一段英文 = 一个 <textarea>。
+// 一张卡的英文 = 一个 <textarea>。空行分段。
 //
-// 原来这里用的是裸 contentEditable 的 <div>，那是个错误的选择，直接造成两个
-// 真 bug：
-//   1. 按回车时浏览器往 DOM 里塞 <div>/<br>，那些行根本不在数据模型里，
-//      于是删不掉也存不下。
-//   2. contentEditable 的粘贴是带格式的 HTML，字号字体整个被带进来；而保存
-//      时用 textContent 压成纯文本——看到的和存下来的是两回事。
+// 为什么不是"一段一个盒子"：原来是，那是为了跟中文逐段对应。作者 2026-10-02
+// 指出那个理由已经不存在了——段数不锁 1:1 了，行内标记在纯文本里本来就进不去，
+// 确认也早就是手动按钮。而拆成一段一格要付的代价是实打实的：textarea 的选区
+// 只存在于它自己内部，原生选择跨不过两个 textarea，所以作者想把上下两块一起
+// 选中拿去别处看一眼都做不到。一卡一格之后，整张卡的英文能自由拖选、复制。
 //
-// 数据模型是 string[]（每段一个纯字符串），那对应的 DOM 原语就是 textarea：
-// HTML 进不来、字号带不进来、删除和回车都是原生行为，一行清洗代码都不用写。
+// 为什么是 textarea 而不是 contentEditable：后者试过，造成两个真 bug——Enter
+// 插出的 DOM 节点不在模型里（删不掉、存不下），粘贴把别处的字号和 HTML 带进
+// 正文。textarea 从结构上就只装纯文本。
 //
-// 非受控 + 失焦写回：受控组件每次击键都要重渲染，容易跟光标打架；而写回发生
-// 在失焦之后，那时焦点已经离开，不会把正在打字的位置冲掉。
+// 非受控 + 失焦写回：受控组件每次击键都要重渲染，容易跟光标打架；写回发生在
+// 失焦之后，那时焦点已经离开，不会把正在打字的位置冲掉。
 //
-// 高度走纯 CSS（外层 .card-en-cell 的 ::after 复制同一份文字当影子，把格子
-// 撑到真实高度），不用 JS 量。原来用的是 el.scrollHeight——而 .card-en 平时是
+// 高度走纯 CSS（外层 .card-en-cell 的 ::after 复制同一份文字当影子，把它撑到
+// 真实高度），不用 JS 量。原来用的是 el.scrollHeight——而 .card-en 平时是
 // display:none，textarea 在隐藏状态下挂载时 scrollHeight 读出来是 0，高度就被
 // 钉死成一行；开关备料边栏导致栏宽变化时同样会失准。
 // 任何"量一次就记住"的做法在这里都会过期，CSS 不会。
-function EnCell({
+function EnField({
   value,
   style,
-  index,
   placeholder,
-  caret,
   onCommit,
-  onMergeBackward,
-  onSplit,
-  onCaretApplied,
 }: {
   value: string
   style: string
-  index: number
   placeholder?: string
-  caret?: number
   onCommit: (text: string) => void
-  onMergeBackward: (index: number, currentText: string | null) => boolean
-  onSplit: (index: number, currentText: string, caret: number) => void
-  onCaretApplied: () => void
 }) {
   const wrap = useRef<HTMLDivElement>(null)
-  const ta = useRef<HTMLTextAreaElement>(null)
-
-  // 刚刚合过段：把光标放回接缝上。合并会换掉 key、这一格重新挂载，所以这个
-  // effect 正好在新的 textarea 上跑一次。
-  useEffect(() => {
-    if (caret == null || !ta.current) return
-    ta.current.focus()
-    ta.current.setSelectionRange(caret, caret)
-    onCaretApplied()
-  }, [caret, onCaretApplied])
 
   return (
     <div className="card-en-cell" ref={wrap} data-value={value}>
       <textarea
-        ref={ta}
         className="card-en-p"
         data-style={style}
-        aria-label={`第 ${index + 1} 段的英文`}
+        aria-label="这张卡的英文"
         defaultValue={value}
         rows={1}
         spellCheck
         placeholder={placeholder}
-        // 高度由外层那个影子元素（::after 复制同一份文字）撑开，这里只负责
-        // 把当前值同步过去。不读 scrollHeight、不量任何东西。
         onInput={(e) => {
           if (wrap.current) wrap.current.dataset.value = e.currentTarget.value
         }}
@@ -88,29 +65,8 @@ function EnCell({
         // 这个 textarea 在 PM 可编辑区内部（靠 aside 的 contentEditable={false}
         // 隔开），但 DOM 事件照样会冒泡；PM 的 keymap 抓 Backspace / Enter 等键，
         // 那是原来"英文格子里删不掉行"的另一半原因。
-        onKeyDown={(e) => {
-          e.stopPropagation()
-          // 段首退格 = 并进上一段；段尾 Delete = 把下一段并进来。就是所有编辑器
-          // 里改分段的那两个手势，不另发明按钮。
-          // 只在没有选区时才算（有选区的 Backspace/Delete 是删掉选中的字）。
-          const el = e.currentTarget
-          const atHead = el.selectionStart === 0 && el.selectionEnd === 0
-          const atTail = el.selectionStart === el.value.length && el.selectionEnd === el.value.length
-          // Enter = 另起一段，跟中文栏一致（中文那边 Enter 就是分段）。
-          // 段内换行留给 Shift+Enter——textarea 本来就会插一个 \n，不拦就是了。
-          if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
-            e.preventDefault()
-            onSplit(index, el.value, el.selectionStart)
-            return
-          }
-          if (e.key === 'Backspace' && atHead) {
-            if (onMergeBackward(index, el.value)) e.preventDefault()
-          } else if (e.key === 'Delete' && atTail) {
-            // 从接缝的另一侧发起，合的还是同一道缝：把 index+1 并进 index。
-            // 传 null = "那一格的文字用存着的值"：它没有焦点，焦点离开时就写回过了。
-            if (onMergeBackward(index + 1, null)) e.preventDefault()
-          }
-        }}
+        // Enter 不用再特殊处理：一卡一格，回车就是回车，空行就是分段。
+        onKeyDown={(e) => e.stopPropagation()}
         onKeyUp={(e) => e.stopPropagation()}
         onPaste={(e) => e.stopPropagation()}
         onCut={(e) => e.stopPropagation()}
@@ -149,62 +105,14 @@ export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
   // 作者删掉一段中文时英文不该跟着消失，更不该在他下次敲字时被空串覆盖。
   const rawEn = node.attrs.en
   const en: string[] | null = isValidEn(rawEn) ? rawEn : null
-  // 格子数取中英两边的较大值：多出来的英文段仍然看得见、改得了，作者自己决定
-  // 要不要删。少于中文段数时补空格子。
-  const cellCount = Math.max(zhTexts.length, en?.length ?? 0)
   const state = confirmState(en, node.attrs.enSrc || '', zhTexts.join(ZH_JOIN))
 
-  // 刚合过段之后光标该落在哪一格的哪个位置。合并会换掉那一格的 key、让它重新
-  // 挂载，所以得由父这边告诉它"你挂载完把光标放到这里"。
-  const [pendingCaret, setPendingCaret] = useState<{ index: number; caret: number } | null>(null)
-  const clearCaret = useCallback(() => setPendingCaret(null), [])
-
-  // 作者把第 index 段并进第 index-1 段。返回有没有真的合——没合的话调用方让
-  // Backspace/Delete 照常删字符。
-  // currentText 为 null 表示"那一格的文字用存着的值"：只有带焦点的那一格可能
-  // 有没写回的改动，别的格子失焦时都写回过了。
-  function mergeBackward(index: number, currentText: string | null): boolean {
-    if (en == null || index < 1 || index >= cellCount) return false
-    const text = currentText ?? en[index] ?? ''
-    const r = mergeEnCells(en, index, text)
-    if (!r) return false
-    const anyText = r.en.some((t) => t.trim() !== '')
-    updateAttributes({
-      en: anyText ? r.en : null,
-      // 跟 commit 一样：改自己的英文不撤销确认，但全删空了就退回"没写过"。
-      ...(anyText ? {} : { enSrc: UNCONFIRMED }),
-      enAt: anyText ? new Date().toISOString() : '',
-    })
-    setPendingCaret({ index: index - 1, caret: r.caret })
-    return true
-  }
-
-  // 作者在光标处把这一段拆成两段。mergeBackward 的另一半。
-  function split(index: number, currentText: string, caret: number) {
-    const r = splitEnCell(en, index, currentText, caret)
-    const anyText = r.en.some((t) => t.trim() !== '')
-    updateAttributes({
-      en: anyText ? r.en : null,
-      ...(anyText ? {} : { enSrc: UNCONFIRMED }),
-      enAt: anyText ? new Date().toISOString() : '',
-    })
-    // 整卡还是全空（在空格子里按 Enter）时什么都没发生，别留一个等不到格子的
-    // 待落光标——它会在以后某一格刚好出现在那个序号上时突然抢走焦点。
-    if (anyText) setPendingCaret({ index: r.focusIndex, caret: r.caret })
-  }
-
-  // 写回一段英文。只在 blur 时调用——写回会让这个 node view 重渲染，那时焦点
-  // 已经离开，所以不会把作者正在打字的光标冲掉。
-  function commit(index: number, text: string) {
-    // CRITICAL：有 en 就在它上面改，绝不从零重建。原来在 en 为 null 时用
-    // zhTexts.map(() => '') 造一份空的——而 en 会因为"段数对不上"被判成 null，
-    // 于是作者敲一个字就把整份英文覆盖没了。
-    const next = en ? [...en] : []
-    while (next.length <= index) next.push('')
-    if (next[index] === text) return
-    next[index] = text
-    // 全空 = 退回"没写过"，而不是存一个全是空串的数组
-    const anyText = next.some((s) => s.trim() !== '')
+  // 写回这张卡的英文。只在 blur 时调用——写回会让这个 node view 重渲染，那时
+  // 焦点已经离开，所以不会把作者正在打字的光标冲掉。
+  function commit(text: string) {
+    const next = textToEn(text)
+    const anyText = next.length > 0
+    if (enToText(en) === enToText(anyText ? next : null)) return
     updateAttributes({
       en: anyText ? next : null,
       // CRITICAL：写回只存文字，绝不盖确认章。确认是作者的动作，只有他点
@@ -257,22 +165,18 @@ export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
         {en == null && hitCount > 0 ? (
           <p className="card-en-hint">{hitCount} 个靶心在右栏 →</p>
         ) : null}
-        {Array.from({ length: cellCount }, (_, i) => (
-          <EnCell
-            // key 带上当前值：外部改动（切卡/合卡重算了 en）时整个换一个，
-            // 从而刷新 defaultValue。打字期间不会触发——我们只在失焦时写回。
-            key={`${cardId ?? 'n'}-${i}-${en ? en[i] : ''}`}
-            value={en ? en[i] : ''}
-            style={zhStyles[i] ?? 'body'}
-            index={i}
-            caret={pendingCaret?.index === i ? pendingCaret.caret : undefined}
-            onMergeBackward={mergeBackward}
-            onSplit={split}
-            onCaretApplied={clearCaret}
-            placeholder={en == null && i === 0 ? '开始写…' : undefined}
-            onCommit={(text) => commit(i, text)}
-          />
-        ))}
+        {/* 块样式：整张卡只有一个段落时跟着它走（章/节这类标题卡就是这种），
+            否则一律按正文。一卡一格之后不可能再逐段继承——textarea 里没有
+            "段"这个东西可供单独上样式。 */}
+        <EnField
+          // key 带上当前值：外部改动（切卡/合卡重算了 en）时整个换一个，从而
+          // 刷新 defaultValue。打字期间不会触发——我们只在失焦时写回。
+          key={`${cardId ?? 'n'}-${enToText(en)}`}
+          value={enToText(en)}
+          style={zhStyles.length === 1 ? zhStyles[0] : 'body'}
+          placeholder={en == null ? '开始写…' : undefined}
+          onCommit={commit}
+        />
         {state !== 'unwritten' ? (
           <div className="card-en-confirm">
             {state === 'confirmed' ? (
