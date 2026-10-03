@@ -59,12 +59,15 @@ describe('PrepSidebar', () => {
     expect(Array.from(badges).every((b) => b.getAttribute('data-tier') === 'not-found')).toBe(true)
   })
 
-  it('表头只有一行：标题在左、文体条数在右', () => {
-    const { container } = sidebar()
-    const heads = container.querySelectorAll('header')
-    expect(heads.length).toBe(1)
-    expect(heads[0].textContent).toContain('备料 · 当前这张卡')
-    expect(heads[0].textContent).toContain('叙事 · 1 条')
+  it('表头只留真正能动的两个：重备和关闭', () => {
+    // 原来还有「备料 · 当前这张卡」和「议论 · N 条」——前者边栏的位置本身就
+    // 说明了，后者是个没人会用的计数。
+    const { container } = sidebar({ onPrepCard: () => {}, onClose: () => {} })
+    const head = container.querySelector('header')!
+    expect(head.textContent).not.toContain('当前这张卡')
+    expect(head.textContent).not.toContain('条')
+    expect(head.querySelector('.prep-redo')).not.toBeNull()
+    expect(head.querySelector('.prep-close')).not.toBeNull()
   })
 
   it('档位状态在边栏里，一直看得见——这个开关设错了不会报错', () => {
@@ -170,8 +173,19 @@ describe('PrepSidebar', () => {
     ])
   })
 
-  it('边栏有标题，说明它显示的是哪一张卡的备料', () => {
-    expect(sidebar().container.textContent).toContain('备料 · 当前这张卡')
+  it('作者用过的词标出来——下次遇到就知道这是他的词', () => {
+    const { container } = sidebar({ usedWords: { 'hem in': 3 } })
+    const used = container.querySelector('.prep-used')
+    expect(used?.textContent).toBe('你用过 3 次')
+  })
+
+  it('只用过一次就不显示次数，省得噪音', () => {
+    const { container } = sidebar({ usedWords: { 'hem in': 1 } })
+    expect(container.querySelector('.prep-used')?.textContent).toBe('你用过')
+  })
+
+  it('没用过的词什么都不标', () => {
+    expect(sidebar().container.querySelector('.prep-used')).toBeNull()
   })
 
   it('失败留在边栏里，说清原因并给再试一次——不是闪一下就没的 toast', () => {

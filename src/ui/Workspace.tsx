@@ -390,6 +390,7 @@ export function Workspace() {
           busy={!!activeCardId && preppingCards.has(activeCardId)}
           progress={progress}
           onPrepCard={prepThisCard}
+          usedWords={book.used}
           error={activeCardId ? (prepErrors[activeCardId] ?? null) : null}
           warnings={activeCardId ? (prepWarnings[activeCardId] ?? []) : []}
           aiPolicy={toAiPolicy(book.aiPolicy)}

@@ -43,11 +43,19 @@ describe('card 的英文属性', () => {
     e.destroy()
   })
 
-  it('HTML 往返时形状不对的 en 被当成没写过', () => {
+  it('HTML 往返时段数不符的 en 照样保留——作者的字不该因为结构对不上而消失', () => {
     const e = new Editor({
       extensions: baseExtensions,
-      // 一段中文却给两段英文——不变量破了，parseHTML 必须拒收
       content: '<section data-card-id="c0" data-en="[&quot;one&quot;,&quot;two&quot;]"><p>第一段</p></section>',
+    })
+    expect(e.getJSON().content![0].attrs!.en).toEqual(['one', 'two'])
+    e.destroy()
+  })
+
+  it('HTML 往返时形状不对（不是字符串数组）的 en 才当没写过', () => {
+    const e = new Editor({
+      extensions: baseExtensions,
+      content: '<section data-card-id="c0" data-en="[1,2]"><p>第一段</p></section>',
     })
     expect(e.getJSON().content![0].attrs!.en).toBe(null)
     e.destroy()

@@ -10,7 +10,7 @@ export type CwBookRow = {
   id: string
   owner: string
   title: string
-  data: { doc: any; boxes: Book['boxes']; subtitle?: string; author?: string; hints?: Book['hints']; aiPolicy?: Book['aiPolicy']; verified?: Book['verified'] }
+  data: { doc: any; boxes: Book['boxes']; subtitle?: string; author?: string; hints?: Book['hints']; aiPolicy?: Book['aiPolicy']; verified?: Book['verified']; used?: Book['used'] }
   position: number
   updated_at: string
   cover?: Cover | null
@@ -30,6 +30,7 @@ export function rowToBook(row: CwBookRow): Book {
     ...(row.data.hints && typeof row.data.hints === 'object' ? { hints: row.data.hints } : {}),
     ...(row.data.aiPolicy ? { aiPolicy: row.data.aiPolicy } : {}),
     ...(row.data.verified && typeof row.data.verified === 'object' ? { verified: row.data.verified } : {}),
+    ...(row.data.used && typeof row.data.used === 'object' ? { used: row.data.used } : {}),
   }
 }
 
@@ -46,6 +47,7 @@ export function bookToRow(book: Book, ownerId: string, position: number): CwBook
       ...(book.hints ? { hints: book.hints } : {}),
       ...(book.aiPolicy ? { aiPolicy: book.aiPolicy } : {}),
       ...(book.verified ? { verified: book.verified } : {}),
+      ...(book.used ? { used: book.used } : {}),
     },
     position,
     // 优先用本书自己的 updatedAt（改动发生的真实时间），这样即使这次 upsert

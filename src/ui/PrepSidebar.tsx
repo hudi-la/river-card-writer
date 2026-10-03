@@ -39,6 +39,7 @@ export function PrepSidebar({
   busy = false,
   progress = null,
   onPrepCard,
+  usedWords,
   error = null,
   warnings = [],
   aiPolicy = 'strict',
@@ -52,6 +53,8 @@ export function PrepSidebar({
   busy?: boolean
   progress?: { done: number; total: number } | null
   onPrepCard?: () => void
+  // 作者确认过的段落里真正出现过的候选词。标出来，下次遇到就知道这是他的词。
+  usedWords?: Record<string, number>
   error?: string | null
   warnings?: string[]
   aiPolicy?: AiPolicy
@@ -61,19 +64,11 @@ export function PrepSidebar({
 }) {
   return (
     <aside className="prep-sidebar">
-      {/* 一行表头：左标题、右文体条数。原来我把标题另起一行压在这上面，
-          于是边栏顶上出现两行 chrome——那就是页面上看着重复的东西。 */}
+      {/* 表头只留真正能动的两个：重备和关闭。
+          原来还有「备料 · 当前这张卡」和「议论 · 8 条」——前者边栏的位置本身
+          就说明了，后者是个没人会用的计数。作者说这些都不需要，他是对的。 */}
       <header className="prep-head">
-        <span className="prep-title" title="只有在语料里完全找不到的词才会被标出来——那种词可能是模型造的。能查到的一律不标。">
-          备料 · 当前这张卡
-        </span>
-        <span className="prep-meta">
-          {busy
-            ? progress && progress.total > 1
-              ? `备料中 ${progress.done}/${progress.total}`
-              : '备料中…'
-            : `${GENRE_LABEL[genre]} · ${targets.length} 条`}
-        </span>
+        <span className="prep-meta">{busy ? (progress && progress.total > 1 ? `备料中 ${progress.done}/${progress.total}` : '备料中…') : ''}</span>
         {targets.length > 0 && !busy && onPrepCard ? (
           <button className="prep-redo" onClick={onPrepCard} title="重新备这张卡">
             重备
@@ -185,7 +180,12 @@ export function PrepSidebar({
             {t.noSingleWord ? <span className="prep-nosingle">英文没有对应单词</span> : null}
             {/* 折起来时在标题行上留下候选词，展开后由 CSS 藏掉——否则重复 */}
             {t.candidates.map((c) => (
-              <span className="prep-chip" key={c.en} data-tier={tiers.get(c.verifyForm) ?? 'not-found'}>
+              <span
+                className="prep-chip"
+                key={c.en}
+                data-tier={tiers.get(c.verifyForm) ?? 'not-found'}
+                data-used={usedWords?.[c.en.toLowerCase()] ? 'true' : undefined}
+              >
                 {c.en}
               </span>
             ))}
@@ -213,6 +213,11 @@ export function PrepSidebar({
                   <div className="prep-cand-head">
                     <span className="prep-en">{c.en}</span>
                     <TierBadge tier={tier} />
+                    {usedWords?.[c.en.toLowerCase()] ? (
+                      <span className="prep-used" title="你在确认过的段落里用过它">
+                        你用过{usedWords[c.en.toLowerCase()] > 1 ? ` ${usedWords[c.en.toLowerCase()]} 次` : ''}
+                      </span>
+                    ) : null}
                     {c.register ? <span className="prep-register">{c.register}</span> : null}
                   </div>
                   {c.nuance ? <p className="prep-nuance">{c.nuance}</p> : null}

@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import { NodeViewWrapper, NodeViewContent, type NodeViewProps } from '@tiptap/react'
 import { GripVertical } from 'lucide-react'
 import { autoCardColor } from './schema'
+import { useBookStore } from '../state/bookStore'
 import { confirmState, isValidEn, zhFingerprint, UNCONFIRMED, ZH_JOIN } from './enText'
 import { prepHitCount } from './prepHighlight'
 
@@ -95,16 +96,23 @@ export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
     zhStyles.push(p.attrs.style || 'body')
   })
 
-  // 脏 en（段数不符、形状不对）一律当没写过。JSON 路径不走 schema 的 parseHTML，
-  // 所以这里必须再兜一层——渲染一份跟中文对不上的英文比什么都不显示更有害。
+  // 形状不对（不是字符串数组）才当没写过。**段数对不上不算不合格**——
+  // 作者删掉一段中文时英文不该跟着消失，更不该在他下次敲字时被空串覆盖。
   const rawEn = node.attrs.en
-  const en: string[] | null = isValidEn(rawEn, zhTexts.length) ? rawEn : null
+  const en: string[] | null = isValidEn(rawEn) ? rawEn : null
+  // 格子数取中英两边的较大值：多出来的英文段仍然看得见、改得了，作者自己决定
+  // 要不要删。少于中文段数时补空格子。
+  const cellCount = Math.max(zhTexts.length, en?.length ?? 0)
   const state = confirmState(en, node.attrs.enSrc || '', zhTexts.join(ZH_JOIN))
 
   // 写回一段英文。只在 blur 时调用——写回会让这个 node view 重渲染，那时焦点
   // 已经离开，所以不会把作者正在打字的光标冲掉。
   function commit(index: number, text: string) {
-    const next = en ? [...en] : zhTexts.map(() => '')
+    // CRITICAL：有 en 就在它上面改，绝不从零重建。原来在 en 为 null 时用
+    // zhTexts.map(() => '') 造一份空的——而 en 会因为"段数对不上"被判成 null，
+    // 于是作者敲一个字就把整份英文覆盖没了。
+    const next = en ? [...en] : []
+    while (next.length <= index) next.push('')
     if (next[index] === text) return
     next[index] = text
     // 全空 = 退回"没写过"，而不是存一个全是空串的数组
@@ -123,6 +131,9 @@ export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
   // 失效——不需要任何地方"记得去撤销"。
   function confirm() {
     updateAttributes({ enSrc: zhFingerprint(zhTexts), enAt: new Date().toISOString() })
+    // 顺手学一次：这段他认下了，那就看看他真正用了哪些候选词。
+    // 作者的主意，比原设计（打字时记录）准得多——写到一半又删掉的不算数。
+    if (cardId && en) useBookStore.getState().recordConfirmedUse(cardId, en.join('\n'))
   }
 
   function unconfirm() {
@@ -158,15 +169,15 @@ export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
         {en == null && hitCount > 0 ? (
           <p className="card-en-hint">{hitCount} 个靶心在右栏 →</p>
         ) : null}
-        {zhTexts.map((_, i) => (
+        {Array.from({ length: cellCount }, (_, i) => (
           <EnCell
             // key 带上当前值：外部改动（切卡/合卡重算了 en）时整个换一个，
             // 从而刷新 defaultValue。打字期间不会触发——我们只在失焦时写回。
             key={`${cardId ?? 'n'}-${i}-${en ? en[i] : ''}`}
             value={en ? en[i] : ''}
-            style={zhStyles[i]}
+            style={zhStyles[i] ?? 'body'}
             index={i}
-            placeholder={en == null && i === 0 ? '还没写' : undefined}
+            placeholder={en == null && i === 0 ? '开始写…' : undefined}
             onCommit={(text) => commit(i, text)}
           />
         ))}

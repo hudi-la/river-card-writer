@@ -50,9 +50,11 @@ describe('isValidEn', () => {
   it('段数相符的字符串数组合法', () => {
     expect(isValidEn(['a', 'b'], 2)).toBe(true)
   })
-  it('段数不符不合法——en.length === 段落数 是不变量', () => {
-    expect(isValidEn(['a'], 2)).toBe(false)
-    expect(isValidEn(['a', 'b', 'c'], 2)).toBe(false)
+  it('段数不符也合法——作者的字不该因为结构对不上而消失', () => {
+    // 原来这里要求长度严格相等。那是会丢数据的设计：删掉一段中文之后 en 被判
+    // 不合格 → CardView 当它是 null → 下次敲字用空串把它整份覆盖掉。
+    expect(isValidEn(['a'], 2)).toBe(true)
+    expect(isValidEn(['a', 'b', 'c'], 2)).toBe(true)
   })
   it('非数组不合法', () => {
     expect(isValidEn('a', 1)).toBe(false)
@@ -63,9 +65,9 @@ describe('isValidEn', () => {
     expect(isValidEn(['a', 42], 2)).toBe(false)
     expect(isValidEn(['a', null], 2)).toBe(false)
   })
-  it('空数组只在段数为 0 时合法', () => {
+  it('空数组合法', () => {
     expect(isValidEn([], 0)).toBe(true)
-    expect(isValidEn([], 1)).toBe(false)
+    expect(isValidEn([], 1)).toBe(true)
   })
 })
 

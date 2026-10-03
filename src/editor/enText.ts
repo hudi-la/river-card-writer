@@ -47,13 +47,18 @@ export function confirmState(en: string[] | null, enSrc: string, zhText: string)
 
 // 守在数据入口的校验器，跟现有的 isValidCover 同一个路子：宽松地判断、永不抛出，
 // 形状不对就当"不合格"，绝不让它进文档。
-// en.length === 段落数 是全功能依赖的不变量（段落样式靠序号从中文继承、切分靠
-// 序号对齐），所以段数不符必须拒绝，不能好心地补齐或截断——补出来的英文跟中文
-// 对不上，比没有更有害。
-export function isValidEn(raw: unknown, paragraphCount: number): raw is string[] | null {
+//
+// CRITICAL：这里**不再**要求 en.length === 中文段数。原来要求了，那是一个会丢
+// 数据的设计：作者删掉一段中文之后长度对不上，CardView 把整份 en 当成 null，
+// 英文先从屏幕上消失；接着他在这张卡里随便敲一个字，commit 走
+// `en ? [...en] : zhTexts.map(() => '')` 这一支，用一串空字符串把真正的英文
+// **永久覆盖**掉。
+//
+// 段数相等只是"能逐段对齐"的前提（splitEn 自己会判断），不该是"这份数据合不
+// 合法"的判据。作者的字在任何情况下都不该因为结构对不上而消失。
+export function isValidEn(raw: unknown, _paragraphCount?: number): raw is string[] | null {
   if (raw === null) return true
   if (!Array.isArray(raw)) return false
-  if (raw.length !== paragraphCount) return false
   return raw.every((s) => typeof s === 'string')
 }
 
