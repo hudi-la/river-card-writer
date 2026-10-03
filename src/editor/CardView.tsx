@@ -30,23 +30,26 @@ function EnCell({
   value,
   style,
   index,
+  extra,
   placeholder,
   onCommit,
 }: {
   value: string
   style: string
   index: number
+  extra?: boolean
   placeholder?: string
   onCommit: (text: string) => void
 }) {
   const wrap = useRef<HTMLDivElement>(null)
 
   return (
-    <div className="card-en-cell" ref={wrap} data-value={value}>
+    <div className="card-en-cell" ref={wrap} data-value={value} data-extra={extra ? '' : undefined}>
       <textarea
         className="card-en-p"
         data-style={style}
-        aria-label={`第 ${index + 1} 段的英文`}
+        aria-label={extra ? `第 ${index + 1} 段的英文（中文没有这一段）` : `第 ${index + 1} 段的英文`}
+        title={extra ? '中文里没有对应的这一段' : undefined}
         defaultValue={value}
         rows={1}
         spellCheck
@@ -177,6 +180,8 @@ export function CardView({ node, updateAttributes, editor }: NodeViewProps) {
             value={en ? en[i] : ''}
             style={zhStyles[i] ?? 'body'}
             index={i}
+            // 中文那边没有这一段。不拦不删——作者自己决定合回去还是留着。
+            extra={i >= zhTexts.length}
             placeholder={en == null && i === 0 ? '开始写…' : undefined}
             onCommit={(text) => commit(i, text)}
           />

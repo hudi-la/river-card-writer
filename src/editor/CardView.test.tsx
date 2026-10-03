@@ -255,6 +255,28 @@ describe('CardView 的英文栏', () => {
     expect(Array.from(cells).map((c) => c.getAttribute('data-value'))).toEqual(['One.', 'Two.'])
   })
 
+  it('英文比中文多出来的段落带 data-extra 标记——段数不锁死，但多出来的得看得见', async () => {
+    const { container } = render(
+      <EnHarness en={['One.', 'Two.', 'Three.', 'Four.']} enSrc={zhFingerprint(['第一段', '第二段'])} />,
+    )
+    await new Promise((r) => setTimeout(r, 0))
+    const cells = Array.from(container.querySelectorAll('.card-en-cell'))
+    // 中文两段、英文四段：两边取大，四格全都在，后两格标成"中文没有这一段"
+    expect(cells.length).toBe(4)
+    expect(cells.map((c) => c.hasAttribute('data-extra'))).toEqual([false, false, true, true])
+    const tas = container.querySelectorAll('.card-en-p')
+    expect(tas[1].getAttribute('title')).toBeNull()
+    expect(tas[2].getAttribute('title')).toBe('中文里没有对应的这一段')
+  })
+
+  it('英文段数少于中文时没有 data-extra——空格子是"还没写"，不是"多出来"', async () => {
+    const { container } = render(<EnHarness en={['One.']} enSrc={zhFingerprint(['第一段', '第二段'])} />)
+    await new Promise((r) => setTimeout(r, 0))
+    const cells = Array.from(container.querySelectorAll('.card-en-cell'))
+    expect(cells.length).toBe(2)
+    expect(cells.some((c) => c.hasAttribute('data-extra'))).toBe(false)
+  })
+
   it('打字时影子跟着变，所以格子边打边长', async () => {
     const { container } = render(<EnHarness en={['One.', 'Two.']} enSrc={zhFingerprint(['第一段', '第二段'])} />)
     await new Promise((r) => setTimeout(r, 0))

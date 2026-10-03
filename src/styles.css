@@ -1022,6 +1022,11 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
   font-size: inherit;
   line-height: 1.8;
   letter-spacing: inherit;
+  /* 首行缩进，跟中文栏的 .card-body p 对齐——两栏的段落节奏因此能互相对读。
+     还有个顺带的好处，而且是关键的：text-indent 只管段落的第一行，所以格子里
+     自己敲的换行（\n，pre-wrap 保留）不会被缩进。于是"另起一段"和"段内换行"
+     在屏幕上终于分得开了——在此之前两者长得一模一样，段数根本数不清。 */
+  text-indent: 2em;
 }
 
 /* textarea 还要洗掉浏览器默认的那套外框，让它看起来就是正文的一部分 */
@@ -1043,19 +1048,35 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
    CRITICAL：字号/缩进这类影响排版的，必须同时作用在影子（::after）上——
    只改 textarea 的话影子还按正文字号算，标题格子的高度就是错的。 */
 .card-en-cell:has(> [data-style='chapter'])::after,
-.card-en-p[data-style='chapter'] { font-size: 1.4em; font-weight: 600; }
+.card-en-p[data-style='chapter'] { font-size: 1.4em; font-weight: 600; text-indent: 0; }
 .card-en-cell:has(> [data-style='h1'])::after,
-.card-en-p[data-style='h1'] { font-size: 1.2em; font-weight: 600; }
+.card-en-p[data-style='h1'] { font-size: 1.2em; font-weight: 600; text-indent: 0; }
 .card-en-cell:has(> [data-style='h2'])::after,
-.card-en-p[data-style='h2'] { font-size: 1.08em; font-weight: 600; }
+.card-en-p[data-style='h2'] { font-size: 1.08em; font-weight: 600; text-indent: 0; }
 .card-en-cell:has(> [data-style='bullet'])::after,
 .card-en-p[data-style='bullet'] { padding-left: 1.2em; text-indent: -0.7em; }
 .card-en-cell:has(> [data-style='quote'])::after,
-.card-en-p[data-style='quote'] { padding-left: 1em; border-left: 2px solid #ddd9cf; }
+.card-en-p[data-style='quote'] { padding-left: 1em; border-left: 2px solid #ddd9cf; text-indent: 0; }
 .card-en-p[data-style='quote'] { color: #5c5649; }
 .card-en-cell:has(> [data-style='note'])::after,
-.card-en-p[data-style='note'] { font-size: 0.9em; }
+.card-en-p[data-style='note'] { font-size: 0.9em; text-indent: 0; }
 .card-en-p[data-style='note'] { color: #6b665c; }
+
+/* 中文那边没有对应段落的英文段（en 比中文段数多出来的那几格）。
+   段数不再锁死 1:1——锁死会丢数据，见 enText.ts 里 isValidEn 的注释。可"不锁死"
+   不等于"不告诉作者"：多出来的段必须看得出来，否则他只能靠肉眼数，而数不清。
+   标法要安静：不加字、不弹窗，左缘一道虚线，鼠标停下来才说是怎么回事。
+   ::before 必须 absolute——.card-en-cell 是 grid，在流内它会变成第三个格子，
+   把 textarea 和影子的重叠布局顶开。 */
+.card-en-cell[data-extra] { position: relative; }
+.card-en-cell[data-extra]::before {
+  content: '';
+  position: absolute;
+  left: -0.75em;
+  top: 0.3em;
+  bottom: 0.3em;
+  border-left: 2px dotted #c7a46a;
+}
 
 /* 英文的四个状态。
    注意这里刻意**不把未确认的英文涂灰**：涂灰是在说"这东西有问题"，而工具并
