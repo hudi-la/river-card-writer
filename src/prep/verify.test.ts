@@ -1,11 +1,26 @@
 import { describe, it, expect, vi } from 'vitest'
-import { tierOf, headWord, createVerifier, migrateTier } from './verify'
+import { tierOf, coreForm, createVerifier, migrateTier } from './verify'
 
-describe('headWord', () => {
-  it('取短语的第一个词', () => {
-    expect(headWord('enmeshed within it')).toBe('enmeshed')
-    expect(headWord('operationalized as independent actors')).toBe('operationalized')
-    expect(headWord('strut')).toBe('strut')
+describe('coreForm —— 剥到真正要查的那个搭配', () => {
+  it('结尾的虚词全剥掉，那是上下文残留不是搭配的一部分', () => {
+    expect(coreForm('enmeshed within it')).toBe('enmeshed')
+    expect(coreForm('submerged within it')).toBe('submerged')
+    expect(coreForm('encode into')).toBe('encode')
+  })
+
+  it('结尾是实词就原样留着——那个组合本身才是要查的东西', () => {
+    // 不剥的话 cerebral haughtiness 会被剥成 cerebral（很常见）而蒙混过关，
+    // 可那正是模型真造出来的词
+    expect(coreForm('cerebral haughtiness')).toBe('cerebral haughtiness')
+    expect(coreForm('granted autonomy')).toBe('granted autonomy')
+  })
+
+  it('单词原样', () => {
+    expect(coreForm('strut')).toBe('strut')
+  })
+
+  it('全是虚词时至少留一个，不剥成空', () => {
+    expect(coreForm('of the')).toBe('of')
   })
 })
 
@@ -141,13 +156,24 @@ describe('createVerifier', () => {
     expect((await verify(['enmeshed within it'])).get('enmeshed within it')).toBe('collocation-unseen')
   })
 
-  it('旧持久化里的档位名就地迁移——不为几个旧值写数据库迁移', () => {
+  it('旧档位名就地迁移，但旧的 unverified 一律丢掉重查', () => {
     expect(migrateTier('ok')).toBe('found')
-    // 「罕用」本来就是查到了，只是频率低——那不该是个警告
-    expect(migrateTier('rare')).toBe('found')
+    expect(migrateTier('rare')).toBe('found') // 「罕用」本来就是查到了
     expect(migrateTier('head-only')).toBe('collocation-unseen')
-    expect(migrateTier('unverified')).toBe('not-found')
     expect(migrateTier('found')).toBe('found')
-    expect(migrateTier('啥也不是')).toBe('not-found')
+    // CRITICAL：旧的 unverified 大多是错的（拿带代词的短语去查、或查证没跑成）。
+    // 迁成 not-found 等于把错误结论永久定死——enacted/manifested/rendered
+    // 这些高频词就是这么被钉在"没查到"上的。返回 null = 不入缓存 = 下次重查。
+    expect(migrateTier('unverified')).toBeNull()
+    expect(migrateTier('啥也不是')).toBeNull()
+  })
+
+  it('旧的 unverified 不进缓存，于是会被重新查一次', async () => {
+    const spy = vi.fn(async (forms: string[]) =>
+      Object.fromEntries(forms.map((f) => [f, { full: 8.8e-6, head: 8.8e-6 }]))
+    )
+    const verify = createVerifier(spy, { enacted: 'unverified' as never })
+    expect((await verify(['enacted'])).get('enacted')).toBe('found')
+    expect(spy).toHaveBeenCalled()
   })
 })

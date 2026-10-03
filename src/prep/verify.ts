@@ -35,8 +35,30 @@ export type Tier = 'found' | 'collocation-unseen' | 'not-found'
 /** @deprecated 频率门槛已废弃，保留只为旧数据读取时不炸。 */
 export const RARE_BELOW = 1e-8
 
-// 词头：短语的第一个词。英语里动词短语的信息量基本都在它身上
-// （enmeshed within it → enmeshed）。
+// 结尾的虚词——它们是上下文残留，不是这个搭配的一部分。
+const TRAILING_FUNCTION_WORDS = new Set([
+  'it', 'them', 'him', 'her', 'this', 'that', 'these', 'those', 'one', 'ones', 'something',
+  'in', 'into', 'on', 'onto', 'at', 'to', 'for', 'with', 'within', 'without',
+  'of', 'off', 'out', 'up', 'down', 'over', 'as', 'by', 'from', 'about', 'through',
+  'a', 'an', 'the',
+])
+
+// 把一个候选剥到"真正要查的那个搭配"。
+//
+// 这一步是区分两种情况的关键：
+//   enmeshed within it → enmeshed      结尾全是虚词，剥掉，剩下的是真词
+//   cerebral haughtiness → 原样         两个都是实词，这个组合本身就是要查的东西
+// 不剥的话，前者会被冤枉成可疑；只取第一个词的话，后者会被放过
+// （cerebral 很常见）——而后者正是模型真造出来的那种词。
+export function coreForm(form: string): string {
+  const words = form.trim().split(/[\s,]+/).filter(Boolean)
+  while (words.length > 1 && TRAILING_FUNCTION_WORDS.has(words[words.length - 1].toLowerCase())) {
+    words.pop()
+  }
+  return words.join(' ')
+}
+
+/** @deprecated 用 coreForm——只取第一个词会放过 cerebral haughtiness 这类生造组合。 */
 export function headWord(form: string): string {
   return form.trim().split(/[\s,]+/)[0] ?? ''
 }
@@ -59,23 +81,28 @@ export type FetchFreqs = (forms: string[]) => Promise<Record<string, FreqPair | 
 // 所以查过的永远不用再查——刷新之后也不该从零开始。
 // 旧数据里存的是废弃的档位名（ok / rare / head-only / unverified）。
 // 读回来时就地迁移，省得为了几个旧值写一次数据库迁移。
+// 旧持久化里的档位名。
+// CRITICAL：旧的 unverified **不迁移**，直接丢掉让它重查。
+// 那批值大多是错的（当时拿带代词的短语去查、或者查证压根没跑成），把它们
+// 迁成 not-found 等于把错误结论永久定死——enacted / manifested / rendered
+// 这些高频词就是这么被钉在"没查到"上的。错误信息比没有信息糟得多。
 const LEGACY_TIERS: Record<string, Tier> = {
   ok: 'found',
-  rare: 'found', // 「罕用」本来就是查到了，只是频率低——那不该是个警告
+  rare: 'found', // 「罕用」本来就是查到了，只是频率低
   'head-only': 'collocation-unseen',
-  unverified: 'not-found',
 }
 
-function migrateTier(v: string): Tier {
-  return (['found', 'collocation-unseen', 'not-found'] as string[]).includes(v)
-    ? (v as Tier)
-    : (LEGACY_TIERS[v] ?? 'not-found')
+function migrateTier(v: string): Tier | null {
+  if ((['found', 'collocation-unseen', 'not-found'] as string[]).includes(v)) return v as Tier
+  return LEGACY_TIERS[v] ?? null
 }
 
 export function createVerifier(fetchFreqs: FetchFreqs, seed?: Record<string, Tier>) {
-  const cache = new Map<string, Tier>(
-    seed ? Object.entries(seed).map(([k, v]) => [k, migrateTier(v as string)]) : []
-  )
+  const cache = new Map<string, Tier>()
+  for (const [k, v] of Object.entries(seed ?? {})) {
+    const t = migrateTier(v as string)
+    if (t) cache.set(k, t) // 迁不出来的（旧 unverified）不入缓存，下次自然重查
+  }
 
   return async function verify(forms: string[]): Promise<Map<string, Tier>> {
     const unique = Array.from(new Set(forms.filter((f) => f.trim() !== '')))

@@ -1,12 +1,14 @@
 import type { AiPolicy, Genre, Target } from '../prep/types'
 import type { Tier } from '../prep/verify'
 
-// 查证只回答"真实英文里有没有人这么用过"，不回答"常不常用"。
-// 常不常用由候选自己的「语域」字段说（那是人话判断，不是一个数字）。
-const TIER_LABEL: Record<Tier, string> = {
-  found: '查到了',
-  'collocation-unseen': '这个搭配没查到',
-  'not-found': '语料里没查到',
+// 徽章只在有话说的时候才出声。
+//
+// 作者点破的那件事：模型捞出来的本来就是他不熟的词，再去标"这个词常不常见"
+// 等于在回答一个他从没问过的问题——常见的词他当然认得。所以查到了的一律不标，
+// 整栏干干净净；只有真的在语料里找不到、也就是可能被模型造出来的那种，才值得
+// 占一个徽章的位置。
+const TIER_LABEL: Partial<Record<Tier, string>> = {
+  'not-found': '语料里没有这个词',
 }
 
 const GENRE_LABEL: Record<Genre, string> = { narrative: '叙事', expository: '议论', other: '其他' }
@@ -16,9 +18,11 @@ const POLICY_LABEL: Record<AiPolicy, string> = { strict: '只给词', auto: '给
 // 三档徽章。靠形状 + 明度区分，不只靠颜色——未查证的那个是空心环、候选名还带
 // 删除线，即使看不出颜色差别也认得出来。
 function TierBadge({ tier }: { tier: Tier }) {
+  const label = TIER_LABEL[tier]
+  if (!label) return null // 查到了就什么都不说——沉默才是常态
   return (
     <span className="prep-tier" data-tier={tier}>
-      {TIER_LABEL[tier]}
+      {label}
     </span>
   )
 }
@@ -60,7 +64,7 @@ export function PrepSidebar({
       {/* 一行表头：左标题、右文体条数。原来我把标题另起一行压在这上面，
           于是边栏顶上出现两行 chrome——那就是页面上看着重复的东西。 */}
       <header className="prep-head">
-        <span className="prep-title" title="徽章 = 拿 Google Books 语料查这个词组真有人用过没有。只看有没有，不看常不常用——学术写作里精确的词往往就是低频的词。">
+        <span className="prep-title" title="只有在语料里完全找不到的词才会被标出来——那种词可能是模型造的。能查到的一律不标。">
           备料 · 当前这张卡
         </span>
         <span className="prep-meta">
@@ -214,7 +218,10 @@ export function PrepSidebar({
                   {c.nuance ? <p className="prep-nuance">{c.nuance}</p> : null}
                   {/* 每个候选都必须说出它丢了什么。没有任何候选可以只有优点——
                       结构上就不可能出现"这个是完美的对应"。 */}
-                  <p className="prep-loses">丢了 · {c.loses}</p>
+                  <p className="prep-loses">
+                    <span className="prep-loses-label">短处</span>
+                    {c.loses}
+                  </p>
                 </li>
               )
             })}

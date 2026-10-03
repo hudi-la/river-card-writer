@@ -1334,3 +1334,15 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
 .app--no-nav { grid-template-columns: minmax(0, 1fr); }
 .app--no-nav.app--bilingual { grid-template-columns: minmax(0, 1fr) clamp(300px, 26vw, 456px); }
 
+
+/* 「短处」：原来写作「丢了 ·」，作者反馈看不懂那是什么意思。
+   给它一个明确的小标签，而不是一个需要猜的前缀。 */
+.prep-loses-label {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #f3e7e2;
+  font-size: 10px;
+  font-weight: 700;
+}

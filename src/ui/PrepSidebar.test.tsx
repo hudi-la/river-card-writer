@@ -37,14 +37,20 @@ describe('PrepSidebar', () => {
     expect(container.textContent).toContain('不地道')
   })
 
-  it('三档徽章各自可辨，未查证的那个明确说自己没有背书', () => {
+  it('查到了就什么都不标——沉默才是常态', () => {
+    const allFound = new Map<string, Tier>([
+      ['hem in', 'found'], ['swat down', 'found'], ['corner off', 'found'],
+    ])
+    const { container } = sidebar({ tiers: allFound })
+    expect(container.querySelectorAll('.prep-tier').length).toBe(0)
+  })
+
+  it('只有语料里完全找不到的才标出来——那种可能是模型造的', () => {
     const { container } = sidebar()
     const badges = container.querySelectorAll('.prep-tier[data-tier]')
-    expect(Array.from(badges).map((b) => b.getAttribute('data-tier'))).toEqual([
-      'found', 'collocation-unseen', 'not-found',
-    ])
-    expect(container.textContent).toContain('语料里没查到')
-    expect(container.textContent).toContain('这个搭配没查到')
+    expect(badges.length).toBe(1)
+    expect(badges[0].getAttribute('data-tier')).toBe('not-found')
+    expect(badges[0].textContent).toBe('语料里没有这个词')
   })
 
   it('查证结果里没有这个词形时，保守地当未查证——绝不默认当成已查证', () => {
@@ -196,10 +202,9 @@ describe('PrepSidebar', () => {
     expect(container.textContent).toContain('英文没有对应单词')
   })
 
-  it('查证只说有没有，不说常不常用——低频的词不该被标成警告', () => {
-    const rare = new Map<string, Tier>([['hem in', 'found']])
-    const { container } = sidebar({ tiers: rare })
-    expect(container.querySelector('.prep-tier[data-tier="found"]')?.textContent).toBe('查到了')
-    expect(container.textContent).not.toContain('罕用')
+  it('候选的短处有明确的标签——原来写「丢了 ·」，看不懂那是什么意思', () => {
+    const { container } = sidebar()
+    expect(container.querySelector('.prep-loses-label')?.textContent).toBe('短处')
+    expect(container.textContent).not.toContain('丢了 ·')
   })
 })

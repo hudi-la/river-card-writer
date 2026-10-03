@@ -79,9 +79,24 @@ async function ngramFreq(form: string): Promise<number | null> {
   }
 }
 
-// 短语的第一个词。英语里动词短语的信息量基本都在它身上。
-function headWord(form: string): string {
-  return form.trim().split(/[\s,]+/)[0] ?? ''
+// 结尾的虚词——上下文残留，不是搭配的一部分。
+const TRAILING_FUNCTION_WORDS = new Set([
+  'it', 'them', 'him', 'her', 'this', 'that', 'these', 'those', 'one', 'ones', 'something',
+  'in', 'into', 'on', 'onto', 'at', 'to', 'for', 'with', 'within', 'without',
+  'of', 'off', 'out', 'up', 'down', 'over', 'as', 'by', 'from', 'about', 'through',
+  'a', 'an', 'the',
+])
+
+// 剥到"真正要查的那个搭配"。跟 src/prep/verify.ts 的 coreForm 必须一致。
+//   enmeshed within it   → enmeshed       结尾全是虚词，剥掉
+//   cerebral haughtiness → 原样            两个都是实词，这个组合本身就是要查的
+// 只取第一个词的话，后者会因为 cerebral 常见而被放过——而那正是模型造出来的词。
+function coreForm(form: string): string {
+  const words = form.trim().split(/[\s,]+/).filter(Boolean)
+  while (words.length > 1 && TRAILING_FUNCTION_WORDS.has(words[words.length - 1].toLowerCase())) {
+    words.pop()
+  }
+  return words.join(' ')
 }
 
 // 每个词形返回两个数：整体搭配的频率，和词头的频率。
@@ -100,7 +115,7 @@ async function handleNgram(forms: unknown): Promise<Response> {
   const needed = new Set<string>()
   for (const form of list) {
     needed.add(form)
-    const h = headWord(form)
+    const h = coreForm(form)
     if (h && h !== form) needed.add(h)
   }
   const unique = Array.from(needed)
@@ -112,7 +127,7 @@ async function handleNgram(forms: unknown): Promise<Response> {
   }
 
   for (const form of list) {
-    const h = headWord(form)
+    const h = coreForm(form)
     out[form] = {
       full: freq.get(form) ?? null,
       head: h && h !== form ? (freq.get(h) ?? null) : (freq.get(form) ?? null),
