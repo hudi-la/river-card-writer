@@ -110,7 +110,7 @@ type BookState = {
   importUniversalCards: (cards: any[]) => void
   updateDoc: (doc: object) => void
   setAiPolicy: (policy: AiPolicy) => void
-  setCardHints: (cardId: string, result: PrepResult) => void
+  // 只有追加，没有替换。作者说过：不要把他正在用的东西覆盖掉。
   appendCardHints: (cardId: string, result: PrepResult) => void
   mergeVerified: (tiers: Record<string, Tier>) => void
   recordConfirmedUse: (cardId: string, enText: string) => void
@@ -842,26 +842,24 @@ export const useBookStore = create<BookState>((set, get) => {
         result: undefined,
       }))
     },
-    // 划词备料用：把新条目追加到这张卡已有的提词上，而不是整份换掉。
-    // 作者划一个词是在"补一条"，不是在说"前面那些不要了"。
+    // 划词备料用：**只往上加，永不删**。
+    //
+    // 作者的原话：已经备好的那些条目不要动，划一个词就在右边多加一张卡。
+    // 原来这里会"同名就替换掉旧的"，而模型可能一口气返回一堆跟旧条目重名的
+    // 新条目——那一下就把他正在用的东西全换了。所以重名时**保留旧的、丢掉
+    // 新的**：他正在用的那条优先。
     appendCardHints: (cardId, result) => {
       withActiveBook((book) => {
         const prev = book.hints?.[cardId]
-        if (!prev) return { book: { ...book, hints: { ...(book.hints ?? {}), [cardId]: result } }, result: undefined }
-        // 同一个词重复划就替换掉旧的那条，不堆重复
-        const incoming = new Set(result.targets.map((t) => t.zh))
-        const merged = {
-          ...prev,
-          targets: [...result.targets, ...prev.targets.filter((t) => !incoming.has(t.zh))],
+        if (!prev) {
+          return { book: { ...book, hints: { ...(book.hints ?? {}), [cardId]: result } }, result: undefined }
         }
+        const have = new Set(prev.targets.map((t) => t.zh))
+        const added = result.targets.filter((t) => !have.has(t.zh))
+        if (added.length === 0) return { book, result: undefined }
+        const merged = { ...prev, targets: [...added, ...prev.targets] }
         return { book: { ...book, hints: { ...book.hints, [cardId]: merged } }, result: undefined }
       })
-    },
-    setCardHints: (cardId, result) => {
-      withActiveBook((book) => ({
-        book: { ...book, hints: { ...(book.hints ?? {}), [cardId]: result } },
-        result: undefined,
-      }))
     },
     openDoc: () => set({ viewKind: 'doc' }),
     addBox: (name) => {

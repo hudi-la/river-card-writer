@@ -27,6 +27,9 @@ export type Target = {
   candidates: Candidate[]
   noSingleWord: boolean
   family: string
+  // 这条是作者自己划词要来的，不是模型捞出来的。两者性质不同——模型捞的是
+  // 它认为重要的，作者划的是他卡住的地方——所以在边栏里要分得开。
+  byAuthor?: boolean
 }
 
 export type Genre = 'narrative' | 'expository' | 'other'

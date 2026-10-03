@@ -1362,3 +1362,15 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
   font-family: inherit; font-size: 12px; font-weight: 600; white-space: nowrap;
 }
 .sel-prep:hover { background: #33302c; }
+
+/* 作者自己划词要来的条目：左侧一条暖色竖线 + 一个小标签。
+   跟模型捞的分开——模型捞的是它认为重要的，作者划的是他卡住的地方，
+   两者性质不同，混在一起就找不着自己要的那条了。 */
+.prep-target[data-by-author] {
+  border-left: 3px solid #a8543f;
+  border-radius: 0 9px 9px 0;
+}
+.prep-by-author {
+  font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px;
+  color: #7d3d2d; background: #f5e4de;
+}

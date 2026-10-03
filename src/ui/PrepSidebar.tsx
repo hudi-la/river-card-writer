@@ -165,9 +165,14 @@ export function PrepSidebar({
           折起来时标题行上留着靶心名和候选词，扫一眼就知道这张卡有哪些东西；
           真要看语感和缺点再展开。一张卡五六条全摊开的话边栏就是一堵墙。 */}
       {targets.map((t, i) => (
-        <details className="prep-target" key={`${t.zh}-${i}`}>
+        <details
+          className="prep-target"
+          key={`${t.zh}-${i}`}
+          data-by-author={t.byAuthor ? 'true' : undefined}
+        >
           <summary>
             <span className="prep-zh">{t.zh}</span>
+            {t.byAuthor ? <span className="prep-by-author">你要的</span> : null}
             {t.family ? <span className="prep-family">族 · {t.family}</span> : null}
             {t.noSingleWord ? <span className="prep-nosingle">英文没有对应单词</span> : null}
             {/* 折起来时在标题行上留下候选词，展开后由 CSS 藏掉——否则重复 */}

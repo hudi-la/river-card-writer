@@ -16,6 +16,7 @@ import { createVerifier, type Tier } from '../prep/verify'
 import { runPrep, type CardInput } from '../prep/runPrep'
 import { toAiPolicy } from '../prep/types'
 import { usePrepBridge } from '../state/prepBridge'
+import { pickFocusedTarget } from '../prep/focusTarget'
 
 const FONT_STACK: Record<'serif' | 'sans', string> = {
   serif: "Georgia,'Songti SC','Noto Serif',serif",
@@ -82,7 +83,6 @@ export function Workspace() {
   const renameBook = useBookStore((s) => s.renameBook)
   const prefs = usePrefsStore((s) => s.prefs)
   const setRailWidth = usePrefsStore((s) => s.setRailWidth)
-  const setCardHints = useBookStore((s) => s.setCardHints)
   const setAiPolicy = useBookStore((s) => s.setAiPolicy)
   const mergeVerified = useBookStore((s) => s.mergeVerified)
   const appendCardHints = useBookStore((s) => s.appendCardHints)
@@ -228,7 +228,7 @@ export function Workspace() {
       const out = await runPrep(cards, {
         requestPrep: (zhTexts) => requestPrep(zhTexts, toAiPolicy(book?.aiPolicy), { settled: book?.settled }),
         verify,
-        onCardDone: (cardId, result) => setCardHints(cardId, result),
+        onCardDone: (cardId, result) => appendCardHints(cardId, result),
         onWarnings: (w) => {
           const id = ids[0]
           setPrepWarnings((prev) => ({ ...prev, [id]: [...(prev[id] ?? []), ...w] }))
@@ -274,8 +274,21 @@ export function Workspace() {
         showToast({ text: `备料失败：${r.error}`, kind: 'error', durationMs: 5000 })
         return
       }
-      appendCardHints(card.cardId, r.value)
-      const forms = r.value.targets.flatMap((tg) => tg.candidates.map((c) => c.verifyForm))
+      // 只取作者划的那一条。模型可能把整张卡重新分析一遍返回一堆——那不是他
+      // 要的，也会在追加时跟已有条目撞名。
+      const one = pickFocusedTarget(r.value.targets, phrase)
+      if (!one) {
+        showToast({ text: `没能为「${phrase}」做出条目`, kind: 'info' })
+        return
+      }
+      const before = book?.hints?.[card.cardId]?.targets.length ?? 0
+      appendCardHints(card.cardId, { ...r.value, targets: [{ ...one, byAuthor: true }] })
+      const after = useBookStore.getState().activeBook()?.hints?.[card.cardId]?.targets.length ?? 0
+      if (after === before && before > 0) {
+        showToast({ text: `「${one.zh}」已经在备料里了`, kind: 'info' })
+        return
+      }
+      const forms = one.candidates.map((c) => c.verifyForm)
       try {
         const m = await verify(forms)
         setTiers((prev) => new Map([...prev, ...m]))
@@ -283,7 +296,7 @@ export function Workspace() {
       } catch {
         // 查不到就维持原样，不影响已经落地的提词
       }
-      showToast({ text: `「${phrase}」已加到备料`, kind: 'success' })
+      showToast({ text: `「${one.zh}」已加到备料`, kind: 'success' })
     } finally {
       setPreppingCards((prev) => {
         const next = new Set(prev)

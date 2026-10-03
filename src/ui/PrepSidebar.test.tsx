@@ -207,4 +207,14 @@ describe('PrepSidebar', () => {
     expect(container.querySelector('.prep-loses-label')?.textContent).toBe('短处')
     expect(container.textContent).not.toContain('丢了 ·')
   })
+
+  it('作者自己划词要来的条目标出来——跟模型捞的分开，方便找', () => {
+    const mine = [{ ...targets[0], zh: '我划的', byAuthor: true }, { ...targets[0], zh: '模型捞的' }]
+    const { container } = sidebar({ targets: mine })
+    const all = container.querySelectorAll('details.prep-target')
+    expect(all[0].getAttribute('data-by-author')).toBe('true')
+    expect(all[1].getAttribute('data-by-author')).toBeNull()
+    expect(all[0].querySelector('.prep-by-author')?.textContent).toBe('你要的')
+    expect(all[1].querySelector('.prep-by-author')).toBeNull()
+  })
 })
