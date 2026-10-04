@@ -332,8 +332,7 @@ html.outline-drag-active, html.outline-drag-active * { user-select:none !importa
 .rail-outline-head {
   position: sticky; top: 0; z-index: 5; box-sizing: border-box;
   height: var(--topbar-h, 52px);
-  background: color-mix(in srgb, var(--paper) 85%, transparent);
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  background: var(--paper);
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   margin: 0 -12px 10px; padding: 0 12px; border-bottom: 1px solid var(--faint);
 }
@@ -428,17 +427,16 @@ html.outline-drag-active, html.outline-drag-active * { user-select:none !importa
 .river-wrap { width: min(var(--reading-measure), 96%); }
 .river-wrap .river { width: 100%; }
 /* sticky 顶栏：往下滚正文时吸在视口顶。三栏网格 1fr auto 1fr 让书名精确居中；
-   半透明毛玻璃底，正文从下面滚过时朦胧透出。 */
+   实底色：正文从下面滚过时完全盖住，不透字——半透明那版看着像没冻住。 */
 /* 顶栏统一高度 var(--topbar-h)：左栏「目录」头和正文顶栏同高、底部 1px 描边
-   因此连成一条不断裂的直线（中间只被 .rail 的列分隔线竖切一下），两条同一种
-   半透明毛玻璃底——整条顶看起来是一整片、而不是错开的两截。 */
+   因此连成一条不断裂的直线（中间只被 .rail 的列分隔线竖切一下），右边备料栏
+   的档位行也是同高同描边——三栏的头看起来是一整条。 */
 .workspace-topbar {
   position: sticky; top: 0; z-index: 20; width: 100%; box-sizing: border-box;
   height: var(--topbar-h, 52px);
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
   padding: 0 24px; margin-bottom: 26px;
-  background: color-mix(in srgb, var(--paper) 85%, transparent);
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  background: var(--paper);
   border-bottom: 1px solid var(--faint);
 }
 .reading-settings { position: relative; justify-self: end; z-index: 6; }
@@ -1155,11 +1153,12 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
 /* 边栏跟 .rail 同一套：钉在视口、自己出滚动条，正文滚动时它不跟着跑。 */
 .prep-sidebar {
   position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
-  box-sizing: border-box; padding: 14px 18px;
+  box-sizing: border-box; padding: 0 18px 14px;
   border-left: 1px solid var(--faint); background: #f5f3ec; font-size: 13px;
 }
 /* 一行表头：左标题、右文体条数（+ 有内容时一个轻量的「重备」）。 */
 .prep-head {
+  padding-top: 14px;
   display: flex; align-items: baseline; gap: 8px;
   margin-bottom: 12px; padding-bottom: 8px;
   border-bottom: 1px solid var(--faint, #e3e0d8);
@@ -1316,7 +1315,16 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
 
 
 /* ── 备料边栏的档位行与关闭 ────────────────────────────────────── */
-.prep-policy-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+/* 档位行当备料栏的表头：sticky 吸在栏顶、实底色盖住滚过的内容；高度和底描边跟
+   .workspace-topbar / .rail-outline-head 一样，三栏头连成一条线。负 margin 抵掉
+   .prep-sidebar 的左右内边距，让它横跨整栏宽（栏本身没有上内边距，它直接顶到栏顶）。 */
+.prep-policy-row {
+  position: sticky; top: 0; z-index: 5; box-sizing: border-box;
+  min-height: var(--topbar-h, 52px);
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 0 -18px 12px; padding: 0 18px;
+  background: #f5f3ec; border-bottom: 1px solid var(--faint);
+}
 .prep-policy-note { font-size: 11px; color: #8c867a; }
 .prep-close {
   border: 0; background: none; padding: 0 0 0 4px; cursor: pointer;
