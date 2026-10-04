@@ -754,6 +754,19 @@ describe('备料的 hints 与 aiPolicy', () => {
   })
 })
 
+describe('translations 也要往返', () => {
+  it('「给译文」的译文能存能读——不然换台电脑就没了', () => {
+    const translations = { c1: ['The cat barred the door.', 'It waited.'] }
+    const book: Book = { id: '44444444-4444-4444-8444-444444444444', title: '书', doc: {}, boxes: [], translations }
+    expect(rowToBook(bookToRow(book, 'owner', 0)).translations).toEqual(translations)
+  })
+
+  it('没有译文的书不写 translations key', () => {
+    const book: Book = { id: '55555555-5555-4555-8555-555555555555', title: '书', doc: {}, boxes: [] }
+    expect('translations' in bookToRow(book, 'owner', 0).data).toBe(false)
+  })
+})
+
 describe('verified 也要往返', () => {
   it('查证档位能存能读——不然刷新后每个候选都变未查证，好词被集体冤枉', () => {
     const verified = { 'hem in': 'ok' as const, 'swat down': 'rare' as const, 'corner off': 'unverified' as const }
