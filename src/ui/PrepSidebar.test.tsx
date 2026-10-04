@@ -69,7 +69,7 @@ describe('PrepSidebar', () => {
 
   it('换档时说明跟着变', () => {
     expect(sidebar().container.textContent).toContain('句子归你')
-    expect(sidebar({ aiPolicy: 'auto' }).container.textContent).toContain('只在这里当参考')
+    expect(sidebar({ aiPolicy: 'auto' }).container.textContent).toContain('逐段直译')
   })
 
   it('给了 onPolicyChange 就是真开关，两档都能点', () => {
@@ -92,6 +92,37 @@ describe('PrepSidebar', () => {
     const { container } = sidebar({ aiPolicy: 'auto', translation: ['The cat barred the door.'] })
     expect(container.querySelector('.prep-translation')?.textContent).toContain('The cat barred the door.')
     expect(container.textContent).toContain('不会进你的英文栏')
+  })
+
+  it('auto 档不显示词卡——两档各看各的', () => {
+    const { container } = sidebar({ aiPolicy: 'auto' })
+    expect(container.querySelector('.prep-target')).toBeNull()
+    expect(container.textContent).not.toContain('剥夺退路的掌控')
+  })
+
+  it('auto 档给「翻译」按钮，有译文后变「重新翻译」，点了就触发', () => {
+    let n = 0
+    const first = sidebar({ aiPolicy: 'auto', onTranslate: () => n++ })
+    const btn = first.container.querySelector('.prep-card-btn') as HTMLButtonElement
+    expect(btn.textContent).toBe('翻译')
+    btn.click()
+    expect(n).toBe(1)
+    first.unmount()
+    const again = sidebar({ aiPolicy: 'auto', onTranslate: () => {}, translation: ['A.'] })
+    expect(again.container.querySelector('.prep-card-btn')?.textContent).toBe('重新翻译')
+  })
+
+  it('翻译中按钮锁住，不重复发', () => {
+    const { container } = sidebar({ aiPolicy: 'auto', onTranslate: () => {}, translating: true })
+    const btn = container.querySelector('.prep-card-btn') as HTMLButtonElement
+    expect(btn.disabled).toBe(true)
+    expect(btn.textContent).toBe('翻译中…')
+  })
+
+  it('翻译失败留在边栏里', () => {
+    const { container } = sidebar({ aiPolicy: 'auto', translateError: '中文 2 段，译文却是 1 段' })
+    expect(container.textContent).toContain('上一次翻译没成')
+    expect(container.textContent).toContain('中文 2 段')
   })
 
   it('strict 档就算手里有译文也不显示——档位说了算', () => {

@@ -10,7 +10,7 @@ export type CwBookRow = {
   id: string
   owner: string
   title: string
-  data: { doc: any; boxes: Book['boxes']; subtitle?: string; author?: string; hints?: Book['hints']; aiPolicy?: Book['aiPolicy']; verified?: Book['verified']; used?: Book['used']; settled?: Book['settled'] }
+  data: { doc: any; boxes: Book['boxes']; subtitle?: string; author?: string; hints?: Book['hints']; aiPolicy?: Book['aiPolicy']; verified?: Book['verified']; used?: Book['used']; settled?: Book['settled']; translations?: Book['translations'] }
   position: number
   updated_at: string
   cover?: Cover | null
@@ -32,6 +32,7 @@ export function rowToBook(row: CwBookRow): Book {
     ...(row.data.verified && typeof row.data.verified === 'object' ? { verified: row.data.verified } : {}),
     ...(row.data.used && typeof row.data.used === 'object' ? { used: row.data.used } : {}),
     ...(row.data.settled && typeof row.data.settled === 'object' ? { settled: row.data.settled } : {}),
+    ...(row.data.translations && typeof row.data.translations === 'object' ? { translations: row.data.translations } : {}),
   }
 }
 
@@ -50,6 +51,7 @@ export function bookToRow(book: Book, ownerId: string, position: number): CwBook
       ...(book.verified ? { verified: book.verified } : {}),
       ...(book.used ? { used: book.used } : {}),
       ...(book.settled ? { settled: book.settled } : {}),
+      ...(book.translations ? { translations: book.translations } : {}),
     },
     position,
     // 优先用本书自己的 updatedAt（改动发生的真实时间），这样即使这次 upsert

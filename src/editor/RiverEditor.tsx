@@ -206,7 +206,10 @@ export function RiverEditor() {
       ActiveCard,
       PrepHighlight.configure({
         getTerms: (cardId) => {
-          const hints = useBookStore.getState().activeBook()?.hints?.[cardId]
+          const book = useBookStore.getState().activeBook()
+          // 「给译文」档不看词卡，正文里的靶心高亮也跟着收起
+          if (book?.aiPolicy === 'auto') return []
+          const hints = book?.hints?.[cardId]
           return hints ? hints.targets.map((t) => t.zh) : []
         },
       }),
@@ -250,14 +253,17 @@ export function RiverEditor() {
 
   // 提词变了但文档没变时，ProseMirror 不会自己重算装饰器（它只在 doc 变化时重跑）。
   // 订阅 hints 的引用变化，发一个空事务带 refresh meta 逼它重算一次——备料边跑边
-  // 出结果，高亮就跟着一张张亮起来。
+  // 出结果，高亮就跟着一张张亮起来。换档也一样：高亮跟着档位亮或灭。
   useEffect(() => {
     if (!editor) return
     let prev = useBookStore.getState().activeBook()?.hints
+    let prevPolicy = useBookStore.getState().activeBook()?.aiPolicy
     return useBookStore.subscribe((state) => {
       const next = state.activeBook()?.hints
-      if (next === prev) return
+      const nextPolicy = state.activeBook()?.aiPolicy
+      if (next === prev && nextPolicy === prevPolicy) return
       prev = next
+      prevPolicy = nextPolicy
       if (!editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta(PREP_HIGHLIGHT_REFRESH, true))
     })
   }, [editor])

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parsePrepResponse, parseWordResponse } from './parse'
+import { parsePrepResponse, parseTranslateResponse, parseWordResponse } from './parse'
 
 function goodCandidate(over: Record<string, unknown> = {}) {
   return { en: 'hem in', verify_form: 'hem in', register: '书面', nuance: '包围', why_fits: '贴', loses: '没有对峙感', ...over }
@@ -145,51 +145,34 @@ describe('parsePrepResponse', () => {
 })
 
 
-describe('档位决定要不要收整句译文', () => {
-  const withTranslation = (over: Record<string, unknown> = {}) =>
-    JSON.stringify({
+describe('备料不收整句译文', () => {
+  it('模型夹带 translation 一律拒收——不是忽略，是拒收', () => {
+    const r = parsePrepResponse(JSON.stringify({
       genre: 'narrative', genre_reason: '',
       translation: ['The cat barred the door.'],
-      targets: [goodTarget()], ...over,
-    })
-
-  it('strict 档下模型夹带 translation 一律拒收——不是忽略，是拒收', () => {
-    const r = parsePrepResponse(withTranslation(), 'strict')
+      targets: [goodTarget()],
+    }))
     expect(r.ok).toBe(false)
     if (r.ok) return
     expect(r.error).toContain('只给词')
   })
+})
 
-  it('默认档位就是 strict——不传 policy 时也拒收', () => {
-    expect(parsePrepResponse(withTranslation()).ok).toBe(false)
+describe('parseTranslateResponse', () => {
+  it('段数对上就收', () => {
+    const r = parseTranslateResponse(JSON.stringify({ translation: ['A.', 'B.'] }), 2)
+    expect(r).toEqual({ ok: true, value: ['A.', 'B.'] })
   })
 
-  it('auto 档下接受 translation', () => {
-    const r = parsePrepResponse(withTranslation(), 'auto')
-    expect(r.ok).toBe(true)
-    if (!r.ok) return
-    expect(r.value.translation).toEqual(['The cat barred the door.'])
+  it('段数对不上整个拒收——错位的译文比没有更误导', () => {
+    const r = parseTranslateResponse(JSON.stringify({ translation: ['A. B.'] }), 2)
+    expect(r.ok).toBe(false)
   })
 
-  it('strict 档下没有 translation 时正常通过，且字段是 undefined 而不是空数组', () => {
-    const r = parsePrepResponse(good(), 'strict')
-    expect(r.ok).toBe(true)
-    if (!r.ok) return
-    expect(r.value.translation).toBeUndefined()
-  })
-
-  it('auto 档下 translation 形状不对要拒收', () => {
-    expect(parsePrepResponse(withTranslation({ translation: 'not an array' }), 'auto').ok).toBe(false)
-    expect(parsePrepResponse(withTranslation({ translation: [1, 2] }), 'auto').ok).toBe(false)
-  })
-
-  it('auto 档下条目字段里仍然不许出现整句英文——句子只能待在 translation 里', () => {
-    const bad = JSON.stringify({
-      genre: 'narrative', translation: ['ok'],
-      targets: [goodTarget({ candidates: [goodCandidate({
-        nuance: 'A palm-sized kitten had hemmed the neighbors in their own bedroom and waited.' })] })],
-    })
-    expect(parsePrepResponse(bad, 'auto').ok).toBe(false)
+  it('形状不对拒收', () => {
+    expect(parseTranslateResponse(JSON.stringify({ translation: 'A.' }), 1).ok).toBe(false)
+    expect(parseTranslateResponse(JSON.stringify({ translation: [1] }), 1).ok).toBe(false)
+    expect(parseTranslateResponse('不是 JSON', 1).ok).toBe(false)
   })
 })
 

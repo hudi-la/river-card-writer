@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildPrepRequest, buildWordRequest, PREP_SYSTEM, PREP_AUTO } from './prompt'
+import { buildPrepRequest, buildTranslateRequest, buildWordRequest, PREP_SYSTEM, PREP_TRANSLATE } from './prompt'
 
 describe('buildPrepRequest', () => {
   it('system 是提示词正文，user 只装中文', () => {
@@ -26,47 +26,36 @@ describe('buildPrepRequest', () => {
 })
 
 
-describe('档位决定提示词', () => {
-  it('strict 档只有主提示词，完全没提 translation', () => {
-    const r = buildPrepRequest(['第一段'], 'strict')
-    expect(r.system).toBe(PREP_SYSTEM)
-    // 注意：主提示词里本来就有 flat_translation（笼统译法），所以只能断言
-    // 顶层那个 translation 字段的说明不在
-    expect(r.system).not.toContain('额外要整句译文')
+describe('buildTranslateRequest —— 翻译用自己的小提示词', () => {
+  it('不带备料那套提示词', () => {
+    const r = buildTranslateRequest(['第一段'])
+    expect(r.system).toBe(PREP_TRANSLATE)
+    expect(r.system).not.toContain('靶心')
+    expect(r.system.length).toBeLessThan(PREP_SYSTEM.length / 5)
   })
 
-  it('auto 档在主提示词之后追加，前缀一字不改——这样缓存照样命中', () => {
-    const r = buildPrepRequest(['第一段'], 'auto')
-    expect(r.system.startsWith(PREP_SYSTEM)).toBe(true)
-    expect(r.system).toBe(PREP_SYSTEM + PREP_AUTO)
-    expect(r.system).toContain('额外要整句译文')
+  it('段落按数组送过去，段数一眼可数', () => {
+    expect(JSON.parse(buildTranslateRequest(['第一段', '第二段']).user)).toEqual(['第一段', '第二段'])
   })
 
-  it('不传档位时默认最严', () => {
-    expect(buildPrepRequest(['x']).system).toBe(PREP_SYSTEM)
-  })
-
-  it('auto 那段必须说清译文只是参考、且段数要对应', () => {
-    expect(PREP_AUTO).toContain('参考')
-    expect(PREP_AUTO).toContain('段数')
-    // 条目字段里仍然不许出现整句——这条不能因为开了 auto 就松掉
-    expect(PREP_AUTO).toContain('仍然不许出现整句英文')
+  it('提示词要求一段对一段', () => {
+    expect(PREP_TRANSLATE).toContain('一段对一段')
   })
 })
 
 describe('术语表进提示词', () => {
   it('没有已定译法时不加那一段', () => {
-    expect(buildPrepRequest(['第一段'], 'strict').system).not.toContain('已经定下来的译法')
+    expect(buildPrepRequest(['第一段']).system).not.toContain('已经定下来的译法')
   })
 
   it('有的话列进去，并要求排第一', () => {
-    const r = buildPrepRequest(['第一段'], 'strict', { 关系策略: 'relational strategy' })
+    const r = buildPrepRequest(['第一段'], { 关系策略: 'relational strategy' })
     expect(r.system).toContain('已经定下来的译法')
     expect(r.system).toContain('「关系策略」→ relational strategy')
   })
 
   it('空的中文或英文不进表', () => {
-    const r = buildPrepRequest(['x'], 'strict', { 关系策略: '', '': 'x' })
+    const r = buildPrepRequest(['x'], { 关系策略: '', '': 'x' })
     expect(r.system).not.toContain('已经定下来的译法')
   })
 })

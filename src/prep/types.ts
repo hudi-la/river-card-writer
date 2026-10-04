@@ -35,10 +35,10 @@ export type Target = {
 export type Genre = 'narrative' | 'expository' | 'other'
 
 // 这份稿子允许 AI 做到哪一档。
-//   strict —— 只给词与语感。条目 schema 里没有任何能装句子的字段，模型没地方
-//             放句子；校验器见到 translation 一律拒收。
-//   auto   —— 额外给整句译文，只在边栏当参考。这是 §9.3 主动开的口子，不是
-//             意外漏的。就算在这一档，译文也绝不进 en——en 只装作者敲的字。
+//   strict —— 边栏只看词卡（备料、加词）。条目 schema 里没有任何能装句子的
+//             字段，模型没地方放句子；校验器见到 translation 一律拒收。
+//   auto   —— 边栏只看整句译文：按「翻译」把当前这张卡逐段直译。这是 §9.3
+//             主动开的口子，不是意外漏的。译文也绝不进 en——en 只装作者敲的字。
 // （早期设计里还有个 open「加骨架」档，作者明确要求砍掉，不留半成品。）
 export type AiPolicy = 'strict' | 'auto'
 
@@ -52,7 +52,4 @@ export type PrepResult = {
   genre: Genre
   genreReason: string
   targets: Target[]
-  // 整句译文，每段一个字符串，只在 auto 档出现。strict 档下这个字段永远是
-  // undefined——不是"空的"，是压根没有。
-  translation?: string[]
 }

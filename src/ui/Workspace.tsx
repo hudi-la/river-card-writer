@@ -11,7 +11,7 @@ import { PrepSidebar } from './PrepSidebar'
 import { useActiveCardId } from './useActiveCardId'
 import { useEditorBridge } from '../state/editorBridge'
 import { useToastStore } from '../state/toastStore'
-import { requestPrep, requestWord, makeFetchFreqs } from '../prep/client'
+import { requestPrep, requestTranslation, requestWord, makeFetchFreqs } from '../prep/client'
 import { createVerifier, type Tier } from '../prep/verify'
 import { runPrep, type CardInput } from '../prep/runPrep'
 import { toAiPolicy } from '../prep/types'
@@ -85,6 +85,7 @@ export function Workspace() {
   const setAiPolicy = useBookStore((s) => s.setAiPolicy)
   const mergeVerified = useBookStore((s) => s.mergeVerified)
   const appendCardHints = useBookStore((s) => s.appendCardHints)
+  const setCardTranslation = useBookStore((s) => s.setCardTranslation)
   const setPrepPhrase = usePrepBridge((s) => s.setPrepPhrase)
   const railDragRef = useRef<RailDragState | null>(null)
 
@@ -102,6 +103,9 @@ export function Workspace() {
   // 错误和告警也按卡记：第 3 张卡失败了，不该让你在第 5 张卡上看到那条红框。
   const [prepErrors, setPrepErrors] = useState<Record<string, string>>({})
   const [prepWarnings, setPrepWarnings] = useState<Record<string, string[]>>({})
+  // 「给译文」档的翻译，跟备料一样按卡记：翻着这张的时候可以去翻下一张。
+  const [translatingCards, setTranslatingCards] = useState<Set<string>>(new Set())
+  const [translateErrors, setTranslateErrors] = useState<Record<string, string>>({})
   // 整章备料的进度。null = 没在跑。实测一次模型调用 24–60 秒，所以进度是必须的
   // ——没有它，作者面对的是几分钟的静默，跟卡死没有区别。
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
@@ -225,7 +229,7 @@ export function Workspace() {
     setPreppingCards((prev) => new Set([...prev, ...ids]))
     try {
       const out = await runPrep(cards, {
-        requestPrep: (zhTexts) => requestPrep(zhTexts, toAiPolicy(book?.aiPolicy), { settled: book?.settled }),
+        requestPrep: (zhTexts) => requestPrep(zhTexts, { settled: book?.settled }),
         verify,
         onCardDone: (cardId, result) => appendCardHints(cardId, result),
         onWarnings: (w) => {
@@ -305,9 +309,10 @@ export function Workspace() {
     }
   }
 
-  // 把触发函数登记给划词工具条。双语+备料栏开着时才给，否则那个按钮点了没地方显示。
+  // 把触发函数登记给划词工具条。双语+备料栏开着、且在「只给词」档时才给，
+  // 否则那个按钮点了没地方显示。
   useEffect(() => {
-    const on = bilingual && prepOpen && !readMode && viewKind !== 'box'
+    const on = bilingual && prepOpen && !readMode && viewKind !== 'box' && toAiPolicy(book?.aiPolicy) === 'strict'
     setPrepPhrase(on ? (p: string) => void addWordOnCard(p) : null)
     return () => setPrepPhrase(null)
   })
@@ -322,6 +327,37 @@ export function Workspace() {
     // 同一张卡不重复发；别的卡照常可以同时排上。
     if (preppingCards.has(card.cardId)) return
     return runPrepOn([card], '备料完成')
+  }
+
+  // 「翻译」：把光标所在这张卡逐段直译。显式动作，所以总是重跑、直接覆盖上一次。
+  const translateThisCard = async () => {
+    const showToast = useToastStore.getState().show
+    const card = cardsFromEditor().find((c) => c.cardId === activeCardId)
+    if (!card) {
+      showToast({ text: '先把光标放进一张卡里', kind: 'info' })
+      return
+    }
+    if (translatingCards.has(card.cardId)) return
+    setTranslateErrors((prev) => {
+      const next = { ...prev }
+      delete next[card.cardId]
+      return next
+    })
+    setTranslatingCards((prev) => new Set([...prev, card.cardId]))
+    try {
+      const r = await requestTranslation(card.zhTexts)
+      if (!r.ok) {
+        setTranslateErrors((prev) => ({ ...prev, [card.cardId]: r.error }))
+        return
+      }
+      setCardTranslation(card.cardId, r.value)
+    } finally {
+      setTranslatingCards((prev) => {
+        const next = new Set(prev)
+        next.delete(card.cardId)
+        return next
+      })
+    }
   }
 
   // 打开一张已经备过料、但查证结果缺失的卡时，自动把缺的补上。
@@ -452,7 +488,10 @@ export function Workspace() {
           warnings={activeCardId ? (prepWarnings[activeCardId] ?? []) : []}
           aiPolicy={toAiPolicy(book.aiPolicy)}
           onPolicyChange={setAiPolicy}
-          translation={activeCardId ? book.hints?.[activeCardId]?.translation : undefined}
+          translation={activeCardId ? book.translations?.[activeCardId] : undefined}
+          translating={!!activeCardId && translatingCards.has(activeCardId)}
+          onTranslate={translateThisCard}
+          translateError={activeCardId ? (translateErrors[activeCardId] ?? null) : null}
         />
       )}
     </div>

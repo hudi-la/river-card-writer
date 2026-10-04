@@ -51,7 +51,7 @@ export function isValidCover(raw: any): raw is Cover {
 // 好词被集体冤枉、徽章沦为纯噪音（spec §11.1 说的那个负资产）。
 // 一个词的历史语料频率不会变，所以这份记录永不过期，也能用来预热查证器。
 // 两个都是可选字段，老书读出来是 undefined、行为零变化，跟 cover/subtitle 同一个路子。
-export type Book = { id: string; title: string; doc: any; boxes: Box[]; updatedAt?: string; cover?: Cover; subtitle?: string; author?: string; hints?: Record<string, PrepResult>; aiPolicy?: AiPolicy; verified?: Record<string, Tier>; used?: Record<string, number>; settled?: Record<string, string> }
+export type Book = { id: string; title: string; doc: any; boxes: Box[]; updatedAt?: string; cover?: Cover; subtitle?: string; author?: string; hints?: Record<string, PrepResult>; aiPolicy?: AiPolicy; verified?: Record<string, Tier>; used?: Record<string, number>; settled?: Record<string, string>; translations?: Record<string, string[]> }
 export type Library = { books: Book[]; activeBookId: string | null; universalBoxes: Box[] }
 
 // 库级通用盒子：不属于任何一本书，跨所有书共享同一份实例。Phase 14 起支持
@@ -112,6 +112,8 @@ type BookState = {
   setAiPolicy: (policy: AiPolicy) => void
   // 只有追加，没有替换。作者说过：不要把他正在用的东西覆盖掉。
   appendCardHints: (cardId: string, result: PrepResult) => void
+  // 「给译文」档的整句译文，按 cardId 存，跟词卡（hints）分开放。重译直接覆盖。
+  setCardTranslation: (cardId: string, translation: string[]) => void
   mergeVerified: (tiers: Record<string, Tier>) => void
   recordConfirmedUse: (cardId: string, enText: string) => void
   openDoc: () => void
@@ -860,6 +862,12 @@ export const useBookStore = create<BookState>((set, get) => {
         const merged = { ...prev, targets: [...added, ...prev.targets] }
         return { book: { ...book, hints: { ...book.hints, [cardId]: merged } }, result: undefined }
       })
+    },
+    setCardTranslation: (cardId, translation) => {
+      withActiveBook((book) => ({
+        book: { ...book, translations: { ...(book.translations ?? {}), [cardId]: translation } },
+        result: undefined,
+      }))
     },
     openDoc: () => set({ viewKind: 'doc' }),
     addBox: (name) => {

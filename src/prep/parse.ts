@@ -1,4 +1,4 @@
-import type { AiPolicy, Candidate, Genre, PrepResult, Target } from './types'
+import type { Candidate, Genre, PrepResult, Target } from './types'
 
 // 「我没有缺点」的各种说法。模型倾向于用这些糊过去，一律当成没填。
 const EMPTY_LOSES = new Set(['', '无', '没有', 'n/a', 'na', 'none', '—', '-', '不适用'])
@@ -106,11 +106,9 @@ function parseTarget(raw: any, genre: Genre, i: number, warnings: string[]): Tar
 
 // 永不抛出：任何形状问题都返回 { ok: false, error }，由调用方决定怎么告诉作者。
 //
-// policy 决定校验的严格程度，这是 §9.2 那道墙的落点：
-//   strict —— 返回值里出现 translation 一律拒收。不是忽略、是拒收；模型若
-//             试图夹带成句，作者会看到明确的错误而不是悄悄收下。
-//   auto   —— 接受 translation，但仍要求段数与中文一一对应。
-export function parsePrepResponse(raw: string, policy: AiPolicy = 'strict'): Ok | Fail {
+// 备料返回里出现整句 translation 一律拒收，不是忽略——模型若试图夹带成句，
+// 作者会看到明确的错误而不是悄悄收下。要整句译文走单独的「翻译」。
+export function parsePrepResponse(raw: string): Ok | Fail {
   let json: any
   try {
     json = JSON.parse(raw)
@@ -133,16 +131,8 @@ export function parsePrepResponse(raw: string, policy: AiPolicy = 'strict'): Ok 
   }
   targets.sort((a, b) => a.priority - b.priority)
 
-  const hasTranslation = json.translation !== undefined && json.translation !== null
-  if (policy === 'strict' && hasTranslation) {
-    return fail('这份稿子是「只给词」档，但模型夹带了整句译文——已拒收。')
-  }
-  let translation: string[] | undefined
-  if (policy === 'auto' && hasTranslation) {
-    if (!Array.isArray(json.translation) || !json.translation.every((x: unknown) => typeof x === 'string')) {
-      return fail('译文必须是每段一个字符串的数组')
-    }
-    translation = json.translation as string[]
+  if (json.translation !== undefined && json.translation !== null) {
+    return fail('备料只给词，但模型夹带了整句译文——已拒收。')
   }
 
   return {
@@ -151,7 +141,6 @@ export function parsePrepResponse(raw: string, policy: AiPolicy = 'strict'): Ok 
       genre,
       genreReason: String(json.genre_reason ?? ''),
       targets,
-      ...(translation ? { translation } : {}),
     },
     warnings,
   }
@@ -203,4 +192,24 @@ export function parseWordResponse(
     },
     warnings,
   }
+}
+
+// 翻译的返回值：每段一个字符串，段数必须跟送去的中文一致。
+// 对不上就整个拒收——错位的译文贴在边栏里比没有更误导。
+export function parseTranslateResponse(
+  raw: string,
+  paragraphs: number
+): { ok: true; value: string[] } | { ok: false; error: string } {
+  let json: any
+  try {
+    json = JSON.parse(raw)
+  } catch {
+    return fail('模型没有返回合法 JSON')
+  }
+  const t = json?.translation
+  if (!Array.isArray(t) || !t.every((x: unknown) => typeof x === 'string')) {
+    return fail('译文必须是每段一个字符串的数组')
+  }
+  if (t.length !== paragraphs) return fail(`中文 ${paragraphs} 段，译文却是 ${t.length} 段`)
+  return { ok: true, value: t }
 }
