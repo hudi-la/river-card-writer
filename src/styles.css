@@ -158,6 +158,22 @@ html.box-row-drag-active, html.box-row-drag-active * { user-select:none !importa
   position: relative; width: 460px; min-height: 648px; padding: 44px;
   background: #fff; border: 1px solid var(--faint); border-radius: 4px; box-shadow: 0 8px 30px rgba(0,0,0,.08);
 }
+/* 一页里的几栏并排（书版只有一栏）；栏间距由 TypesetView 按版式预设内联给 */
+.ts-cols { display: flex; align-items: flex-start; }
+/* 栏宽必须严格等于量高宽度：页面那 1px 边框会让内容区窄 2px，flex 默认会把栏
+   挤窄，断行就跟量出来的对不上（英文多折一行、溢出页底）。不许收缩。 */
+.ts-cols > .ts-flow { flex: none; }
+/* 版式切换：阅读视图右上角一个小分段按钮 */
+.ts-switches { position: sticky; top: 64px; z-index: 4; display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; pointer-events: none; }
+.ts-layout-switch {
+  display: flex; pointer-events: auto;
+  border: 1px solid var(--faint); border-radius: 7px; overflow: hidden; background: var(--paper);
+}
+.ts-layout-switch button {
+  border: none; background: none; padding: 4px 11px; font-size: 12px; color: var(--muted); cursor: pointer;
+}
+.ts-layout-switch button + button { border-left: 1px solid var(--faint); }
+.ts-layout-switch button.on { color: var(--ink); background: color-mix(in srgb, var(--ink) 7%, var(--paper)); }
 .ts-page-num { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--muted); }
 /* 量高层：占位量真实高度但不可见、不占滚动高度（height:0 + overflow:hidden 裁掉，rect 仍是自然高度） */
 .ts-measure { position: absolute; top: 0; left: 0; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
@@ -191,6 +207,34 @@ html.box-row-drag-active, html.box-row-drag-active * { user-select:none !importa
   border: 1px solid var(--hair); border-radius: 3px; color: var(--muted); font-family: -apple-system, 'PingFang SC', sans-serif;
 }
 .ts-card-start { padding-top: 18px; }
+/* 英文段：首行缩进收窄、开连字符（lang=en 由 TypesetView 挂上）。对照模式里英文
+   跟在中文后面，字色压一点以分主次；英文模式下没写英文、退回中文的卡压得更淡。 */
+.ts-en { hyphens: auto; -webkit-hyphens: auto; }
+.ts-body.ts-en { text-indent: 1.5em; }
+.ts-body.ts-en.ts-cont, .ts-body.ts-en.ts-dropcap { text-indent: 0; }
+.ts-lang-both .ts-en { color: color-mix(in srgb, var(--ink) 78%, var(--paper)); }
+.ts-pending { color: color-mix(in srgb, var(--ink) 45%, var(--paper)); }
+
+/* —— 论文版式（.ts-paper）：A4 比例双栏，章节编号、紧凑正文、不首字下沉 ——
+   页面外框要跟 TypesetView 里 LAYOUTS.paper 对上：720 = 56×2 + 290×2 + 28，
+   内容高 900。间距照旧只用 padding，量高才准。 */
+.ts-paper .ts-pages { margin-top: 18px; }
+.ts-paper .ts-page { width: 720px; min-height: 1012px; padding: 56px; border-radius: 2px; }
+.ts-paper .ts-page-num { bottom: 22px; }
+.ts-paper-head { padding: 12px 0 26px; margin: 0; text-align: center; font-family: 'Times New Roman',Georgia,'Songti SC',serif; color: var(--ink); }
+.ts-paper-title { margin: 0; padding: 0 0 10px; font-size: 25px; line-height: 1.3; font-weight: 700; }
+.ts-paper-sub { margin: 0; padding: 0 0 10px; font-size: 15px; line-height: 1.5; color: color-mix(in srgb, var(--ink) 75%, var(--paper)); cursor: text; }
+.ts-paper-author { margin: 0; padding: 0 0 18px; font-size: 13.5px; line-height: 1.5; font-style: italic; cursor: text; border-bottom: 1px solid var(--hair); }
+.ts-paper-head .ts-hero-empty { opacity: .45; }
+.ts-paper-head .ts-hero-edit { color: var(--ink); background: var(--paper); border-color: var(--hair); text-align: center; }
+.ts-paper .ts-flow { font-family: 'Times New Roman',Georgia,'Songti SC','Noto Serif',serif; font-size: 13.5px; line-height: 1.72; }
+.ts-paper .ts-body { padding-bottom: 2px; }
+.ts-paper .ts-head { padding: 12px 0 5px; line-height: 1.4; }
+.ts-paper .ts-chapter { font-size: 1.22em; padding: 16px 0 6px; border-bottom: none; }
+.ts-paper .ts-h1 { font-size: 1.08em; padding-top: 12px; }
+.ts-paper .ts-h2 { font-size: 1em; font-style: italic; }
+.ts-paper .ts-card-start { padding-top: 6px; }
+.ts-paper .ts-quote { font-size: .94em; }
 /* 行内标记（阅读/排版视图）——跟编辑器里同一套：强调走中文的着重号，refer 不倾斜
    只加虚线，删除线压淡一档。分页量高时这些 class 也会挂到量高层上，所以量出来的
    行数就是排出来的行数。 */

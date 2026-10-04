@@ -4,9 +4,13 @@ const KEY = 'card-writer:prefs'
 
 export type Font = 'serif' | 'sans'
 export type OutlineView = 'brief' | 'detail'
-export type Prefs = { font: Font; size: number; measure: number; outlineView: OutlineView; railWidth: number }
+// 阅读模式的版式：book = 小开本单栏书页，paper = 论文式双栏
+export type Layout = 'book' | 'paper'
+// 阅读模式读哪一种文字：中文 / 英文 / 中英对照
+export type ReadLang = 'zh' | 'en' | 'both'
+export type Prefs = { font: Font; size: number; measure: number; outlineView: OutlineView; railWidth: number; layout: Layout; readLang: ReadLang }
 
-const DEFAULT_PREFS: Prefs = { font: 'serif', size: 15, measure: 680, outlineView: 'brief', railWidth: 172 }
+const DEFAULT_PREFS: Prefs = { font: 'serif', size: 15, measure: 680, outlineView: 'brief', railWidth: 172, layout: 'book', readLang: 'zh' }
 
 export const RAIL_WIDTH_MIN = 150
 export const RAIL_WIDTH_MAX = 520
@@ -22,6 +26,8 @@ type PrefsState = {
   setMeasure: (measure: number) => void
   setOutlineView: (view: OutlineView) => void
   setRailWidth: (px: number) => void
+  setLayout: (layout: Layout) => void
+  setReadLang: (readLang: ReadLang) => void
   __resetForTest: () => void
 }
 
@@ -31,10 +37,12 @@ export function load(): Prefs {
     if (raw) {
       const p = JSON.parse(raw)
       if (p && (p.font === 'serif' || p.font === 'sans') && typeof p.size === 'number' && typeof p.measure === 'number') {
-        // outlineView / railWidth 是后加的字段——老的持久化数据里没有，缺省/非法值都落回默认。
+        // outlineView / railWidth / layout / readLang 是后加的字段——老的持久化数据里没有，缺省/非法值都落回默认。
         const outlineView: OutlineView = p.outlineView === 'detail' ? 'detail' : 'brief'
         const railWidth = typeof p.railWidth === 'number' ? clampRailWidth(p.railWidth) : DEFAULT_PREFS.railWidth
-        return { font: p.font, size: p.size, measure: p.measure, outlineView, railWidth }
+        const layout: Layout = p.layout === 'paper' ? 'paper' : 'book'
+        const readLang: ReadLang = p.readLang === 'en' || p.readLang === 'both' ? p.readLang : 'zh'
+        return { font: p.font, size: p.size, measure: p.measure, outlineView, railWidth, layout, readLang }
       }
     }
   } catch {}
@@ -73,6 +81,16 @@ export const usePrefsStore = create<PrefsState>((set, get) => ({
   },
   setRailWidth: (px) => {
     const prefs = { ...get().prefs, railWidth: clampRailWidth(px) }
+    persist(prefs)
+    set({ prefs })
+  },
+  setLayout: (layout) => {
+    const prefs = { ...get().prefs, layout }
+    persist(prefs)
+    set({ prefs })
+  },
+  setReadLang: (readLang) => {
+    const prefs = { ...get().prefs, readLang }
     persist(prefs)
     set({ prefs })
   },

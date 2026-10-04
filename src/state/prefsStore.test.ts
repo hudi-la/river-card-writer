@@ -7,9 +7,28 @@ beforeEach(() => {
 })
 
 describe('prefsStore', () => {
-  it('默认值：serif / 15 / 680 / brief / 172', () => {
+  it('默认值：serif / 15 / 680 / brief / 172 / book / zh', () => {
     const s = usePrefsStore.getState()
-    expect(s.prefs).toEqual({ font: 'serif', size: 15, measure: 680, outlineView: 'brief', railWidth: 172 })
+    expect(s.prefs).toEqual({ font: 'serif', size: 15, measure: 680, outlineView: 'brief', railWidth: 172, layout: 'book', readLang: 'zh' })
+  })
+
+  it('setReadLang 改并持久化；老数据缺省回 zh', () => {
+    usePrefsStore.getState().setReadLang('both')
+    expect(JSON.parse(localStorage.getItem('card-writer:prefs')!).readLang).toBe('both')
+    localStorage.setItem('card-writer:prefs', JSON.stringify({ font: 'sans', size: 16, measure: 700 }))
+    expect(load().readLang).toBe('zh')
+  })
+
+  it('setLayout 改并持久化到 card-writer:prefs', () => {
+    usePrefsStore.getState().setLayout('paper')
+    expect(usePrefsStore.getState().prefs.layout).toBe('paper')
+    const raw = JSON.parse(localStorage.getItem('card-writer:prefs')!)
+    expect(raw.layout).toBe('paper')
+  })
+
+  it('老的持久化数据没有 layout 字段时，load() 缺省回 book', () => {
+    localStorage.setItem('card-writer:prefs', JSON.stringify({ font: 'sans', size: 16, measure: 700 }))
+    expect(load().layout).toBe('book')
   })
 
   it('setOutlineView 改并持久化到 card-writer:prefs', () => {
