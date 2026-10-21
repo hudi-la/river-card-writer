@@ -1433,3 +1433,9 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
 }
 /* 正文那一侧也给个回应，让人知道这两头是连着的 */
 .prep-hit:hover { background: rgba(217, 119, 55, 0.45); }
+
+.article-export { padding: 20px; max-width: 800px; margin: auto; }
+.article-export p { font-size: 13px; line-height: 1.6; }
+.article-export textarea { display: block; box-sizing: border-box; width: 100%; min-height: 45vh; padding: 16px; line-height: 1.8; font: inherit; border: 1px solid #ddd; border-radius: 8px; resize: vertical; }
+.article-export-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.article-export button, .article-export select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; }

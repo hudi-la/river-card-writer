@@ -1,3 +1,4 @@
+import { McpAccess } from './McpAccess'
 import { useState, useRef, useEffect } from 'react'
 import { useAuthStore } from '../state/authStore'
 import { cloudEnabled } from '../lib/supabase'
@@ -25,6 +26,7 @@ export function UserCenter() {
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => {
+      if ((e.target as Element)?.closest?.('.modal-backdrop')) return
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
@@ -128,6 +130,7 @@ export function UserCenter() {
             </div>
             <div style={{ height: 1, background: 'rgba(0,0,0,0.06)', margin: '2px 0' }} />
             <BackupControls />
+            {import.meta.env.VITE_RIVER_MCP_ENABLED === 'true' && <McpAccess />}
             <div style={{ height: 1, background: 'rgba(0,0,0,0.06)', margin: '2px 0' }} />
             <button
               type="button"
