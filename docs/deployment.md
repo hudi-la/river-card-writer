@@ -75,3 +75,30 @@ Subsequent pages must use the version hash; changed documents require a restart.
 The HTTP integration test uses fake database rows and tests actual SDK transport,
 OAuth redirect binding, PKCE, one-time codes, revoked keys and owner isolation.
 Never use real user articles as test fixtures.
+
+## Full-article sharing (primary workflow, 2026-10-21)
+
+Sharing does not require the MCP functions or a Supabase deployment login.
+Cloudflare Pages Functions use `RIVER_SHARES` (D1) for explicit snapshots and
+validate the user's existing Supabase session through `/auth/v1/user` before
+creating, listing, or revoking shares. `wrangler.json` declares the D1 binding.
+The public Supabase key is provisioned as the Pages secret
+`RIVER_SUPABASE_PUBLISHABLE_KEY`, never committed. The public URL is a variable.
+
+- Apply `server/shares.sql` to the dedicated `river-shares` database.
+- Publish with the existing Pages workflow; check bindings in the deploy output.
+- Account owners create snapshots by clicking “分享全文 → 创建分享链接”.
+- `/s/<random-256-bit-id>` returns server-rendered HTML, with no login or JS needed.
+- `/s/<id>/text` returns the exact complete plain text, suitable for model reading.
+- Links are bearer access: anyone with a link can read it. No directory or public
+  listing is exposed. Responses prohibit caching and search indexing and suppress
+  referrers. Indexing directives cannot retract copies already taken by readers.
+- Revoke removes only the snapshot, never the original document. Future edits do
+  not change published snapshots. Re-share explicitly to publish a new version.
+- Both language versions use the same interleaving renderer as exports and MCP.
+- Up to 100 active snapshots per owner; requests over 1 MiB fail without truncating.
+
+`src/export/shares.test.ts` uses real in-memory SQLite with the deployment schema
+and tests snapshot immutability, owner isolation, revocation, escaping, complete
+bilingual text and size handling. `src/ui/ArticleShare.test.tsx` covers explicit
+publication, payload exclusions, copying, revocation and the login prerequisite.

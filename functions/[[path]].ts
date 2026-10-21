@@ -1,6 +1,9 @@
+import { handleShares } from '../server/shares'
 // Keep OAuth discovery on the same origin as River. Supabase's default domain
 // cannot route root-level RFC 8414 discovery or serve authorization HTML.
-export const onRequest = async (context: { request: Request; env: { RIVER_SUPABASE_URL?: string }; next: () => Promise<Response> }) => {
+export const onRequest = async (context: { request: Request; env: Parameters<typeof handleShares>[1]; next: () => Promise<Response> }) => {
+  const shareResponse = await handleShares(context.request, context.env)
+  if (shareResponse) return shareResponse
   const url = new URL(context.request.url)
   let route: string | null = null
   if (url.pathname === '/api/river-mcp' || url.pathname.startsWith('/api/river-mcp/')) route = url.pathname.replace('/api/river-mcp', 'river-mcp')

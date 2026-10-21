@@ -1,3 +1,4 @@
+import { ArticleShare } from './ArticleShare'
 import { ArticleExport } from './ArticleExport'
 import { useState, useEffect, useRef } from 'react'
 import { Plus, Palette, Trash2, Download, Smile, MoreHorizontal, Pencil, Info } from 'lucide-react'
@@ -117,6 +118,7 @@ function BookCard({ book }: { book: Book }) {
             >
               <Download size={14} strokeWidth={1.75} aria-hidden="true" /> 导出备份
             </button>
+            <ArticleShare book={book} menu />
             <ArticleExport book={book} menu />
             <button
               className="book-menu-item book-menu-danger"
