@@ -14,5 +14,16 @@
 
 Full-article sharing uses Cloudflare D1 and existing Supabase user authentication.
 No Supabase schema or function deployment is needed for this feature. Deployment
-identity will be appended after publishing. Verification: 799 frontend/server
+source is `da386550c7970fd59ee62159f6b7425f84448919`; Cloudflare production
+deployment is `a4d4dd99` (preview `a4481283`). Previous production `c39cad59`
+is the rollback target. Verification: 799 frontend/server
 unit tests and production build; only synthetic text is used for public smoke tests.
+
+
+Production HTML and plain-text routes were checked with synthetic Chinese/English
+paragraphs in exact alternating order. Unauthenticated and invalid-token management
+requests returned 401. Existing Supabase auth configuration was verified separately.
+No real user article was published for testing. The current GPT web fetch tool could
+not open the newly created test URL, although ordinary HTTP retrieval succeeded;
+therefore direct GPT link retrieval is not claimed as verified. Copy-full-text is
+retained as a fallback. Synthetic snapshots are deleted after verification.
