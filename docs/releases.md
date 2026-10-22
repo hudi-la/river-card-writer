@@ -27,3 +27,20 @@ No real user article was published for testing. The current GPT web fetch tool c
 not open the newly created test URL, although ordinary HTTP retrieval succeeded;
 therefore direct GPT link retrieval is not claimed as verified. Copy-full-text is
 retained as a fallback. Synthetic snapshots are deleted after verification.
+
+## 2026-10-21 — MCP enabled in production
+
+- Source: `19904b2` on `codex/river-fulltext-mcp`.
+- Cloudflare production deployment: `a6f44a5c`; previous: `a4d4dd99`.
+- Supabase project: `jjgvvtrsnoqnoigukobi`; deployed `river-auth` and `river-mcp`.
+- Applied migration `20261021000000_river_mcp_tokens` and recorded migration history.
+- Server: https://card-writer.pages.dev/api/river-mcp
+- Production UI now exposes the read-only connection key manager.
+- Live validation: OAuth discovery, HTML consent, PKCE token exchange, code replay
+  rejection, MCP initialization and three tools, owner-only search, cross-owner
+  read denial, alternating Chinese/English full article and chapter output, and
+  parent-key revocation invalidating the OAuth token. All synthetic test users,
+  articles, tokens and OAuth client were removed.
+- Frontend build passed; production asset and OAuth metadata verified. Earlier
+  source validation passed 799 tests. Actual connection in the user's ChatGPT
+  account remains a user setup step and is not claimed as tested.
