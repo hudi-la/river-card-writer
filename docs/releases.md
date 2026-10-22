@@ -44,3 +44,19 @@ retained as a fallback. Synthetic snapshots are deleted after verification.
 - Frontend build passed; production asset and OAuth metadata verified. Earlier
   source validation passed 799 tests. Actual connection in the user's ChatGPT
   account remains a user setup step and is not claimed as tested.
+
+## 2026-10-22 — share retrieval compatibility
+
+- Source `037c9fd`, production deployment `6fdc75a2`; rollback `a6f44a5c`.
+- Added real robots.txt (previously the SPA fallback returned HTML), allowing
+  shared-page retrieval while disallowing GPTBot and API crawling. Share pages
+  retain noindex and no-store; removed nofollow/noarchive and advertise their
+  complete plain-text alternative.
+- Eight sharing tests and production build passed. Live HTML/plain text and
+  robots verified on river.hudiworks.com; bilingual ordering retained.
+- GPT web fetch still reports inaccessible for both River homepages and shares.
+  A short deployment tail recorded the curl control request (200) but no GPT
+  request. This does not establish whether an upstream edge rule or the fetch
+  service is responsible. Zone security inspection lacked API permissions.
+  Direct HTTP reads succeed, including a ChatGPT-User user-agent; this is not
+  proof that all ChatGPT clients can fetch the links. Synthetic share removed.
