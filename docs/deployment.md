@@ -17,8 +17,9 @@ of that commit, not the older desktop checkout (`7d23631`).
 5. Roll back using Cloudflare Pages' rollback action to the previous production
    deployment above. Do not overwrite the desktop checkout or user data.
 
-The initial frontend release leaves `VITE_RIVER_MCP_ENABLED` unset. Full article
-exports work independently; MCP setup is hidden until the backend is deployed.
+Production enables MCP with the tracked `.env.production` flag
+`VITE_RIVER_MCP_ENABLED=true`. Both Supabase MCP functions and the token migration
+were deployed on 2026-10-21. Full article exports work independently.
 
 ## MCP backend (requires Supabase deployment login)
 
