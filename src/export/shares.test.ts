@@ -34,7 +34,9 @@ it('creates a real bilingual snapshot, readable without login and escaped in HTM
  expect(html).toContain('&lt;script&gt;')
  expect(html).not.toContain('<script>')
  expect(response!.headers.get('Cache-Control')).toBe('no-store')
- expect(response!.headers.get('X-Robots-Tag')).toContain('noindex')
+ expect(response!.headers.get('X-Robots-Tag')).toBe('noindex')
+ expect(html).toContain(`rel="alternate" type="text/plain" href="/s/${id}/text"`)
+ expect(html).not.toContain('nofollow')
  const changed = { ...sample, title: 'New title' }
  await handleShares(req('/api/shares', 'POST', 'a', changed), env)
  expect(await (await handleShares(req(`/s/${id}/text`, 'GET', ''), env))!.text()).toBe(text)
