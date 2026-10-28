@@ -60,3 +60,22 @@ retained as a fallback. Synthetic snapshots are deleted after verification.
   service is responsible. Zone security inspection lacked API permissions.
   Direct HTTP reads succeed, including a ChatGPT-User user-agent; this is not
   proof that all ChatGPT clients can fetch the links. Synthetic share removed.
+
+## 2026-10-28 — preserve share layouts
+
+- Source `cbc6200`; production `de16b947`; previous/rollback `6fdc75a2`.
+- Added nullable `shares.snapshot` using `server/shares-layout.sql` before release.
+- Shares reuse the existing TypesetView book/paper layouts in read-only mode,
+  retaining selected layout, sanitized rich text, cover, subtitle and author.
+  Bilingual output interleaves paired paragraphs; translated chapter headings
+  avoid the extra chapter-sized gap. Readers can switch presentation locally.
+- Existing links render their original saved text in the book reader; recreating
+  a share captures formatting that older snapshots never stored. Full text
+  remains server-rendered and `/text` remains available without JavaScript.
+- Validation: 801 tests passed before final visual spacing/fallback refinement;
+  25 relevant tests passed after it, production build passed. Repository-wide
+  tsc still reports existing unrelated errors, none in changed implementation.
+- Browser verification on production: saved book/paper defaults, cover and
+  read-only metadata, bilingual order, 30-paragraph two-column article through
+  its last paragraph, and reader layout switching. HTTP assets and plain text
+  verified. Synthetic snapshots removed; no user article published for tests.
