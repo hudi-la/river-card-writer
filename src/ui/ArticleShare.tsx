@@ -4,6 +4,7 @@ import type { Book } from '../state/bookStore'
 import { useAuthStore } from '../state/authStore'
 import { supabase } from '../lib/supabase'
 import { renderArticle } from '../../supabase/functions/_shared/article'
+import { usePrefsStore } from '../state/prefsStore'
 import { Modal } from './Modal'
 
 type Share = { id: string; title: string; created_at: string }
@@ -15,6 +16,10 @@ export function ArticleShare({ book, menu = false }: { book: Book; menu?: boolea
   const status = useAuthStore(s => s.status)
   const requestSignIn = useAuthStore(s => s.requestSignIn)
   const signedIn = status === 'signed-in'
+  const layout = usePrefsStore(s => s.prefs.layout)
+  const session = useAuthStore(s => s.session)
+  const metadata = session?.user?.user_metadata
+  const author = book.author || metadata?.full_name || metadata?.name || session?.user?.email?.split('@')[0] || ''
   const preview = renderArticle(book)
   const link = (id: string) => `${window.location.origin}/s/${id}`
   const api = async (path: string, options: RequestInit = {}) => {
@@ -37,13 +42,14 @@ export function ArticleShare({ book, menu = false }: { book: Book; menu?: boolea
     }}><Share2 size={16} aria-hidden="true" />{menu && '分享全文'}</button>
     <Modal title="分享全文" open={open} onClose={() => setOpen(false)}>
       <div className="article-export article-share">
+        <p>分享版式：{layout === 'paper' ? '论文（双栏）' : '书（单栏）'}，与排版预览一致。</p>
         <p>生成一个可以直接打开的全文链接，发给朋友或 GPT。中英文按“一段中文、一段英文”排列。</p>
         <p><strong>拿到链接的人都能阅读。</strong>只分享当前正文，不含素材盒和备料。后续编辑不会自动更新分享页；你可以撤销旧链接，再分享新版本。</p>
         {preview.warnings.map(w => <p key={w} role="status">{w}</p>)}
         <details><summary>查看将要分享的全文</summary><textarea aria-label="分享全文预览" readOnly value={preview.text} /></details>
         <div className="article-export-actions">
           {signedIn ? <button disabled={busy} onClick={() => void run(async () => {
-            const created = await api('/api/shares', { method: 'POST', body: JSON.stringify({ id: book.id, title: book.title, doc: book.doc, subtitle: book.subtitle, author: book.author }) })
+            const created = await api('/api/shares', { method: 'POST', body: JSON.stringify({ id: book.id, title: book.title, doc: book.doc, subtitle: book.subtitle, author, cover: book.cover, layout }) })
             setShares(current => [created, ...current]); setMessage('链接已创建，可以复制分享。')
           })}>{busy ? '处理中…' : '创建分享链接'}</button> : <button onClick={() => { setOpen(false); requestSignIn() }}>登录后创建分享链接</button>}
         </div>

@@ -1446,3 +1446,6 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
 .article-share-link input { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
 .article-share-link a { align-self: center; font-size: 14px; color: #456b7c; }
 .article-share button:disabled { opacity: .5; cursor: wait; }
+
+/* A translated chapter title follows its Chinese title without a second chapter-sized gap. */
+.ts-book .ts-chapter.ts-echo { padding: 12px 0 20px; border-bottom: none; font-size: 1.2em; }

@@ -103,3 +103,18 @@ The public Supabase key is provisioned as the Pages secret
 and tests snapshot immutability, owner isolation, revocation, escaping, complete
 bilingual text and size handling. `src/ui/ArticleShare.test.tsx` covers explicit
 publication, payload exclusions, copying, revocation and the login prerequisite.
+
+## Shared typeset reader (2026-10-28)
+
+Apply `server/shares-layout.sql` once to existing D1 databases before deploying.
+New databases use the updated `server/shares.sql`; do not run the ALTER twice.
+Shares now store a sanitized rich-text snapshot plus selected book/paper layout,
+cover, subtitle and author. No notes, boxes or hints are included. `share.html`
+is a Vite entry; the Pages route obtains its hashed asset tags through
+`context.next` and embeds the snapshot alongside server-rendered full text.
+The reader reuses TypesetView in read-only mode with local display switches.
+The plain-text endpoint is unchanged. Old links use their original saved text
+with the book reader; they cannot recover formatting never stored. Re-sharing
+is required to capture the original rich formatting and chosen layout.
+Rollback to the previous Pages deployment; the nullable column is additive and
+compatible with the previous code. Do not drop the column or alter user shares.

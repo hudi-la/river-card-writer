@@ -20,6 +20,7 @@ it('creates only after explicit click, publishes only正文, and copies the publ
  const options = vi.mocked(fetch).mock.calls[1][1]!
  const sent = JSON.parse(options.body as string)
  expect(sent.doc).toEqual(book.doc); expect(sent.boxes).toBeUndefined()
+ expect(sent.layout).toBe('book')
  await user.click(screen.getByRole('button', { name: '复制链接' }))
  await screen.findByText('链接已复制')
  expect(await navigator.clipboard.readText()).toBe(window.location.origin + '/s/' + 'a'.repeat(64))

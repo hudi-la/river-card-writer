@@ -12,3 +12,5 @@ supabase/.temp/
 
 # Also ignore a shared dependency-directory symlink in isolated checkouts.
 node_modules
+
+.wrangler/

@@ -66,3 +66,25 @@ it('unknown share IDs return 404; non-share routes fall through', async () => {
  expect((await handleShares(req('/s/' + '0'.repeat(64)), env))!.status).toBe(404)
  expect(await handleShares(req('/'), env)).toBeNull()
 })
+it('keeps the selected layout and rich text in an immutable, safely embedded snapshot', async () => {
+ const book = { ...sample, layout: 'paper', author: 'Writer', cover: { colors: ['#112233', '#445566', '#778899'] } }
+ book.doc.content[0].content[0].content[0] = { type: 'text', text: '</script>中文一', marks: [{ type: 'emphasis' }] } as any
+ const { id } = await (await handleShares(req('/api/shares', 'POST', 'a', book), env))!.json()
+ const html = await (await handleShares(req(`/s/${id}`, 'GET', ''), env, '<script type="module" src="/reader.js"></script>'))!.text()
+ const embedded = html.match(/<script id="river-share-data" type="application\/json">(.*?)<\/script>/s)![1]
+ expect(embedded).not.toContain('</script>')
+ const saved = JSON.parse(embedded)
+ expect(saved.layout).toBe('paper')
+ expect(saved.book.cover).toEqual({ ...book.cover, angle: 135, texture: true })
+ expect(saved.book.doc.content[0].content[0].content[0].marks).toEqual([{ type: 'emphasis' }])
+ expect(embedded).not.toContain('PRIVATE')
+ expect(html).toContain('/reader.js')
+})
+it('old links retain their original full text and get the shared book reader', async () => {
+ const id = 'e'.repeat(64)
+ sqlite.prepare('INSERT INTO shares (id,owner,book_id,title,body,created_at) VALUES (?,?,?,?,?,?)').run(id,'a','old','Old','Old\n\n中文\n\nEnglish','2026-10-21')
+ const html = await (await handleShares(req(`/s/${id}`, 'GET', ''), env))!.text()
+ expect(html).toContain('river-share-data')
+ expect(html).toContain('English')
+ expect(html).toContain('"layout":"book"')
+})

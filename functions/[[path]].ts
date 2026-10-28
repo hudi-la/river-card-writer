@@ -1,8 +1,13 @@
 import { handleShares } from '../server/shares'
 // Keep OAuth discovery on the same origin as River. Supabase's default domain
 // cannot route root-level RFC 8414 discovery or serve authorization HTML.
-export const onRequest = async (context: { request: Request; env: Parameters<typeof handleShares>[1]; next: () => Promise<Response> }) => {
-  const shareResponse = await handleShares(context.request, context.env)
+export const onRequest = async (context: { request: Request; env: Parameters<typeof handleShares>[1]; next: (input?: Request) => Promise<Response> }) => {
+  let readerAssets = ''
+  if (/^\/s\/[a-f0-9]{64}$/.test(new URL(context.request.url).pathname)) {
+    const shell = await context.next(new Request(new URL('/share.html', context.request.url)))
+    if (shell.ok) readerAssets = ((await shell.text()).match(/<script[^>]*src="[^"]+"[^>]*><\/script>|<link[^>]*(?:stylesheet|modulepreload)[^>]*>/g) ?? []).join('')
+  }
+  const shareResponse = await handleShares(context.request, context.env, readerAssets)
   if (shareResponse) return shareResponse
   const url = new URL(context.request.url)
   let route: string | null = null

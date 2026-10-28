@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS shares (
   book_id TEXT NOT NULL,
   title TEXT NOT NULL,
   body TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  snapshot TEXT
 );
 CREATE INDEX IF NOT EXISTS shares_owner_book ON shares(owner, book_id, created_at);

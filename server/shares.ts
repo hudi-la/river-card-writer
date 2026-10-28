@@ -27,7 +27,7 @@ function validDoc(doc: any): boolean {
   (card.attrs?.en == null || (Array.isArray(card.attrs.en) && card.attrs.en.every((p: any) => typeof p === 'string'))) &&
   card.content.every((p: any) => p?.type === 'paragraph' && (p.content == null || (Array.isArray(p.content) && p.content.every((n: any) => n?.type === 'hardBreak' || (n?.type === 'text' && typeof n.text === 'string'))))))
 }
-export async function handleShares(req: Request, env: Env): Promise<Response | null> {
+export async function handleShares(req: Request, env: Env, readerAssets = ''): Promise<Response | null> {
  const url = new URL(req.url)
  const publicMatch = url.pathname.match(/^\/s\/([a-f0-9]{64})(\/text)?$/)
  const apiMatch = url.pathname.match(/^\/api\/shares(?:\/([a-f0-9]{64}))?$/)
@@ -37,12 +37,17 @@ export async function handleShares(req: Request, env: Env): Promise<Response | n
  try {
   if (publicMatch) {
    if (!['GET', 'HEAD'].includes(req.method)) return json({ error: '不支持此操作' }, 405)
-   const row = await db.prepare('SELECT title, body, created_at FROM shares WHERE id = ?').bind(publicMatch[1]).first<{ title: string; body: string; created_at: string }>()
+   const row = await db.prepare('SELECT title, body, created_at, snapshot FROM shares WHERE id = ?').bind(publicMatch[1]).first<{ title: string; body: string; created_at: string; snapshot: string | null }>()
    if (!row) return new Response('此分享链接不存在或已撤销。', { status: 404, headers: { ...headers, 'Content-Type': 'text/plain;charset=utf-8' } })
    if (publicMatch[2]) return new Response(req.method === 'HEAD' ? null : row.body, { headers: { ...headers, 'Content-Type': 'text/plain;charset=utf-8' } })
    const articleBody = row.body.startsWith(row.title + '\n\n') ? row.body.slice(row.title.length + 2) : row.body
-   const body = `<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${escape(row.title)} · River</title><link rel="alternate" type="text/plain" href="/s/${publicMatch[1]}/text" title="完整文章纯文本"><style>body{margin:0;background:#faf9f6;color:#242522;font-family:Georgia,"Songti SC",serif}main{max-width:740px;margin:auto;padding:40px 24px 80px}header{border-bottom:1px solid #deded8;padding-bottom:24px;margin-bottom:32px}h1{font-size:30px;line-height:1.4}p{font-size:18px;line-height:1.9;white-space:pre-wrap;overflow-wrap:anywhere}.meta,nav{font:13px/1.7 system-ui;color:#65675f}a{color:#456b7c}footer{margin-top:48px;border-top:1px solid #deded8;padding-top:16px}</style></head><body><main><header><nav>River · 全文分享</nav><h1>${escape(row.title)}</h1><div class="meta">分享于 ${escape(row.created_at)} · 此页为分享时的版本</div><a href="/s/${publicMatch[1]}/text">查看纯文本全文</a></header><article>${articleBody.split('\n\n').map(p => `<p>${escape(p)}</p>`).join('')}</article><footer class="meta">中英文按段落交错。原文后续编辑不会自动更新此页。</footer></main></body></html>`
-   return new Response(req.method === 'HEAD' ? null : body, { headers: { ...headers, 'Content-Type': 'text/html;charset=utf-8', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" } })
+   // Legacy links only retained text. Keep that exact text; do not fetch a newer private original.
+   const snapshot = row.snapshot ? JSON.parse(row.snapshot) : { layout: 'book', book: {
+    id: publicMatch[1], title: row.title, doc: { type: 'doc', content: [{ type: 'card', content: articleBody.split('\n\n').map(text => ({ type: 'paragraph', content: [{ type: 'text', text }] })) }] },
+   } }
+   const snapshotJSON = JSON.stringify(snapshot).replace(/</g, '\\u003c')
+   const body = `<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${escape(row.title)} · River</title><link rel="alternate" type="text/plain" href="/s/${publicMatch[1]}/text" title="完整文章纯文本">${readerAssets}<style>#river-share-fallback{margin:0;background:#faf9f6;color:#242522;font-family:Georgia,"Songti SC",serif}#river-share-fallback main{max-width:740px;margin:auto;padding:40px 24px 80px}#river-share-fallback header{border-bottom:1px solid #deded8;padding-bottom:24px;margin-bottom:32px}#river-share-fallback h1{font-size:30px;line-height:1.4}#river-share-fallback p{font-size:18px;line-height:1.9;white-space:pre-wrap;overflow-wrap:anywhere}#river-share-fallback .meta,#river-share-fallback nav{font:13px/1.7 system-ui;color:#65675f}#river-share-fallback a{color:#456b7c}#river-share-fallback footer{margin-top:48px;border-top:1px solid #deded8;padding-top:16px}</style></head><body><div id="river-share-reader"></div><div id="river-share-fallback"><main><header><nav>River · 全文分享</nav><h1>${escape(row.title)}</h1><div class="meta">分享于 ${escape(row.created_at)} · 此页为分享时的版本</div><a href="/s/${publicMatch[1]}/text">查看纯文本全文</a></header><article>${articleBody.split('\n\n').map(p => `<p>${escape(p)}</p>`).join('')}</article><footer class="meta">中英文按段落交错。原文后续编辑不会自动更新此页。</footer></main></div><script id="river-share-data" type="application/json">${snapshotJSON}</script></body></html>`
+   return new Response(req.method === 'HEAD' ? null : body, { headers: { ...headers, 'Content-Type': 'text/html;charset=utf-8', 'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; base-uri 'none'; frame-ancestors 'none'" } })
   }
   if (!env.RIVER_SUPABASE_URL || !env.RIVER_SUPABASE_PUBLISHABLE_KEY) return json({ error: '分享登录服务尚未配置' }, 503)
   const authorization = req.headers.get('Authorization')
@@ -62,7 +67,7 @@ export async function handleShares(req: Request, env: Env): Promise<Response | n
    return json({ ok: true })
   }
   if (req.method !== 'POST' || apiMatch![1]) return json({ error: '不支持此操作' }, 405)
-  let book: ArticleBook
+  let book: ArticleBook & { layout?: string; cover?: any }
   try { book = JSON.parse(await limitedBody(req)) } catch (e) { return json({ error: e instanceof Error && e.message === 'too_large' ? '文章超过分享大小限制，请改用全文导出。' : '文章格式无效' }, e instanceof Error && e.message === 'too_large' ? 413 : 400) }
   if (!book || typeof book.id !== 'string' || book.id.length > 200 || typeof book.title !== 'string' || book.title.length > 1000 || !validDoc(book.doc) || (book.subtitle !== undefined && typeof book.subtitle !== 'string') || (book.author !== undefined && typeof book.author !== 'string')) return json({ error: '文章格式无效' }, 400)
   const count = await db.prepare('SELECT count(*) AS count FROM shares WHERE owner = ?').bind(user.id).first<{ count: number }>()
@@ -70,7 +75,11 @@ export async function handleShares(req: Request, env: Env): Promise<Response | n
   const id = Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, '0')).join('')
   const createdAt = new Date().toISOString()
   const { text, warnings } = renderArticle(book)
-  await db.prepare('INSERT INTO shares (id, owner, book_id, title, body, created_at) VALUES (?, ?, ?, ?, ?, ?)').bind(id, user.id, book.id, book.title, text, createdAt).run()
+  // Publish only正文 and presentation fields; card notes and editor metadata stay private.
+  const doc = { type: 'doc', content: book.doc.content.map((card: any) => ({ type: 'card', attrs: { en: card.attrs?.en }, content: card.content.map((p: any) => ({ type: 'paragraph', attrs: { style: p.attrs?.style }, content: (p.content ?? []).map((n: any) => n.type === 'hardBreak' ? { type: 'hardBreak' } : { type: 'text', text: n.text, marks: (Array.isArray(n.marks) ? n.marks : []).filter((m: any) => ['em', 'emphasis', 'refer', 'strike', 'bold', 'italic'].includes(m.type)).map((m: any) => ({ type: m.type })) }) })) })) }
+  const cover = book.cover?.colors?.length === 3 && book.cover.colors.every((c: any) => typeof c === 'string' && /^#[a-fA-F0-9]{6}$/.test(c)) ? { colors: book.cover.colors, angle: typeof book.cover.angle === 'number' ? book.cover.angle : 135, texture: book.cover.texture !== false } : undefined
+  const snapshot = JSON.stringify({ layout: book.layout === 'paper' ? 'paper' : 'book', book: { id: book.id, title: book.title, subtitle: book.subtitle, author: book.author, cover, doc } })
+  await db.prepare('INSERT INTO shares (id, owner, book_id, title, body, created_at, snapshot) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(id, user.id, book.id, book.title, text, createdAt, snapshot).run()
   return json({ id, title: book.title, created_at: createdAt, warnings }, 201)
  } catch { return json({ error: '分享服务暂时不可用，请稍后重试' }, 503) }
 }
