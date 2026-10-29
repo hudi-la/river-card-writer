@@ -1124,7 +1124,7 @@ export function LeftNav() {
 
   return (
     <>
-    <nav className="rail" ref={(el) => { railRef.current = el }} onScroll={closeHoverForScroll}>
+    <nav aria-label="目录和盒子" className="rail" ref={(el) => { railRef.current = el }} onScroll={closeHoverForScroll}>
       {/* 目录头做成 sticky：栏内大纲很长往下滚时，这条「目录 + 排列」始终吸在
           栏顶。「排列」是缩小版的原"详细 / 排列大纲"按钮，挪到标题右侧省地方。 */}
       <div className="rail-outline-head">
@@ -1141,10 +1141,10 @@ export function LeftNav() {
       {!hasHeadings ? (
         <>
           <p className="outline-hint">还没有章节标题</p>
-          <div className="add" onClick={() => addChapter()}>
+          <button type="button" className="add" onClick={() => addChapter()}>
             <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
             新章节
-          </div>
+          </button>
         </>
       ) : (
         <>
@@ -1172,20 +1172,33 @@ export function LeftNav() {
                       onToggle={() => bridgeToggleCollapsed(row.cardIndex)}
                     />
                   )}
-                  <span className={outlineRowTextClassName(row, label.faint)}>{label.text}</span>
+                  <button type="button" className={outlineRowTextClassName(row, label.faint)} onClick={(e) => { e.stopPropagation(); handleRowClick(row, headingIndices[i]) }} aria-label={`跳到：${label.text}`}>{label.text}</button>
                   {row.kind === 'heading' && row.collapsed && (
                     <span className="outline-collapsed-marker" aria-hidden="true">⋯</span>
                   )}
                   <OutlineWordCount words={outlineRowWords(rows, i)} />
                 </div>
                 <OutlineDragHandle />
+                <details className="keyboard-move">
+                  <summary aria-label={`移动：${label.text}`}>移动</summary>
+                  <select aria-label={`移动位置：${label.text}`} value="" onChange={(e) => {
+                    if (e.target.value === '') return
+                    const target = Number(e.target.value)
+                    if (row.kind === 'heading') bridgeMoveSection(row.cardIndex, target)
+                    else bridgeMoveCardTo(row.cardIndex, target)
+                  }}>
+                    <option value="">选择位置（标题连同内容移动）</option>
+                    {rows.map((target, n) => <option key={n} value={n} disabled={n >= i && n <= outlineSectionRange(rows, i)[1]}>第 {n + 1} 项前：{outlineRowLabel(target).text.slice(0, 25)}</option>)}
+                    <option value={rows.length} disabled={outlineSectionRange(rows, i)[1] === rows.length}>移到末尾</option>
+                  </select>
+                </details>
               </div>
             )
           })}
-          <div className="add" onClick={() => addChapter()}>
+          <button type="button" className="add" onClick={() => addChapter()}>
             <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
             新章节
-          </div>
+          </button>
         </>
       )}
       {hover &&
@@ -1224,7 +1237,7 @@ export function LeftNav() {
           dragIndex={i}
         />
       ))}
-      <div
+      <button type="button"
         className="add"
         onClick={() => {
           const b = addBox('新盒子')
@@ -1233,7 +1246,7 @@ export function LeftNav() {
       >
         <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
         新盒子
-      </div>
+      </button>
       {/* 通用盒子不属于本书，跟本书的盒子隔一条浅分隔线，并带一个共享图标——
           提示这是跨所有书共享的同一个盒子，而不是本书的第 N 个盒子。Phase 14
           起支持多个通用盒子，全部列出；点开的是悬浮大窗而不是 viewKind==='box'
@@ -1355,8 +1368,9 @@ function BoxRow({
       className={'chap box-row' + (extraClassName ? ' ' + extraClassName : '') + (active ? ' on' : '')}
     >
       <div className="box-row-header" onClick={handleHeaderClick}>
-        <span
+        <button type="button"
           className="box-chevron"
+          aria-expanded={!collapsed}
           aria-label={collapsed ? '展开' : '折叠'}
           data-collapsed={collapsed}
           onClick={(e) => {
@@ -1369,7 +1383,7 @@ function BoxRow({
           ) : (
             <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
           )}
-        </span>
+        </button>
         {icon && (
           <span className="universal-box-icon" aria-hidden="true">
             {icon}
@@ -1377,7 +1391,7 @@ function BoxRow({
         )}
         {editing ? (
           <input
-            className="box-name-edit"
+            className="box-name-edit" aria-label="盒子名称"
             value={draft}
             autoFocus
             onClick={(e) => e.stopPropagation()}
@@ -1392,8 +1406,11 @@ function BoxRow({
             }}
           />
         ) : (
-          <span
+          <button type="button"
             className="box-name"
+            onClick={(e) => { e.stopPropagation(); onOpen() }}
+            onKeyDown={(e) => { if (e.key === "F2") { e.preventDefault(); setDraft(box.name); setEditing(true) } }}
+            aria-label={`打开盒子：${box.name}（F2 重命名）`}
             onDoubleClick={(e) => {
               e.stopPropagation()
               // 普通盒子这里是唯一的双击入口；通用盒子理论上已经被 handleHeaderClick
@@ -1408,7 +1425,7 @@ function BoxRow({
             }}
           >
             {box.name}
-          </span>
+          </button>
         )}
         {draggable && (
           <span
@@ -1433,7 +1450,7 @@ function BoxRow({
                 <button
                   type="button"
                   className="box-card-carry"
-                  title="插入正文"
+                  title="插入正文" aria-label={`将卡片插入正文：${preview.text}`}
                   onClick={(e) => {
                     e.stopPropagation()
                     onCarryCard(cardId)

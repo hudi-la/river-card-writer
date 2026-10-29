@@ -1441,3 +1441,8 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
 .shelf-open { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
 button.shelf-add-book, button.box-tile-add { border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: inherit; }
 .book-card:focus-within .book-menu-btn, .box-tile:focus-within .box-menu-btn { opacity: 1; }
+
+.rail button.add, .rail button.outline-row-text, .rail button.box-name, .rail button.box-chevron { font: inherit; color: inherit; background: none; border: 0; text-align: left; cursor: pointer; }
+.keyboard-move { font-size: 12px; margin: 2px 6px 6px; }
+.keyboard-move summary { cursor: pointer; color: var(--muted); }
+.keyboard-move select { max-width: 100%; padding: 5px; font: inherit; }

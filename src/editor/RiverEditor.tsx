@@ -217,7 +217,7 @@ export function RiverEditor() {
     content: book?.doc ?? EMPTY_DOC,
     immediatelyRender: false,
     onUpdate: ({ editor }) => updateDoc(editor.getJSON()),
-    editorProps: { attributes: { class: 'river' } },
+    editorProps: { attributes: { class: 'river', role: 'textbox', 'aria-label': '正文编辑器', 'aria-multiline': 'true' } },
   })
 
   // 把挂载好的 editor 实例发布到 editorBridge，供左栏 sidebar 等编辑器树之外
