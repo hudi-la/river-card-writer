@@ -60,3 +60,11 @@ retained as a fallback. Synthetic snapshots are deleted after verification.
   service is responsible. Zone security inspection lacked API permissions.
   Direct HTTP reads succeed, including a ChatGPT-User user-agent; this is not
   proof that all ChatGPT clients can fetch the links. Synthetic share removed.
+
+## 2026-10-29 accessibility
+
+Production source: `0c5013c` on GitHub `codex/accessibility-20261028`.
+Pages deployment: `4e9b0f85.card-writer.pages.dev`; custom domain resource references match the build.
+Based on production `cbc6200`, retaining full article sharing, export and typeset reading.
+Native shelf/outline controls, named editor, keyboard positioning controls, modal focus trapping/restoration, visible focus and reduced motion. 803 tests in 61 files and production build passed.
+Rollback: previous Pages production deployment `de16b947-bd5c-4b60-865b-88a3bac5d61f`. No database migration.
