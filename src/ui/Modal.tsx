@@ -1,5 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+
+const modalStack: HTMLElement[] = []
 
 // 通用悬浮大窗（Phase 14 Task 2）：遮罩 + 居中大面板，纯展示壳，不掺任何具体
 // 业务内容——大纲详细视图（OutlineDetail）、后续 Task 4 的通用盒子视图都靠
@@ -24,15 +26,34 @@ export function Modal({
   // 之上，不依赖两个 Modal 实例挂载到 document.body 的先后顺序。
   className?: string
 }) {
-  // Esc 关闭：只在打开时挂监听，避免关闭状态下也占着一个全局 keydown。
+  const panelRef = useRef<HTMLDivElement>(null)
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
   useEffect(() => {
-    if (!open) return
+    const panel = panelRef.current
+    if (!open || !panel) return
+    const previous = document.activeElement as HTMLElement | null
+    modalStack.push(panel)
+    if (!panel.contains(document.activeElement)) panel.focus()
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (modalStack[modalStack.length - 1] !== panel) return
+      if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); closeRef.current(); return }
+      if (e.key !== 'Tab') return
+      const items = Array.from(panel.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"], [contenteditable="true"]')).filter(el => !el.closest('[hidden], [inert]') && getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden')
+      const first = items[0], last = items[items.length - 1]
+      if (!first) { e.preventDefault(); panel.focus(); return }
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === panel || !panel.contains(document.activeElement))) { e.preventDefault(); last.focus() }
+      else if (!e.shiftKey && (document.activeElement === last || document.activeElement === panel || !panel.contains(document.activeElement))) { e.preventDefault(); first.focus() }
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [open, onClose])
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true)
+      const wasTop = modalStack[modalStack.length - 1] === panel
+      const index = modalStack.indexOf(panel)
+      if (index !== -1) modalStack.splice(index, 1)
+      if (wasTop && previous?.isConnected) previous.focus()
+    }
+  }, [open])
 
   if (!open) return null
 
@@ -43,6 +64,8 @@ export function Modal({
     >
       <div
         className="modal-panel"
+        ref={panelRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={title}

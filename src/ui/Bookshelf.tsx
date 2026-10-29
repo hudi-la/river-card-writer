@@ -72,11 +72,13 @@ function BookCard({ book }: { book: Book }) {
         className={`book-cover${hasTexture ? '' : ' book-cover--no-texture'}`}
         style={{ backgroundImage: coverBackground(book) }}
       >
+        <button type="button" className="shelf-open" aria-label={`打开《${book.title}》`} onClick={(e) => { e.stopPropagation(); openBook(book.id) }} />
         {/* 右上角「⋯」菜单：合并 重命名 / 自定义封面 / 导出 / 删除。嵌在 .book-cover
             内部，绝对定位相对封面算，不会落到书名边上。 */}
         <button
           className="book-menu-btn"
-          aria-label="更多"
+          aria-label={`《${book.title}》的更多操作`}
+          aria-expanded={menuOpen}
           title="更多"
           onClick={(e) => {
             e.stopPropagation()
@@ -130,7 +132,7 @@ function BookCard({ book }: { book: Book }) {
       <CoverEditorModal book={book} open={coverEditorOpen} onClose={() => setCoverEditorOpen(false)} />
       {editing ? (
         <input
-          className="book-title-edit"
+          className="book-title-edit" aria-label="书名"
           value={draft}
           autoFocus
           onClick={(e) => e.stopPropagation()}
@@ -172,7 +174,7 @@ function ShelfAddBookTile() {
   const openBook = useBookStore((s) => s.openBook)
 
   return (
-    <div
+    <button type="button"
       className="book-card shelf-add-book"
       onClick={() => {
         const book = addBook()
@@ -186,7 +188,7 @@ function ShelfAddBookTile() {
         <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
         新书
       </p>
-    </div>
+    </button>
   )
 }
 
@@ -288,13 +290,15 @@ function UniversalBoxTile({ box, onOpen }: { box: Box; onOpen: (id: string) => v
   return (
     <div className="box-tile" onClick={() => !editing && !menuOpen && !picker && onOpen(box.id)}>
       <div className="box-face" style={box.color ? { background: `${box.color}2e` } : undefined}>
+        <button type="button" className="shelf-open" aria-label={`打开盒子：${box.name}`} onClick={(e) => { e.stopPropagation(); onOpen(box.id) }} />
         <span className="box-emoji" aria-hidden="true">
           {box.emoji || DEFAULT_BOX_EMOJI}
         </span>
         <button
           className="box-menu-btn"
           title="更多"
-          aria-label="更多"
+          aria-label={`${box.name}的更多操作`}
+          aria-expanded={menuOpen}
           onClick={(e) => {
             e.stopPropagation()
             setMenuOpen((v) => !v)
@@ -352,7 +356,7 @@ function UniversalBoxTile({ box, onOpen }: { box: Box; onOpen: (id: string) => v
       </div>
       {editing ? (
         <input
-          className="box-tile-name-edit"
+          className="box-tile-name-edit" aria-label="盒子名称"
           value={draft}
           autoFocus
           onClick={(e) => e.stopPropagation()}
@@ -390,7 +394,7 @@ function UniversalBoxTile({ box, onOpen }: { box: Box; onOpen: (id: string) => v
 function UniversalBoxAddTile() {
   const addUniversalBox = useBookStore((s) => s.addUniversalBox)
   return (
-    <div className="box-tile box-tile-add" onClick={() => addUniversalBox('通用盒子')}>
+    <button type="button" className="box-tile box-tile-add" onClick={() => addUniversalBox('通用盒子')}>
       <div className="box-face box-face-add" aria-hidden="true">
         <Plus size={26} strokeWidth={1.75} />
       </div>
@@ -398,7 +402,7 @@ function UniversalBoxAddTile() {
         <Plus size={13} strokeWidth={1.75} aria-hidden="true" />
         新通用盒子
       </p>
-    </div>
+    </button>
   )
 }
 

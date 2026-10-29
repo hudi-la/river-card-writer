@@ -69,3 +69,18 @@ describe('Modal', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
+
+it('焦点留在弹窗内并在关闭后返回触发按钮', async () => {
+  const trigger = document.createElement('button')
+  document.body.append(trigger)
+  trigger.focus()
+  const view = render(<Modal open title="焦点测试" onClose={() => {}}><button>最后</button></Modal>)
+  expect(document.activeElement).toBe(screen.getByRole('dialog'))
+  await userEvent.tab({ shift: true })
+  expect(document.activeElement).toBe(screen.getByText('最后'))
+  await userEvent.tab()
+  expect(document.activeElement).toBe(screen.getByLabelText('关闭'))
+  view.unmount()
+  expect(document.activeElement).toBe(trigger)
+  trigger.remove()
+})

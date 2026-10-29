@@ -1,5 +1,5 @@
 :root {
-  --paper:#fcfaf6; --ink:#252019; --muted:#a89e92; --faint:#e0d8cc; --hair:#d8cfc1;
+  --paper:#fcfaf6; --ink:#252019; --muted:#70665b; --faint:#e0d8cc; --hair:#d8cfc1;
   --reading-font: Georgia,'Songti SC','Noto Serif',serif;
   --reading-size: 15px;
   --reading-measure: 680px;
@@ -1433,3 +1433,11 @@ html.tcard-drag-active, html.tcard-drag-active * { user-select:none !important; 
 }
 /* 正文那一侧也给个回应，让人知道这两头是连着的 */
 .prep-hit:hover { background: rgba(217, 119, 55, 0.45); }
+
+/* Keyboard and reduced-motion access. */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible { outline: 3px solid #245b91 !important; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
+
+.shelf-open { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
+button.shelf-add-book, button.box-tile-add { border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: inherit; }
+.book-card:focus-within .book-menu-btn, .box-tile:focus-within .box-menu-btn { opacity: 1; }

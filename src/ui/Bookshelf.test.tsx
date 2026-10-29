@@ -6,7 +6,7 @@ import { useBookStore, EMPTY_DOC, UNIVERSAL_BOX_ID } from '../state/bookStore'
 
 // 书卡的 导出/删除/重命名/自定义封面 都收进右上角「⋯」菜单——测试统一先点开菜单。
 async function openBookMenu(card: HTMLElement) {
-  await userEvent.click(within(card).getByRole('button', { name: '更多' }))
+  await userEvent.click(within(card).getByRole('button', { name: /更多操作/ }))
 }
 
 // jsdom 的 CSSOM 会把 style.backgroundImage 里的颜色（hex/hsl）规范化成
@@ -184,7 +184,7 @@ describe('Bookshelf', () => {
     it('盒子瓦片换 emoji：⋯ 菜单→换 icon→选一个 emoji，写进 box.emoji', async () => {
       render(<Bookshelf />)
       const tile = screen.getByText('通用盒子', { selector: '.box-tile-name-text' }).closest('.box-tile')!
-      await userEvent.click(within(tile).getByRole('button', { name: '更多' }))
+      await userEvent.click(within(tile).getByRole('button', { name: /更多操作/ }))
       await userEvent.click(screen.getByRole('button', { name: /换 icon/ }))
       await userEvent.click(screen.getByRole('button', { name: '💡' }))
       expect(useBookStore.getState().library.universalBoxes.find((b) => b.id === UNIVERSAL_BOX_ID)?.emoji).toBe('💡')
@@ -193,7 +193,7 @@ describe('Bookshelf', () => {
     it('盒子瓦片换颜色：⋯ 菜单→换颜色→选一个色，写进 box.color', async () => {
       render(<Bookshelf />)
       const tile = screen.getByText('通用盒子', { selector: '.box-tile-name-text' }).closest('.box-tile')!
-      await userEvent.click(within(tile).getByRole('button', { name: '更多' }))
+      await userEvent.click(within(tile).getByRole('button', { name: /更多操作/ }))
       await userEvent.click(screen.getByRole('button', { name: /换颜色/ }))
       await userEvent.click(screen.getByTitle('#7fa3c4'))
       expect(useBookStore.getState().library.universalBoxes.find((b) => b.id === UNIVERSAL_BOX_ID)?.color).toBe('#7fa3c4')
@@ -213,7 +213,7 @@ describe('Bookshelf', () => {
       render(<Bookshelf />)
       const card = screen.getByText('要换封面的书').closest('.book-card')!
       await openBookMenu(card)
-      await userEvent.click(screen.getByRole('button', { name: /自定义封面/ }))
+      await userEvent.click(screen.getByRole('button', { name: /^自定义封面$/ }))
 
       expect(screen.getByRole('dialog')).toBeTruthy()
       expect(screen.getByText(/封面 · 要换封面的书/)).toBeTruthy()
@@ -238,7 +238,7 @@ describe('Bookshelf', () => {
       render(<Bookshelf />)
       const card = screen.getByText('自定义封面的书').closest('.book-card')!
       await openBookMenu(card)
-      await userEvent.click(screen.getByRole('button', { name: /自定义封面/ }))
+      await userEvent.click(screen.getByRole('button', { name: /^自定义封面$/ }))
 
       const colorInputs = screen.getAllByLabelText(/封面颜色/) as HTMLInputElement[]
       fireEvent.change(colorInputs[0], { target: { value: '#101010' } })
@@ -258,7 +258,7 @@ describe('Bookshelf', () => {
       render(<Bookshelf />)
       const card = screen.getByText('随机封面').closest('.book-card')!
       await openBookMenu(card)
-      await userEvent.click(screen.getByRole('button', { name: /自定义封面/ }))
+      await userEvent.click(screen.getByRole('button', { name: /^自定义封面$/ }))
 
       const preview = document.querySelector('.cover-editor-preview') as HTMLElement
       const before = preview.style.backgroundImage
@@ -281,7 +281,7 @@ describe('Bookshelf', () => {
       )
 
       await openBookMenu(card)
-      await userEvent.click(screen.getByRole('button', { name: /自定义封面/ }))
+      await userEvent.click(screen.getByRole('button', { name: /^自定义封面$/ }))
       await userEvent.click(screen.getByText('恢复默认'))
 
       expect(screen.queryByRole('dialog')).toBeNull()
@@ -297,9 +297,17 @@ describe('Bookshelf', () => {
       render(<Bookshelf />)
       const card = screen.getByText('已有封面').closest('.book-card')!
       await openBookMenu(card)
-      await userEvent.click(screen.getByRole('button', { name: /自定义封面/ }))
+      await userEvent.click(screen.getByRole('button', { name: /^自定义封面$/ }))
       const preview = document.querySelector('.cover-editor-preview') as HTMLElement
       expect(preview.style.backgroundImage).toBe(normalizeGradient('linear-gradient(77deg, #aaaaaa, #bbbbbb, #cccccc)'))
     })
   })
 })
+
+ it('书籍入口可通过键盘打开', async () => {
+   const book = useBookStore.getState().addBook('键盘测试')
+   render(<Bookshelf />)
+   screen.getByRole('button', { name: '打开《键盘测试》' }).focus()
+   await userEvent.keyboard('{Enter}')
+   expect(useBookStore.getState().activeBook()?.id).toBe(book.id)
+ })
