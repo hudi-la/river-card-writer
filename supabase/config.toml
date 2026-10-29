@@ -1,0 +1,6 @@
+[functions.river-mcp]
+# The function validates its own hashed, scoped read-only bearer keys.
+verify_jwt = false
+
+[functions.river-auth]
+verify_jwt = false

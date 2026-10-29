@@ -126,10 +126,10 @@ describe('buildItems 的语言档', () => {
     ])
   })
 
-  it('both：每张卡先中后英，英文标 echo', () => {
+  it('both：逐段中英交替，英文标 echo', () => {
     const items = buildItems(doc, 'both')
-    expect(items.map((i) => i.text)).toEqual(['第一章', '他走了。', 'Chapter One', 'He left.', '没翻的一段。', '甲。', '乙。', 'A and B in one.'])
-    expect(items[2].echo).toBe(true)
+    expect(items.map((i) => i.text)).toEqual(['第一章', 'Chapter One', '他走了。', 'He left.', '没翻的一段。', '甲。', '乙。', 'A and B in one.'])
+    expect(items[1].echo).toBe(true)
   })
 
   it('英文里单个换行也算分段（跟英文栏一致）', () => {

@@ -1,0 +1,15 @@
+{
+  "name": "card-writer",
+  "pages_build_output_dir": "dist",
+  "compatibility_date": "2026-10-01",
+  "vars": {
+    "RIVER_SUPABASE_URL": "https://jjgvvtrsnoqnoigukobi.supabase.co"
+  },
+  "d1_databases": [
+    {
+      "binding": "RIVER_SHARES",
+      "database_name": "river-shares",
+      "database_id": "9a50a160-bf79-43a8-ac45-8a1e84573f63"
+    }
+  ]
+}

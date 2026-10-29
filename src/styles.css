@@ -1446,3 +1446,18 @@ button.shelf-add-book, button.box-tile-add { border: 0; padding: 0; background: 
 .keyboard-move { font-size: 12px; margin: 2px 6px 6px; }
 .keyboard-move summary { cursor: pointer; color: var(--muted); }
 .keyboard-move select { max-width: 100%; padding: 5px; font: inherit; }
+.article-export { padding: 20px; max-width: 800px; margin: auto; }
+.article-export p { font-size: 13px; line-height: 1.6; }
+.article-export textarea { display: block; box-sizing: border-box; width: 100%; min-height: 45vh; padding: 16px; line-height: 1.8; font: inherit; border: 1px solid #ddd; border-radius: 8px; resize: vertical; }
+.article-export-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.article-export button, .article-export select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; }
+
+.article-share details { margin: 16px 0; }
+.article-share summary { cursor: pointer; font-size: 14px; margin-bottom: 12px; }
+.article-share-link { border-top: 1px solid #ddd; margin-top: 20px; padding-top: 4px; }
+.article-share-link input { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+.article-share-link a { align-self: center; font-size: 14px; color: #456b7c; }
+.article-share button:disabled { opacity: .5; cursor: wait; }
+
+/* A translated chapter title follows its Chinese title without a second chapter-sized gap. */
+.ts-book .ts-chapter.ts-echo { padding: 12px 0 20px; border-bottom: none; font-size: 1.2em; }

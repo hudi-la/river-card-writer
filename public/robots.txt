@@ -1,0 +1,8 @@
+# Shared articles may be fetched when a reader supplies their link.
+# The pages themselves remain noindex; there is no public article directory.
+User-agent: GPTBot
+Disallow: /
+
+User-agent: *
+Allow: /s/
+Disallow: /api/

@@ -582,10 +582,8 @@ export function RiverEditor() {
       )}
       <button
         className="add-card"
-        onMouseDown={(e) => {
-          e.preventDefault()
-          editor.chain().focus().appendCard().run()
-        }}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => editor.chain().focus().appendCard().run()}
       >
         <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
         加一张卡

@@ -85,7 +85,7 @@ describe('Bookshelf', () => {
     render(<Bookshelf />)
     const card = screen.getByText('目标书').closest('.book-card')!
     await openBookMenu(card)
-    await userEvent.click(screen.getByRole('button', { name: /导出/ }))
+    await userEvent.click(screen.getByRole('button', { name: '导出备份' }))
 
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1)

@@ -9,3 +9,8 @@ supabase/.temp/
 # 它们曾经有 17 个被误提交进来，其中两个是陈旧版本、直接让 tsc 报错。
 * 2.*
 * 3.*
+
+# Also ignore a shared dependency-directory symlink in isolated checkouts.
+node_modules
+
+.wrangler/

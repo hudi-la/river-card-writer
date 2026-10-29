@@ -1,3 +1,5 @@
+import { ArticleShare } from './ArticleShare'
+import { ArticleExport } from './ArticleExport'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, BookOpen, Languages, PanelLeft, PanelRight, Pencil, Square } from 'lucide-react'
 import { useBookStore, type Book } from '../state/bookStore'
@@ -424,6 +426,8 @@ export function Workspace() {
           </button>
           <WorkspaceTitle key={`title-${book.id}`} book={book} renameBook={renameBook} />
           <div className="topbar-right">
+            <ArticleShare book={book} />
+            <ArticleExport book={book} />
             {/* 图标按钮。原来「阅读」「单语」的两个字在窄栏里折成上下两行了，
                 所以只留图标——这两个是常用开关，认图标比认字快。 */}
             {!readMode && (

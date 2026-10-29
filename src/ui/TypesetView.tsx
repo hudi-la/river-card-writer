@@ -2,7 +2,6 @@ import { useMemo, useRef, useState, useLayoutEffect, Fragment } from 'react'
 import { useBookStore, type Book } from '../state/bookStore'
 import { useAuthStore } from '../state/authStore'
 import { usePrefsStore, type Layout, type ReadLang } from '../state/prefsStore'
-import { splitParagraphs } from '../editor/enText'
 import { coverBackground } from './Bookshelf'
 
 // 版式预设。分页的单位是"栏"：一栏的内容区尺寸固定（跟视口无关），排满就换下一栏，
@@ -66,6 +65,7 @@ function paraText(p: any): string {
 export function paraRuns(p: any): Run[] {
   const runs: Run[] = []
   ;(p?.content || []).forEach((n: any) => {
+    if (n?.type === 'hardBreak') { runs.push({ text: '\n' }); return }
     if (n?.type !== 'text' || !n.text) return
     const types = new Set<string>((n.marks || []).map((m: any) => m?.type))
     runs.push({
@@ -96,7 +96,7 @@ export function sliceRuns(runs: Run[], start: number, end: number): Run[] {
 //
 // 英文存在卡的 attrs.en 上（纯文本段落数组，段数不锁 1:1）。段数跟中文对得上时
 // 按序号继承中文的块样式——标题还是标题；对不上就全当正文。英文模式下没写英文的
-// 卡退回中文（标 pending，压淡），不让整段内容从阅读里消失。对照模式每张卡先中后英。
+// 卡退回中文（标 pending，压淡），不让整段内容从阅读里消失。对照模式按段中英交替，段数不一致时保留每卡全文。
 export function buildItems(doc: any, lang: ReadLang = 'zh'): Item[] {
   const items: Item[] = []
   const push = (style: ReturnType<typeof paraStyle>, runs: Run[], cardStart: boolean, extra: Lang) => {
@@ -113,7 +113,14 @@ export function buildItems(doc: any, lang: ReadLang = 'zh'): Item[] {
   cards.forEach((card: any, ci: number) => {
     const paras = card?.content || []
     const rawEn = card?.attrs?.en
-    const en = Array.isArray(rawEn) ? splitParagraphs(rawEn.filter((x: unknown) => typeof x === 'string')) : []
+    const en = Array.isArray(rawEn) ? rawEn.flatMap((x: unknown) => typeof x === 'string' ? x.split('\n') : ['']) : []
+    if (lang === 'both' && en.length === paras.length) {
+      paras.forEach((p: any, pi: number) => {
+        push(paraStyle(p), paraRuns(p), pi === 0 && ci > 0, {})
+        if (en[pi]?.trim()) push(paraStyle(p), [{ text: en[pi] }], false, { en: true, echo: true })
+      })
+      return
+    }
     const showZh = lang !== 'en' || en.length === 0
     const pending: Lang = lang === 'en' ? { pending: true } : {}
     if (showZh)
@@ -162,7 +169,9 @@ function EditableLine({
   className,
   prefix,
   onSave,
+  readOnly = false,
 }: {
+  readOnly?: boolean
   value: string
   placeholder: string
   className: string
@@ -171,6 +180,7 @@ function EditableLine({
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
+  if (readOnly) return value ? <p className={className}>{prefix}{value}</p> : null
   if (editing) {
     return (
       <input
@@ -209,19 +219,25 @@ function EditableLine({
   )
 }
 
-export function TypesetView({ book }: { book: Book }) {
+export function TypesetView({ book, shared }: { book: Book; shared?: { layout: Layout } }) {
+  const [sharedLayout, setSharedLayout] = useState<Layout>(shared?.layout ?? 'book')
+  const [sharedLang, setSharedLang] = useState<ReadLang>('both')
   const setBookSubtitle = useBookStore((s) => s.setBookSubtitle)
   const setBookAuthor = useBookStore((s) => s.setBookAuthor)
   const session = useAuthStore((s) => s.session)
   const meta = (session?.user?.user_metadata ?? {}) as Record<string, any>
   const defaultAuthor: string = meta.full_name || meta.name || (session?.user?.email ? session.user.email.split('@')[0] : '')
 
-  const layout = usePrefsStore((s) => s.prefs.layout)
-  const setLayout = usePrefsStore((s) => s.setLayout)
-  const readLang = usePrefsStore((s) => s.prefs.readLang)
-  const setReadLang = usePrefsStore((s) => s.setReadLang)
+  const savedLayout = usePrefsStore((s) => s.prefs.layout)
+  const saveLayout = usePrefsStore((s) => s.setLayout)
+  const savedLang = usePrefsStore((s) => s.prefs.readLang)
+  const saveLang = usePrefsStore((s) => s.setReadLang)
+  const layout = shared ? sharedLayout : savedLayout
+  const readLang = shared ? sharedLang : savedLang
+  const setLayout = shared ? setSharedLayout : saveLayout
+  const setReadLang = shared ? setSharedLang : saveLang
   const spec = LAYOUTS[layout]
-  const author = book.author || defaultAuthor
+  const author = book.author || (shared ? '' : defaultAuthor)
 
   const items = useMemo(() => {
     const base = buildItems(book.doc, readLang)
@@ -296,7 +312,7 @@ export function TypesetView({ book }: { book: Book }) {
     let lineH = 0 // 正文一行的高度，标题"不落单"要用
 
     for (const it of items) {
-      const lc = it.en ? ' ts-en' : it.pending ? ' ts-pending' : ''
+      const lc = (it.en ? ' ts-en' : it.pending ? ' ts-pending' : '') + (it.echo ? ' ts-echo' : '')
       // 对照模式里英文章名紧跟中文章名，同一页，不再另起
       if (it.type === 'chapter' && spec.chapterBreak && !it.echo) {
         pageBreak() // 章另起一页
@@ -406,12 +422,14 @@ export function TypesetView({ book }: { book: Book }) {
       {editable ? (
         <>
           <EditableLine
+            readOnly={!!shared}
             value={book.subtitle || ''}
             placeholder="加个副标题…"
             className="ts-paper-sub"
             onSave={(v) => setBookSubtitle(book.id, v)}
           />
           <EditableLine
+            readOnly={!!shared}
             value={book.author || ''}
             placeholder={defaultAuthor || '作者'}
             className="ts-paper-author"
@@ -420,8 +438,8 @@ export function TypesetView({ book }: { book: Book }) {
         </>
       ) : (
         <>
-          <p className="ts-paper-sub">{book.subtitle || '加个副标题…'}</p>
-          <p className="ts-paper-author">{author || '作者'}</p>
+          <p className="ts-paper-sub">{book.subtitle || (shared ? '' : '加个副标题…')}</p>
+          <p className="ts-paper-author">{author || (shared ? '' : '作者')}</p>
         </>
       )}
     </div>
@@ -462,6 +480,7 @@ export function TypesetView({ book }: { book: Book }) {
           <span className="ts-hero-kicker">A BOOK</span>
           <h1 className="ts-hero-title">{book.title}</h1>
           <EditableLine
+            readOnly={!!shared}
             value={book.subtitle || ''}
             placeholder="加个副标题…"
             className="ts-hero-sub"
@@ -469,6 +488,7 @@ export function TypesetView({ book }: { book: Book }) {
           />
           <span className="ts-hero-rule" />
           <EditableLine
+            readOnly={!!shared}
             value={book.author || ''}
             placeholder={defaultAuthor || '作者'}
             className="ts-hero-author"

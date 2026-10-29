@@ -1,3 +1,5 @@
+import { ArticleShare } from './ArticleShare'
+import { ArticleExport } from './ArticleExport'
 import { useState, useEffect, useRef } from 'react'
 import { Plus, Palette, Trash2, Download, Smile, MoreHorizontal, Pencil, Info } from 'lucide-react'
 import { useBookStore, isValidCover, type Book, type Box } from '../state/bookStore'
@@ -44,6 +46,7 @@ function BookCard({ book }: { book: Book }) {
   useEffect(() => {
     if (!menuOpen) return
     const onDown = (e: MouseEvent) => {
+      if ((e.target as Element)?.closest?.('.modal-backdrop')) return
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
     }
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMenuOpen(false)
@@ -115,8 +118,10 @@ function BookCard({ book }: { book: Book }) {
                 doExport()
               }}
             >
-              <Download size={14} strokeWidth={1.75} aria-hidden="true" /> 导出
+              <Download size={14} strokeWidth={1.75} aria-hidden="true" /> 导出备份
             </button>
+            <ArticleShare book={book} menu />
+            <ArticleExport book={book} menu />
             <button
               className="book-menu-item book-menu-danger"
               onClick={() => {
@@ -205,6 +210,7 @@ function EmojiPicker({ onPick, onClose }: { onPick: (e: string) => void; onClose
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
+      if ((e.target as Element)?.closest?.('.modal-backdrop')) return
       if (ref.current && !ref.current.contains(e.target as Node)) onClose()
     }
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -234,6 +240,7 @@ function ColorPicker({ onPick, onClose }: { onPick: (c: string) => void; onClose
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
+      if ((e.target as Element)?.closest?.('.modal-backdrop')) return
       if (ref.current && !ref.current.contains(e.target as Node)) onClose()
     }
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -270,6 +277,7 @@ function UniversalBoxTile({ box, onOpen }: { box: Box; onOpen: (id: string) => v
   useEffect(() => {
     if (!menuOpen) return
     const onDown = (e: MouseEvent) => {
+      if ((e.target as Element)?.closest?.('.modal-backdrop')) return
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
     }
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMenuOpen(false)
