@@ -16,7 +16,7 @@ it('shelf export dialog survives clicking its language selector', async () => {
  useBookStore.setState({ library: { books: [book], activeBookId: null, universalBoxes: [] } })
  const user = userEvent.setup()
  render(<Bookshelf />)
- await user.click(screen.getAllByRole('button', { name: '更多' })[0])
+ await user.click(screen.getAllByRole('button', { name: /更多/ })[0])
  await user.click(screen.getByRole('button', { name: '导出全文' }))
  fireEvent.mouseDown(screen.getByRole('combobox'))
  await user.selectOptions(screen.getByRole('combobox'), 'en')
