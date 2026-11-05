@@ -1,3 +1,4 @@
+import { NOTE_EDITING_ENABLED } from '../noteEditing'
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { Plus } from 'lucide-react'
@@ -194,6 +195,7 @@ export function RiverEditor() {
   const [notePop, setNotePop] = useState<{ cardId: string; x: number; y: number } | null>(null)
   const openNoteRef = useRef<(el: HTMLElement) => void>(() => {})
   openNoteRef.current = (cardEl) => {
+    if (!NOTE_EDITING_ENABLED) return
     const r = cardEl.getBoundingClientRect()
     setNotePop({ cardId: cardEl.dataset.cardId || '', x: r.left, y: r.top })
   }
@@ -571,7 +573,7 @@ export function RiverEditor() {
       )}
       <EditorContent editor={editor} />
       <SelectionToolbar editor={editor} />
-      {notePop && (
+      {NOTE_EDITING_ENABLED && notePop && (
         <CardNotePopover
           key={notePop.cardId}
           cardId={notePop.cardId}

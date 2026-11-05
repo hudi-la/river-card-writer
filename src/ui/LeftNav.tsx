@@ -1,3 +1,4 @@
+import { NOTE_EDITING_ENABLED } from '../noteEditing'
 import { useRef, useState, useEffect, type CSSProperties, type RefObject, type MutableRefObject, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Plus, GripVertical, ChevronDown, ChevronRight, Package } from 'lucide-react'
@@ -1054,6 +1055,7 @@ export function LeftNav() {
   // span，天然只有文字宽度，不会像整行 div 那样撑满栏宽）——这样便签才会贴在
   // 文字右侧一点点，而不是远在栏的右边缘。
   const openHover = (row: OutlineRow, headingIndex: number, wrapEl: HTMLElement) => {
+    if (!NOTE_EDITING_ENABLED) return
     if (closeTimer.current) {
       clearTimeout(closeTimer.current)
       closeTimer.current = null
@@ -1201,7 +1203,7 @@ export function LeftNav() {
           </button>
         </>
       )}
-      {hover &&
+      {NOTE_EDITING_ENABLED && hover &&
         createPortal(
           <div
             key={hover.row.cardIndex}

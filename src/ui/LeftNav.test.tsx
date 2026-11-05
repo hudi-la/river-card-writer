@@ -338,18 +338,17 @@ describe('LeftNav 侧栏只留简略树 + 详细按钮开悬浮大窗（Phase 14
     expect(screen.queryByText('详细大纲')).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: '排列' }))
     expect(screen.getByText('详细大纲')).toBeTruthy()
-    expect(screen.getByDisplayValue('讲主角出发')).toBeTruthy()
+    expect(screen.getAllByText('讲主角出发').length).toBeGreaterThan(0)
   })
 
-  it('大窗内编辑某条 note，失焦后调 editorBridge.setHeadingNote(index, value)', async () => {
+  it('悬停目录及打开大窗均不显示说明编辑框', async () => {
     useBookStore.getState().updateDoc(docWithNote())
     render(<LeftNav />)
+    await userEvent.hover(screen.getByText('讲主角出发'))
+    expect(screen.queryByPlaceholderText('写点说明…')).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: '排列' }))
-    const textarea = screen.getByDisplayValue('讲主角出发')
-    await userEvent.clear(textarea)
-    await userEvent.type(textarea, '改过的说明')
-    await userEvent.tab()
-    expect(setHeadingNote).toHaveBeenCalledWith(0, '改过的说明')
+    expect(screen.queryByPlaceholderText('写点说明…')).toBeNull()
+    expect(setHeadingNote).not.toHaveBeenCalled()
   })
 
   it('按 Esc 关闭大窗', async () => {

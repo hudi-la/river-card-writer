@@ -73,41 +73,22 @@ describe('OutlineDetail', () => {
     expect(screen.getByText('还没有章节标题')).toBeTruthy()
   })
 
-  it('渲染出标题行 + 每个块行，且每行都有一个可编辑的说明文本框', () => {
+  it('说明暂停编辑，仍显示标题和正文行', () => {
     useBookStore.getState().updateDoc(docWithChapterAndBlocks())
     render(<OutlineDetail />)
     expect(screen.getByText('第一章')).toBeTruthy()
     expect(screen.getByText('正文一')).toBeTruthy()
     expect(screen.getByText('正文二')).toBeTruthy()
-    const textareas = screen.getAllByPlaceholderText('写点说明…')
-    expect(textareas.length).toBe(3)
+    expect(screen.queryByPlaceholderText('写点说明…')).toBeNull()
   })
 
-  it('已有 note 的行，说明框里显示该 note', () => {
+  it('已有说明只读显示且不写回', () => {
     useBookStore.getState().updateDoc(docWithNote())
     render(<OutlineDetail />)
-    expect(screen.getByDisplayValue('讲主角出发')).toBeTruthy()
-  })
-
-  it('编辑标题行的说明，失焦后调用 editorBridge.setHeadingNote(headingIndex, value)', async () => {
-    useBookStore.getState().updateDoc(docWithNote())
-    render(<OutlineDetail />)
-    const textarea = screen.getByDisplayValue('讲主角出发')
-    await userEvent.clear(textarea)
-    await userEvent.type(textarea, '改过的说明')
-    await userEvent.tab()
-    expect(setHeadingNote).toHaveBeenCalledWith(0, '改过的说明')
-  })
-
-  it('编辑块行的说明，失焦后调用 editorBridge.setCardNote(cardIndex, value)', async () => {
-    useBookStore.getState().updateDoc(docWithChapterAndBlocks())
-    render(<OutlineDetail />)
-    const textareas = screen.getAllByPlaceholderText('写点说明…')
-    // rows 顺序：[章(cardIndex 0), 正文一(cardIndex 1), 正文二(cardIndex 2)]
-    await userEvent.type(textareas[1], '块说明')
-    await userEvent.tab()
-    expect(setCardNote).toHaveBeenCalledWith(1, '块说明')
+    expect(screen.getByText('讲主角出发')).toBeTruthy()
+    expect(screen.queryByRole('textbox')).toBeNull()
     expect(setHeadingNote).not.toHaveBeenCalled()
+    expect(setCardNote).not.toHaveBeenCalled()
   })
 
   it('标题行（有后代）的折叠三角点击调用 editorBridge.toggleCollapsed(cardIndex)', async () => {

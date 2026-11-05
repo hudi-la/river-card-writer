@@ -1,3 +1,4 @@
+import { NOTE_EDITING_ENABLED } from '../noteEditing'
 import { useRef } from 'react'
 import { Plus } from 'lucide-react'
 import { useBookStore } from '../state/bookStore'
@@ -109,13 +110,13 @@ export function OutlineDetail() {
                 <OutlineWordCount words={outlineRowWords(rows, i)} />
                 <OutlineDragHandle />
               </div>
-              <NoteField
+              {NOTE_EDITING_ENABLED ? <NoteField
                 className="outline-card-note"
                 placeholder="写点说明…"
                 rows={2}
                 initial={row.note}
                 onSave={(value) => saveRowNote(row, headingIndices[i], value)}
-              />
+              /> : row.note ? <p className="outline-card-note">{row.note}</p> : null}
             </div>
           ))}
           <div className="add" onClick={() => addChapter()}>
