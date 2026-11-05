@@ -1,3 +1,5 @@
+import { useAuthStore } from '../state/authStore'
+import { ArticleVersions } from './ArticleVersions'
 import { ArticleShare } from './ArticleShare'
 import { ArticleExport } from './ArticleExport'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -76,6 +78,8 @@ function WorkspaceTitle({ book, renameBook }: { book: Book; renameBook: (id: str
 }
 
 export function Workspace() {
+  const [versionEpoch, setVersionEpoch] = useState(0)
+  const versionOwner = useAuthStore(s => s.session?.user.id)
   const viewKind = useBookStore((s) => s.viewKind)
   const activeBoxId = useBookStore((s) => s.activeBoxId)
   const activeBookId = useBookStore((s) => s.library.activeBookId)
@@ -426,6 +430,7 @@ export function Workspace() {
           </button>
           <WorkspaceTitle key={`title-${book.id}`} book={book} renameBook={renameBook} />
           <div className="topbar-right">
+            <ArticleVersions key={`${book.id}:${versionOwner}`} book={book} onRestored={() => setVersionEpoch(v => v + 1)} />
             <ArticleShare book={book} />
             <ArticleExport book={book} />
             {/* 图标按钮。原来「阅读」「单语」的两个字在窄栏里折成上下两行了，
@@ -476,7 +481,7 @@ export function Workspace() {
         ) : viewKind === 'box' ? (
           <BoxView key={activeBoxId} boxId={activeBoxId} />
         ) : (
-          <RiverEditor key={activeBookId} />
+          <RiverEditor key={`${activeBookId}:${versionEpoch}`} />
         )}
       </main>
       {showPrep && (

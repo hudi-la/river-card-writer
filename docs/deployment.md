@@ -118,3 +118,51 @@ with the book reader; they cannot recover formatting never stored. Re-sharing
 is required to capture the original rich formatting and chosen layout.
 Rollback to the previous Pages deployment; the nullable column is additive and
 compatible with the previous code. Do not drop the column or alter user shares.
+
+## Private article versions (2026-11-05)
+
+This change is based on verified production source `0c5013c` (Pages deployment
+`4e9b0f85-b8fe-4aa4-97b7-f0f654b65d8d`), with its release documentation `d0905ea`.
+
+Before publishing this feature, apply **only** `server/versions.sql` to the existing
+`river-shares` D1 database. It creates a separate private `article_versions` table
+and index; it does not alter shares, Supabase articles, or user content. Use the
+existing `RIVER_SHARES` binding and Supabase login validation. Do not run the
+sharing schema again. Example from the isolated checkout:
+
+```
+wrangler d1 execute river-shares --remote --file server/versions.sql
+```
+
+Build, commit/push actual source, then publish using the existing Pages workflow.
+Verify authenticated save/list/read, owner isolation, automatic history, copy, and
+restore with synthetic articles only. Record the source commit and deployment ID
+in releases.md. Until the schema and code are deployed, the production UI is
+unchanged. Rollback uses the previous Pages deployment; leave the additive private
+history table intact to preserve saved versions.
+
+Behavior: signed-in article views save an opening snapshot, then check for changes
+every five minutes while mounted. Unchanged content is skipped; failed automatic
+saves retry at the next interval and display a warning in version history. There
+is no offline cloud-history queue. Named versions and restore safeguards are kept;
+automatic history retains thirty snapshots per owner/article. Each request is
+limited to 1 MiB without truncation; each article allows 1000 permanent versions.
+Restoring aborts if safeguarding fails or the article/account changes during the
+save. All book fields are included, including book-specific material boxes;
+library-wide universal boxes and reading preferences are not restored. A restored
+editor is remounted so its next edit cannot write its previous document back.
+
+Comparison shows paragraph additions/removals, side-by-side article text and card
+change/order counts. Very long comparisons fall back to larger changed paragraph
+blocks with complete text retained. Versions can also be downloaded as complete
+book backups. Private history never creates a public share URL.
+
+Pre-release verification (2026-11-05): 819 tests in 64 files passed (16 new feature
+tests); production build and Pages Functions compilation passed. Browser checks
+with synthetic article/session verified paragraph diff, desktop/mobile dialog,
+restore, editor remount and persistence of subsequent edits. The existing workspace
+has horizontal overflow at phone width; the version dialog itself does not overflow.
+Full TypeScript diagnostics are identical to production baseline after path
+normalization (existing test typing failures, none added by this feature).
+This verification was completed before remote schema changes or deployment;
+see docs/releases.md for the subsequent production release record.

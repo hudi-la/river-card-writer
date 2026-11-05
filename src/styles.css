@@ -1461,3 +1461,32 @@ button.shelf-add-book, button.box-tile-add { border: 0; padding: 0; background: 
 
 /* A translated chapter title follows its Chinese title without a second chapter-sized gap. */
 .ts-book .ts-chapter.ts-echo { padding: 12px 0 20px; border-bottom: none; font-size: 1.2em; }
+
+/* Private article history */
+.article-versions { max-width: 1100px; }
+.versions-hint { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.version-save { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin: 20px 0; }
+.version-save label { display: grid; gap: 6px; flex: 1; min-width: 160px; }
+.version-save input { padding: 8px; border: 1px solid var(--hair); border-radius: 4px; background: var(--paper); color: var(--ink); }
+.version-browser { display: grid; grid-template-columns: minmax(160px, 240px) minmax(0, 1fr); gap: 24px; }
+.version-list { max-height: 430px; overflow-y: auto; }
+.version-list button { display: block; width: 100%; text-align: left; padding: 12px; border: 0; border-bottom: 1px solid var(--hair); background: transparent; color: var(--ink); overflow-wrap: anywhere; }
+.version-list button[aria-current="true"] { background: var(--faint); }
+.version-list small { display: block; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+.version-preview { min-width: 0; }
+.version-texts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.version-texts label { min-width: 0; font-size: 12px; }
+.version-texts textarea { display: block; box-sizing: border-box; width: 100%; min-height: 230px; margin: 8px 0 16px; padding: 12px; resize: vertical; border: 1px solid var(--hair); border-radius: 4px; background: transparent; color: var(--ink); font: 14px/1.8 Georgia, 'Songti SC', serif; }
+.version-confirm { margin-top: 16px; padding: 12px; border: 1px solid var(--hair); border-radius: 4px; }
+.version-confirm button + button { margin-left: 10px; }
+.icon-toggle[data-error="true"] { color: #a14428; }
+@media (max-width: 700px) { .version-browser, .version-texts { grid-template-columns: 1fr; } .version-list { max-height: 180px; } }
+.article-versions button:not(.icon-toggle) { border: 1px solid var(--hair); border-radius: 5px; background: transparent; color: var(--ink); padding: 7px 10px; cursor: pointer; }
+.article-versions button:disabled { opacity: .5; cursor: default; }
+.article-versions .version-list button { border-radius: 0; border-width: 0 0 1px; padding: 12px; }
+.article-versions .version-list button[aria-current="true"] { background: var(--faint); }
+.version-diff { margin-bottom: 16px; font-size: 14px; }
+.version-diff summary { cursor: pointer; }
+.version-diff > p { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
+.version-diff del { background: #f9e8e2; color: #803d2a; }
+.version-diff ins { background: #e8f0e3; color: #31512b; }
