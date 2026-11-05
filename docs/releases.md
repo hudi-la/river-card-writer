@@ -68,3 +68,40 @@ Pages deployment: `4e9b0f85.card-writer.pages.dev`; custom domain resource refer
 Based on production `cbc6200`, retaining full article sharing, export and typeset reading.
 Native shelf/outline controls, named editor, keyboard positioning controls, modal focus trapping/restoration, visible focus and reduced motion. 803 tests in 61 files and production build passed.
 Rollback: previous Pages production deployment `de16b947-bd5c-4b60-865b-88a3bac5d61f`. No database migration.
+
+## 2026-11-05 — private article version history
+
+- Production: https://river.hudiworks.com/ (Cloudflare Pages project `card-writer`).
+- Published source: `b8cac80530f4f9fe0d3e0c3b45b92ac67207c28b`.
+- GitHub: `hudi-la/river-card-writer`, branch `codex/river-article-versions`.
+  Source was committed and successfully pushed before deployment.
+- Production deployment: `fab51765-760e-4a1f-a501-63164ef53786`
+  (`https://fab51765.card-writer.pages.dev`), source `b8cac80`.
+- Rollback target: `4e9b0f85-b8fe-4aa4-97b7-f0f654b65d8d`, source `0c5013c`.
+  Production was rechecked immediately before release and had no newer deployment.
+- Applied only `server/versions.sql` to D1 `river-shares`: additive private
+  `article_versions` table and owner/article index. Existing Supabase article
+  tables and public shares were not changed. Leave the new table intact on rollback.
+- Signed-in users can name versions, preview paragraph additions/removals and
+  card changes, download complete version backups, create independent copies, and
+  restore an old version after a durable safeguard of current content. Opening
+  snapshots and changed content checked every five minutes supply up to thirty
+  automatic versions. History is private to its owner and includes book-specific
+  materials, formatting and translations; universal boxes are excluded.
+- Verification: 819 tests in 64 files (16 new feature tests), production build and
+  Pages Functions compilation passed. TypeScript diagnostics match the existing
+  production baseline; no new type failures. Desktop/mobile dialog and restored
+  editor persistence verified in a browser with synthetic fixtures.
+- Live verification: custom-domain HTML and all three referenced build assets
+  match the published build by SHA-256. OAuth resource metadata and robots.txt
+  retained HTTP 200. Anonymous and invalid-token history requests returned 401.
+  Two temporary authenticated users verified complete immutable snapshot save/read,
+  cross-owner read rejection and empty history, and automatic-history deduplication.
+  A real production browser session verified named save, old-version preview,
+  paragraph diff, copy, safeguard-before-restore and continued editing with no
+  history API failures. Subsequent direct cloud reads confirmed the copied article,
+  restored edits and the safeguard containing the replaced current content.
+- Cleanup: all synthetic versions, articles, universal-box rows and both temporary
+  users were removed, with zero matching private version rows and user deletion
+  confirmed. Temporary credentials were deleted locally. No real user articles
+  were used for acceptance testing.
