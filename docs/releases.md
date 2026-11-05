@@ -105,3 +105,12 @@ Rollback: previous Pages production deployment `de16b947-bd5c-4b60-865b-88a3bac5
   users were removed, with zero matching private version rows and user deletion
   confirmed. Temporary credentials were deleted locally. No real user articles
   were used for acceptance testing.
+
+## 2026-11-05 — temporarily pause note editing
+
+- Published source: `272b7b9`, pushed to GitHub branch `codex/river-disable-notes-20261105`.
+- Production: https://river.hudiworks.com/ ; deployment https://2dc08ae5.card-writer.pages.dev .
+- Verified prior live source `b8cac80` / deployment `fab51765-760e-4a1f-a501-63164ef53786`; isolated checkout retains all version-history functionality.
+- Disable outline hover note popovers, card-handle click note popovers and detail-view note editing using one reversible flag. Existing notes remain stored and visible; drag/reorder and document commands remain intact. No database changes.
+- Verification: 817 tests across 64 files passed; production build and Functions compilation passed. Custom-domain HTML and all referenced JS/CSS assets match the published build byte-for-byte.
+- Rollback: restore the prior Pages deployment above. No data rollback needed.
