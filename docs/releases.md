@@ -114,3 +114,11 @@ Rollback: previous Pages production deployment `de16b947-bd5c-4b60-865b-88a3bac5
 - Disable outline hover note popovers, card-handle click note popovers and detail-view note editing using one reversible flag. Existing notes remain stored and visible; drag/reorder and document commands remain intact. No database changes.
 - Verification: 817 tests across 64 files passed; production build and Functions compilation passed. Custom-domain HTML and all referenced JS/CSS assets match the published build byte-for-byte.
 - Rollback: restore the prior Pages deployment above. No data rollback needed.
+
+## 2026-11-05 — integrated outline move handles
+
+- Published source `6fa1870`, GitHub branch `codex/river-integrated-move-handle-20261105`; deployment https://2ffa9804.card-writer.pages.dev ; production https://river.hudiworks.com/ .
+- Baseline and rollback: `272b7b9`, Pages deployment `2dc08ae5-dbb4-4ae9-ba74-3aaf8a2a4d58`. No database or user-content changes.
+- Removed the separate move row. Six-dot buttons now support pointer dragging and click/Enter/Space to open a destination selector, in both sidebar and detailed outline. Escape closes and returns focus. Pointer capture starts only after the drag threshold; completed drags suppress accidental clicks.
+- Handles use a fixed 24px area, align vertically to their rows and share the same right edge. Reserved row padding keeps word counts clear and visible.
+- Verification: initial full suite 817/817 passed; final targeted suite 67/67 passed including two new click/keyboard/drag regression tests. Production build and Functions compilation passed. Isolated Chrome fixtures verified all five hierarchy rows with zero vertical-center error and identical right edges, actual keyboard reorder, pointer reorder and no accidental menu after dragging. Screenshot reviewed. Custom-domain HTML and all referenced assets match published files byte-for-byte.
