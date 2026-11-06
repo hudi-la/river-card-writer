@@ -889,3 +889,36 @@ describe('LeftNav 目录小改（Phase 14 Task 1）', () => {
     expect(screen.getByText(longText)).toBeTruthy()
   })
 })
+
+
+describe('六点把手移动菜单', () => {
+  it('点击把手打开选择器并移动块，关闭后焦点返回把手', async () => {
+    useBookStore.getState().updateDoc(docTwoChaptersWithSection())
+    const { container } = render(<LeftNav />)
+    const handle = dragHandleOf(container.querySelector('[data-outline-row-index="1"]') as HTMLElement)
+    expect(container.querySelector('.keyboard-move')).toBeNull()
+    await userEvent.click(handle)
+    const select = screen.getByRole('combobox')
+    await userEvent.selectOptions(select, '0')
+    expect(moveCardTo).toHaveBeenCalledWith(1, 0)
+    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(document.activeElement).toBe(handle)
+  })
+
+  it('键盘打开、Escape 关闭；拖动后不误开菜单', async () => {
+    useBookStore.getState().updateDoc(docTwoChaptersWithSection())
+    const { container } = render(<LeftNav />)
+    const row = container.querySelector('[data-outline-row-index="0"]') as HTMLElement
+    const handle = dragHandleOf(row)
+    handle.focus()
+    await userEvent.keyboard('{Enter}')
+    expect(screen.getByRole('combobox')).toBeTruthy()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(document.activeElement).toBe(handle)
+    stubOutlineRowRects(container)
+    dragRow(row, 15, 200)
+    fireEvent.click(handle)
+    expect(screen.queryByRole('combobox')).toBeNull()
+  })
+})

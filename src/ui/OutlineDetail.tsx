@@ -108,7 +108,7 @@ export function OutlineDetail() {
                   <span className="outline-collapsed-marker" aria-hidden="true">⋯</span>
                 )}
                 <OutlineWordCount words={outlineRowWords(rows, i)} />
-                <OutlineDragHandle />
+                <OutlineDragHandle rows={rows} index={i} />
               </div>
               {NOTE_EDITING_ENABLED ? <NoteField
                 className="outline-card-note"

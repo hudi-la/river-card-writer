@@ -402,12 +402,59 @@ export function OutlineWordCount({ words }: { words: number }) {
   )
 }
 
-export function OutlineDragHandle() {
-  return (
-    <span className="outline-drag-handle" data-outline-drag-handle aria-hidden="true" title="拖动排序">
-      <GripVertical size={14} strokeWidth={1.75} />
-    </span>
-  )
+export function OutlineDragHandle({ rows, index }: { rows: OutlineRow[]; index: number }) {
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+  const button = useRef<HTMLButtonElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
+  const moveSection = useEditorBridge((s) => s.moveSection)
+  const moveCardTo = useEditorBridge((s) => s.moveCardTo)
+  const row = rows[index]
+  const label = outlineRowLabel(row).text
+  const close = () => { setPos(null); button.current?.focus() }
+  useEffect(() => {
+    if (!pos) return
+    const outside = (e: PointerEvent) => {
+      if (!menu.current?.contains(e.target as Node) && !button.current?.contains(e.target as Node)) setPos(null)
+    }
+    const escape = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); close() } }
+    const scroll = () => setPos(null)
+    document.addEventListener('pointerdown', outside)
+    document.addEventListener('keydown', escape, true)
+    window.addEventListener('scroll', scroll, true)
+    window.addEventListener('resize', scroll)
+    return () => {
+      document.removeEventListener('pointerdown', outside)
+      document.removeEventListener('keydown', escape, true)
+      window.removeEventListener('scroll', scroll, true)
+      window.removeEventListener('resize', scroll)
+    }
+  }, [pos])
+  return <>
+    <button type="button" ref={button} className="outline-drag-handle" data-outline-drag-handle
+      aria-label={`移动：${label}`} aria-expanded={!!pos} aria-haspopup="dialog" title="拖动排序，或点击选择位置"
+      onClick={(e) => {
+        e.stopPropagation()
+        const rect = e.currentTarget.getBoundingClientRect()
+        setPos(pos ? null : { left: Math.max(8, Math.min(rect.right - 280, window.innerWidth - 288)), top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - 100)) })
+      }}>
+      <GripVertical size={14} strokeWidth={1.75} aria-hidden="true" />
+    </button>
+    {pos && createPortal(<div ref={menu} className="outline-move-popover" role="dialog" aria-label={`移动：${label}`} style={pos} onClick={(e) => e.stopPropagation()}>
+      <label>移动到
+        <select autoFocus aria-label={`移动位置：${label}`} defaultValue="" onChange={(e) => {
+          if (e.target.value === '') return
+          const target = Number(e.target.value)
+          close()
+          if (row.kind === 'heading') moveSection(row.cardIndex, target)
+          else moveCardTo(row.cardIndex, target)
+        }}>
+          <option value="">选择位置（标题连同内容移动）</option>
+          {rows.map((target, n) => <option key={n} value={n} disabled={n >= index && n <= outlineSectionRange(rows, index)[1]}>第 {n + 1} 项前：{outlineRowLabel(target).text.slice(0, 25)}</option>)}
+          <option value={rows.length} disabled={outlineSectionRange(rows, index)[1] === rows.length}>移到末尾</option>
+        </select>
+      </label>
+    </div>, document.body)}
+  </>
 }
 
 export function OutlineCollapseTriangle({
@@ -569,16 +616,9 @@ export function useOutlineRowDrag({
     // lostpointercapture 无论哪个先到都只执行一次（跟 RiverEditor 的 finishDrag
     // 是同一个理由：WebKit 下 pointer capture 之后 pointerup 有时不冒泡到 window）。
     //
-    // 定位滚动（Phase 14 回归修复）：pointerdown 时 setPointerCapture 之后，
-    // Chromium 会把随后的原生 click 事件重定向到 capture 的元素（.rail），行
-    // 元素自己的 onClick 因此再也收不到事件，点击定位就此失效。改法：不再依赖
-    // click，松手这一刻（isPointerUp===true，即真正的 pointerup，不是
-    // pointercancel/lostpointercapture 那种异常终止）如果全程没越过拖拽阈值
-    // （drag.moved===false），就直接在这里跑一遍跟旧 handleRowClick 一样的
-    // 滚动逻辑——block 行滚到 cardIndex 对应的卡，heading 行滚到 headingIndex
-    // 对应的标题段落。行上的 onClick 仍然保留作为兜底（不支持 pointer capture
-    // 重定向的浏览器/环境下它会正常触发；两边都触发也只是多滚一次，无副作用）。
-    const finishDrag = (isPointerUp: boolean) => {
+    // Capture only after crossing the drag threshold: an ordinary handle click
+    // must reach the button so it can open the accessible move selector.
+    const finishDrag = (_isPointerUp: boolean) => {
       const drag = outlineDragRef.current
       if (!drag) return
       outlineDragRef.current = null
@@ -591,18 +631,8 @@ export function useOutlineRowDrag({
         if (drag.kind === 'heading') moveSection(drag.startIndex, drag.pendingTargetIndex)
         else moveCardTo(drag.startIndex, drag.pendingTargetIndex)
         suppressClickRef.current = true
-      } else if (isPointerUp && !drag.moved) {
-        openDoc()
-        const cardIndex = drag.startIndex
-        const headingIndex = drag.headingIndex
-        const kind = drag.kind
-        // RiverEditor 挂载延迟同 handleRowClick：可能刚从盒子视图切回正文，等
-        // 这次 state 更新渲染完再滚动。
-        setTimeout(() => {
-          if (kind === 'heading') scrollToOutlineIndex(headingIndex)
-          else scrollToCardIndex(cardIndex)
-        }, 0)
       }
+
       cleanupVisuals(drag)
     }
 
@@ -622,6 +652,7 @@ export function useOutlineRowDrag({
       // 顶部 useOutlineRowDrag 的大段注释）。现在必须先命中
       // [data-outline-drag-handle] 才会开始拖拽——命中不了就直接放行，原生
       // click/dblclick 该怎么走怎么走，不再有 setPointerCapture 抢事件的问题。
+      suppressClickRef.current = false
       const handleEl = target.closest<HTMLElement>(OUTLINE_DRAG_HANDLE_SELECTOR)
       if (!handleEl) return
       const rowEl = handleEl.closest<HTMLElement>('[data-outline-row-index]')
@@ -665,11 +696,6 @@ export function useOutlineRowDrag({
         targetBoxId: null,
         targetBoxEl: null,
       }
-      try {
-        railEl.setPointerCapture(e.pointerId)
-      } catch {
-        // 极少数环境不支持 setPointerCapture，忽略即可
-      }
     }
 
     const onDragStart = (e: DragEvent) => {
@@ -697,6 +723,8 @@ export function useOutlineRowDrag({
         const dy = e.clientY - drag.startY
         if (Math.hypot(dx, dy) < OUTLINE_DRAG_MOVE_THRESHOLD_PX) return
         drag.moved = true
+        suppressClickRef.current = true
+        try { railEl.setPointerCapture(e.pointerId) } catch { /* unsupported capture */ }
         drag.ghostEl.style.display = 'block'
         drag.sourceEls.forEach((el) => el.classList.add('outline-row-dragging'))
         document.documentElement.classList.add(OUTLINE_DRAG_ACTIVE_CLASS)
@@ -1180,20 +1208,7 @@ export function LeftNav() {
                   )}
                   <OutlineWordCount words={outlineRowWords(rows, i)} />
                 </div>
-                <OutlineDragHandle />
-                <details className="keyboard-move">
-                  <summary aria-label={`移动：${label.text}`}>移动</summary>
-                  <select aria-label={`移动位置：${label.text}`} value="" onChange={(e) => {
-                    if (e.target.value === '') return
-                    const target = Number(e.target.value)
-                    if (row.kind === 'heading') bridgeMoveSection(row.cardIndex, target)
-                    else bridgeMoveCardTo(row.cardIndex, target)
-                  }}>
-                    <option value="">选择位置（标题连同内容移动）</option>
-                    {rows.map((target, n) => <option key={n} value={n} disabled={n >= i && n <= outlineSectionRange(rows, i)[1]}>第 {n + 1} 项前：{outlineRowLabel(target).text.slice(0, 25)}</option>)}
-                    <option value={rows.length} disabled={outlineSectionRange(rows, i)[1] === rows.length}>移到末尾</option>
-                  </select>
-                </details>
+                <OutlineDragHandle rows={rows} index={i} />
               </div>
             )
           })}

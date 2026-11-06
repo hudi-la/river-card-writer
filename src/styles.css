@@ -42,7 +42,7 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family: Georgia
    点这里不会触发 handleHeaderClick（自身 onClick 已 stopPropagation）。 */
 .box-drag-handle {
   flex:none; display:flex; align-items:center; color:var(--muted); line-height:1; cursor:grab;
-  opacity:0; padding:2px 4px; border-radius:3px; margin-left:auto;
+  opacity:0; padding:0; border-radius:3px; border:0; background:transparent; width:24px; height:24px; justify-content:center; touch-action:none; margin-left:auto;
 }
 .box-row-header:hover .box-drag-handle, .box-row-dragging .box-drag-handle { opacity:.45; }
 .box-drag-handle:hover { opacity:.9; background:rgba(120,158,196,.16); }
@@ -311,7 +311,7 @@ html.outline-drag-active, html.outline-drag-active * { user-select:none !importa
    同一个 class，位置规则各自声明。 */
 .outline-drag-handle {
   flex:none; display:flex; align-items:center; color:var(--muted); line-height:1; cursor:grab;
-  opacity:0; padding:2px 4px; border-radius:3px;
+  opacity:0; padding:0; border-radius:3px; border:0; background:transparent; width:24px; height:24px; justify-content:center; touch-action:none;
 }
 .outline-item-wrap .outline-drag-handle {
   position:absolute; right:4px; top:50%; transform:translateY(-50%);
@@ -420,8 +420,7 @@ html.outline-drag-active, html.outline-drag-active * { user-select:none !importa
   font-size:11px; font-weight:400; color:var(--muted); opacity:.75;
   font-variant-numeric:tabular-nums;
 }
-.outline-item-wrap:hover .outline-words,
-.outline-row-dragging .outline-words { visibility:hidden; }
+
 .outline-card-note { min-height:44px; }
 .page { padding:0 0 36px; display:flex; flex-direction:column; align-items:center; position:relative; }
 .river-wrap { width: min(var(--reading-measure), 96%); }
@@ -1443,9 +1442,12 @@ button.shelf-add-book, button.box-tile-add { border: 0; padding: 0; background: 
 .book-card:focus-within .book-menu-btn, .box-tile:focus-within .box-menu-btn { opacity: 1; }
 
 .rail button.add, .rail button.outline-row-text, .rail button.box-name, .rail button.box-chevron { font: inherit; color: inherit; background: none; border: 0; text-align: left; cursor: pointer; }
-.keyboard-move { font-size: 12px; margin: 2px 6px 6px; }
-.keyboard-move summary { cursor: pointer; color: var(--muted); }
-.keyboard-move select { max-width: 100%; padding: 5px; font: inherit; }
+.outline-item-wrap .outline-row { padding-right:32px; }
+.outline-drag-handle:focus-visible, .outline-drag-handle[aria-expanded="true"] { opacity:1; outline:2px solid var(--muted); outline-offset:1px; }
+.outline-move-popover { position:fixed; z-index:10000; width:280px; max-width:calc(100vw - 16px); box-sizing:border-box; padding:12px; background:var(--paper); color:var(--ink); border:1px solid var(--hair); border-radius:8px; box-shadow:0 4px 20px #0002; font-size:13px; }
+.outline-move-popover select { display:block; width:100%; margin-top:6px; padding:5px; font:inherit; }
+@media (hover:none) { .outline-drag-handle { opacity:.6; } }
+
 .article-export { padding: 20px; max-width: 800px; margin: auto; }
 .article-export p { font-size: 13px; line-height: 1.6; }
 .article-export textarea { display: block; box-sizing: border-box; width: 100%; min-height: 45vh; padding: 16px; line-height: 1.8; font: inherit; border: 1px solid #ddd; border-radius: 8px; resize: vertical; }
