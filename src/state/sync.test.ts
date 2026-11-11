@@ -85,9 +85,9 @@ function makeFakeStore(initialLibrary: Library) {
 
 describe('rowToBook / bookToRow', () => {
   it('往返相等：book -> row -> book', () => {
-    const book = { ...makeBook('uuid-1', '我的书'), updatedAt: '2024-03-01T00:00:00.000Z' }
+    const book = { ...makeBook('e2c6999a-39f5-514b-8dd9-18af16bcb8f5', '我的书'), updatedAt: '2024-03-01T00:00:00.000Z' }
     const row = bookToRow(book, 'owner-1', 2)
-    expect(row.id).toBe('uuid-1')
+    expect(row.id).toBe('e2c6999a-39f5-514b-8dd9-18af16bcb8f5')
     expect(row.owner).toBe('owner-1')
     expect(row.position).toBe(2)
     expect(row.updated_at).toBe('2024-03-01T00:00:00.000Z')
@@ -95,7 +95,7 @@ describe('rowToBook / bookToRow', () => {
   })
 
   it('副标题/作者存活云同步往返（存在 data 里，doc/boxes 不受影响）', () => {
-    const book = { ...makeBook('uuid-meta', '有副标题的书'), subtitle: 'AI 时代的投射', author: 'di hu', updatedAt: '2024-06-01T00:00:00.000Z' }
+    const book = { ...makeBook('2eaacd88-a129-5b41-a792-0a5678cb5949', '有副标题的书'), subtitle: 'AI 时代的投射', author: 'di hu', updatedAt: '2024-06-01T00:00:00.000Z' }
     const row = bookToRow(book, 'owner-1', 0)
     expect((row.data as any).subtitle).toBe('AI 时代的投射')
     expect((row.data as any).author).toBe('di hu')
@@ -103,7 +103,7 @@ describe('rowToBook / bookToRow', () => {
   })
 
   it('没有副标题/作者的书 → data 里不写这两个字段，rowToBook 读回来也没有', () => {
-    const book = makeBook('uuid-nometa', '没副标题的书')
+    const book = makeBook('7ba6729a-917c-5757-9731-91cc19ea0950', '没副标题的书')
     const row = bookToRow(book, 'owner-1', 0)
     expect((row.data as any).subtitle).toBeUndefined()
     expect((row.data as any).author).toBeUndefined()
@@ -111,7 +111,7 @@ describe('rowToBook / bookToRow', () => {
   })
 
   it('book 没有 updatedAt 时，bookToRow 兜底用当前时间；round-trip 出来的 book 会带上这个兜底时间', () => {
-    const book = makeBook('uuid-2', '没有时间戳的书')
+    const book = makeBook('9433587e-28fe-5518-87b0-a5a043dbd67e', '没有时间戳的书')
     expect(book.updatedAt).toBeUndefined()
     const row = bookToRow(book, 'owner-1', 0)
     expect(typeof row.updated_at).toBe('string')
@@ -119,7 +119,7 @@ describe('rowToBook / bookToRow', () => {
   })
 
   it('没有 cover 的书 → bookToRow 的 cover 列写 null，rowToBook 读回来 cover 是 undefined（不影响其它字段，云端老行同样如此）', () => {
-    const book = makeBook('uuid-no-cover', '没有封面的书')
+    const book = makeBook('f2c4e3b8-afbd-52b9-9aff-31ee143828b6', '没有封面的书')
     const row = bookToRow(book, 'owner-1', 0)
     expect(row.cover).toBeNull()
     expect(rowToBook(row).cover).toBeUndefined()
@@ -128,7 +128,7 @@ describe('rowToBook / bookToRow', () => {
 
   it('带自定义 cover 的书 → bookToRow/rowToBook 往返 cover 原样保留，doc/boxes 不受影响（cover 是独立于 data 之外的一列）', () => {
     const cover = { colors: ['#111111', '#222222', '#333333'] as [string, string, string], angle: 210, texture: false }
-    const book = { ...makeBook('uuid-cover', '有封面的书'), cover, updatedAt: '2024-05-01T00:00:00.000Z' }
+    const book = { ...makeBook('8b520032-6db7-5b4c-95d8-b31ea3b41da9', '有封面的书'), cover, updatedAt: '2024-05-01T00:00:00.000Z' }
     const row = bookToRow(book, 'owner-1', 0)
     expect(row.cover).toEqual(cover)
     // cover 是独立的一列，data 里只有 doc/boxes——改封面不应该把 cover 也塞进 data。
@@ -137,7 +137,7 @@ describe('rowToBook / bookToRow', () => {
   })
 
   it('云端行的 cover 形状不对（脏数据）→ rowToBook 当成没有封面处理，不抛出', () => {
-    const book = makeBook('uuid-dirty-cover', '书')
+    const book = makeBook('95de41ed-c8e3-5a7d-b98e-7eb82e407301', '书')
     const row = bookToRow(book, 'owner-1', 0)
     ;(row as any).cover = { colors: ['only-one'] }
     expect(() => rowToBook(row)).not.toThrow()
@@ -247,7 +247,7 @@ describe('mergeBooksPlan（非破坏性合并：按 book id union，一本都不
   })
 
   it('云有一本、本地有另一本（各自独有）→ merged 两本都在，本地那本 upload、云端那本不重传', () => {
-    const cloudBook = makeBook('uuid-cloud', '云端书')
+    const cloudBook = makeBook('b8c8ebb7-6d9f-5e0d-917c-aa1e1fa5b76c', '云端书')
     const row = bookToRow(cloudBook, 'owner-1', 0)
     const localBook = makeBook('local-a', '本地书')
     const plan = mergeBooksPlan([localBook], [row])
@@ -264,51 +264,51 @@ describe('mergeBooksPlan（非破坏性合并：按 book id union，一本都不
   })
 
   it('同 id 书两边都有，本地 updatedAt 更新 → merged 用本地版本，且进 toUpload', () => {
-    const cloudBook = { ...makeBook('uuid-a', '云端标题'), updatedAt: '2024-01-01T00:00:00.000Z' }
+    const cloudBook = { ...makeBook('1b7f6917-fedb-5d09-a71a-678cbfbb4a68', '云端标题'), updatedAt: '2024-01-01T00:00:00.000Z' }
     const row = bookToRow(cloudBook, 'owner-1', 0)
-    const localBook = { ...makeBook('uuid-a', '本地标题'), updatedAt: '2024-06-01T00:00:00.000Z' }
+    const localBook = { ...makeBook('1b7f6917-fedb-5d09-a71a-678cbfbb4a68', '本地标题'), updatedAt: '2024-06-01T00:00:00.000Z' }
     const plan = mergeBooksPlan([localBook], [row])
     expect(plan.merged).toEqual([localBook])
     expect(plan.toUpload).toEqual([localBook])
   })
 
   it('同 id 书两边都有，云端 updatedAt 更新 → merged 用云端版本，不进 toUpload', () => {
-    const cloudBook = { ...makeBook('uuid-a', '云端标题'), updatedAt: '2024-06-01T00:00:00.000Z' }
+    const cloudBook = { ...makeBook('1b7f6917-fedb-5d09-a71a-678cbfbb4a68', '云端标题'), updatedAt: '2024-06-01T00:00:00.000Z' }
     const row = bookToRow(cloudBook, 'owner-1', 0)
-    const localBook = { ...makeBook('uuid-a', '本地标题'), updatedAt: '2024-01-01T00:00:00.000Z' }
+    const localBook = { ...makeBook('1b7f6917-fedb-5d09-a71a-678cbfbb4a68', '本地标题'), updatedAt: '2024-01-01T00:00:00.000Z' }
     const plan = mergeBooksPlan([localBook], [row])
     expect(plan.merged[0].title).toBe('云端标题')
     expect(plan.toUpload).toEqual([])
   })
 
   it('同 id 书两边都有，updatedAt 缺失/相等 → 优先本地', () => {
-    const cloudBook = makeBook('uuid-a', '云端标题')
+    const cloudBook = makeBook('1b7f6917-fedb-5d09-a71a-678cbfbb4a68', '云端标题')
     const row = bookToRow(cloudBook, 'owner-1', 0)
-    const localBook = makeBook('uuid-a', '本地标题')
+    const localBook = makeBook('1b7f6917-fedb-5d09-a71a-678cbfbb4a68', '本地标题')
     const plan = mergeBooksPlan([localBook], [row])
     expect(plan.merged[0].title).toBe('本地标题')
   })
 
   it('同 id 书两边都有，updatedAt 缺失/相等，但本地多了个云端没有的 cover → 视为"内容不同"，进 toUpload（不然本地的封面永远同步不到云端）', () => {
-    const cloudBook = makeBook('uuid-cover-diff')
+    const cloudBook = makeBook('7cb4b32f-8468-5edb-a07d-7daede640c85')
     const row = bookToRow(cloudBook, 'owner-1', 0)
-    const localBook = { ...makeBook('uuid-cover-diff'), cover: { colors: ['#111111', '#222222', '#333333'] as [string, string, string] } }
+    const localBook = { ...makeBook('7cb4b32f-8468-5edb-a07d-7daede640c85'), cover: { colors: ['#111111', '#222222', '#333333'] as [string, string, string] } }
     const plan = mergeBooksPlan([localBook], [row])
     expect(plan.merged[0]).toEqual(localBook)
     expect(plan.toUpload).toEqual([localBook])
   })
 
   it('同 id 书两边都有、cover 也相同（都没有）→ 仍然当内容相同，不重传', () => {
-    const cloudBook = makeBook('uuid-cover-same')
+    const cloudBook = makeBook('885391f7-9050-51f0-a9be-89bfb19b2a10')
     const row = bookToRow(cloudBook, 'owner-1', 0)
-    const localBook = makeBook('uuid-cover-same')
+    const localBook = makeBook('885391f7-9050-51f0-a9be-89bfb19b2a10')
     const plan = mergeBooksPlan([localBook], [row])
     expect(plan.toUpload).toEqual([])
   })
 
   // 没动过的默认教程起始书不该污染账号（登录/换设备时反复被塞进云端）
   it('没动过的教程书 + 云端有真书 → 教程被剔除（不保留、不上传）', () => {
-    const row = bookToRow(makeBook('uuid-cloud', '云端书'), 'owner-1', 0)
+    const row = bookToRow(makeBook('b8c8ebb7-6d9f-5e0d-917c-aa1e1fa5b76c', '云端书'), 'owner-1', 0)
     const plan = mergeBooksPlan([makeStarter()], [row])
     expect(plan.merged.map((b) => b.title)).toEqual(['云端书'])
     expect(plan.toUpload).toEqual([])
@@ -328,7 +328,7 @@ describe('mergeBooksPlan（非破坏性合并：按 book id union，一本都不
 
   it('用户改过教程书（不再 pristine）+ 云端有书 → 当真书保留并上传', () => {
     const edited = { ...makeStarter('starter-2'), title: '我的新书' }
-    const row = bookToRow(makeBook('uuid-cloud', '云端书'), 'owner-1', 0)
+    const row = bookToRow(makeBook('b8c8ebb7-6d9f-5e0d-917c-aa1e1fa5b76c', '云端书'), 'owner-1', 0)
     const plan = mergeBooksPlan([edited], [row])
     expect(plan.merged.map((b) => b.title).sort()).toEqual(['云端书', '我的新书'].sort())
     expect(plan.toUpload.map((b) => b.title)).toEqual(['我的新书'])
@@ -371,7 +371,7 @@ describe('startSync', () => {
   })
 
   it('REGRESSION（data-loss bug）：云=[A]，本地=[A,B,C]（B,C 本地独有未同步）→ 同步后库里 A,B,C 都在，B/C 被上传，谁都不会被丢', async () => {
-    const bookA = makeBook('uuid-a', 'A')
+    const bookA = makeBook('1b7f6917-fedb-5d09-a71a-678cbfbb4a68', 'A')
     const rowA = bookToRow(bookA, 'owner-1', 0)
     const bookB = makeBook('local-b', 'B')
     const bookC = makeBook('local-c', 'C')
@@ -384,7 +384,7 @@ describe('startSync', () => {
     const lib = store.getState().library
     // 一本都不能少：A（云端也有）+ B、C（本地独有，之前从未同步过）。
     expect(lib.books.map((b) => b.title).sort()).toEqual(['A', 'B', 'C'])
-    expect(lib.books.find((b) => b.title === 'A')?.id).toBe('uuid-a')
+    expect(lib.books.find((b) => b.title === 'A')?.id).toBe('1b7f6917-fedb-5d09-a71a-678cbfbb4a68')
 
     // B、C 本地是 nanoid，换成 uuid 后应该被上传到云端，一个都不能漏传。
     const uploadedTitles = (upsertMock.mock.calls.flatMap((call) => call[0]) as CwBookRow[]).map((r) => r.title)
@@ -398,11 +398,11 @@ describe('startSync', () => {
   })
 
   it('云=[A,B]，本地=[A] → 同步后库里 A、B 都在（B 从云端下载）', async () => {
-    const bookA = makeBook('uuid-a', 'A')
-    const bookB = makeBook('uuid-b', 'B')
+    const bookA = makeBook('1b7f6917-fedb-5d09-a71a-678cbfbb4a68', 'A')
+    const bookB = makeBook('c3c5414c-2225-57af-8b70-1eed24103850', 'B')
     const rowA = bookToRow(bookA, 'owner-1', 0)
     const rowB = bookToRow(bookB, 'owner-1', 1)
-    const store = makeFakeStore({ books: [bookA], activeBookId: 'uuid-a', universalBoxes: [] })
+    const store = makeFakeStore({ books: [bookA], activeBookId: '1b7f6917-fedb-5d09-a71a-678cbfbb4a68', universalBoxes: [] })
     const { client, upsertMock } = makeMockClient([rowA, rowB])
 
     const stop = startSync(store, client, 'owner-1')
@@ -417,9 +417,9 @@ describe('startSync', () => {
   })
 
   it('同一本书两边都有：本地更新（updatedAt 更晚）→ 保留本地版本', async () => {
-    const cloudBook = { ...makeBook('uuid-a', '云端标题'), updatedAt: '2024-01-01T00:00:00.000Z' }
+    const cloudBook = { ...makeBook('1b7f6917-fedb-5d09-a71a-678cbfbb4a68', '云端标题'), updatedAt: '2024-01-01T00:00:00.000Z' }
     const row = bookToRow(cloudBook, 'owner-1', 0)
-    const localBook = { ...makeBook('uuid-a', '本地标题（更新）'), updatedAt: '2024-06-01T00:00:00.000Z' }
+    const localBook = { ...makeBook('1b7f6917-fedb-5d09-a71a-678cbfbb4a68', '本地标题（更新）'), updatedAt: '2024-06-01T00:00:00.000Z' }
     const store = makeFakeStore({ books: [localBook], activeBookId: null, universalBoxes: [] })
     const { client, upsertMock } = makeMockClient([row])
 
@@ -434,9 +434,9 @@ describe('startSync', () => {
   })
 
   it('同一本书两边都有：云端更新（updatedAt 更晚）→ 用云端版本覆盖本地', async () => {
-    const cloudBook = { ...makeBook('uuid-a', '云端标题（更新）'), updatedAt: '2024-06-01T00:00:00.000Z' }
+    const cloudBook = { ...makeBook('1b7f6917-fedb-5d09-a71a-678cbfbb4a68', '云端标题（更新）'), updatedAt: '2024-06-01T00:00:00.000Z' }
     const row = bookToRow(cloudBook, 'owner-1', 0)
-    const localBook = { ...makeBook('uuid-a', '本地旧标题'), updatedAt: '2024-01-01T00:00:00.000Z' }
+    const localBook = { ...makeBook('1b7f6917-fedb-5d09-a71a-678cbfbb4a68', '本地旧标题'), updatedAt: '2024-01-01T00:00:00.000Z' }
     const store = makeFakeStore({ books: [localBook], activeBookId: null, universalBoxes: [] })
     const { client, upsertMock } = makeMockClient([row])
 
@@ -450,9 +450,9 @@ describe('startSync', () => {
   })
 
   it('同一本书两边都有：updatedAt 缺失或相等 → 保留本地（绝不能因为不确定就丢本地改动）', async () => {
-    const cloudBook = makeBook('uuid-a', '云端标题')
+    const cloudBook = makeBook('1b7f6917-fedb-5d09-a71a-678cbfbb4a68', '云端标题')
     const row = bookToRow(cloudBook, 'owner-1', 0)
-    const localBook = makeBook('uuid-a', '本地标题')
+    const localBook = makeBook('1b7f6917-fedb-5d09-a71a-678cbfbb4a68', '本地标题')
     const store = makeFakeStore({ books: [localBook], activeBookId: null, universalBoxes: [] })
     const { client } = makeMockClient([row])
 
@@ -488,20 +488,20 @@ describe('startSync', () => {
     await flushAsync()
     upsertMock.mockClear()
 
-    const newBook = makeBook('uuid-new', '新书')
-    store._setBooksDirectly([newBook], 'uuid-new')
+    const newBook = makeBook('92a33b80-2d87-56c1-8249-05db5672ab97', '新书')
+    store._setBooksDirectly([newBook], '92a33b80-2d87-56c1-8249-05db5672ab97')
 
     await new Promise((resolve) => setTimeout(resolve, 40))
 
     expect(upsertMock).toHaveBeenCalledTimes(1)
     const rows = upsertMock.mock.calls[0][0] as CwBookRow[]
-    expect(rows[0].id).toBe('uuid-new')
+    expect(rows[0].id).toBe('92a33b80-2d87-56c1-8249-05db5672ab97')
 
     stop()
   })
 
   it('删除本地书 → 防抖后对该 id 调用 delete().eq()', async () => {
-    const existing = makeBook('uuid-del', '待删书')
+    const existing = makeBook('5a2e4351-da33-58bb-b76a-958909e54327', '待删书')
     const store = makeFakeStore({ books: [existing], activeBookId: null, universalBoxes: [] })
     const { client, deleteEqMock } = makeMockClient([bookToRow(existing, 'owner-1', 0)])
 
@@ -511,7 +511,7 @@ describe('startSync', () => {
     store._setBooksDirectly([], null)
     await new Promise((resolve) => setTimeout(resolve, 40))
 
-    expect(deleteEqMock).toHaveBeenCalledWith('id', 'uuid-del')
+    expect(deleteEqMock).toHaveBeenCalledWith('id', '5a2e4351-da33-58bb-b76a-958909e54327')
 
     stop()
   })
@@ -525,7 +525,7 @@ describe('startSync', () => {
     upsertMock.mockClear()
     stop()
 
-    store._setBooksDirectly([makeBook('uuid-after-stop')], null)
+    store._setBooksDirectly([makeBook('ed07e068-47f4-5a10-afc3-05655bad6d78')], null)
     await new Promise((resolve) => setTimeout(resolve, 40))
 
     expect(upsertMock).not.toHaveBeenCalled()
@@ -656,17 +656,17 @@ describe('flushToCloud（Cmd+S 手动强制保存：不看脏标记，直接把�
   })
 
   it('全部书 + 通用盒子一次性 upsert（不管有没有脏标记）', async () => {
-    const bookA = makeBook('uuid-a', 'A')
-    const bookB = makeBook('uuid-b', 'B')
+    const bookA = makeBook('1b7f6917-fedb-5d09-a71a-678cbfbb4a68', 'A')
+    const bookB = makeBook('c3c5414c-2225-57af-8b70-1eed24103850', 'B')
     const universal = [makeUniversalBox([cardWithId('u1')])]
     const { client, upsertMock, universalUpsertMock } = makeMockClient()
 
-    const res = await flushToCloud(client, 'owner-1', { books: [bookA, bookB], activeBookId: 'uuid-a', universalBoxes: universal })
+    const res = await flushToCloud(client, 'owner-1', { books: [bookA, bookB], activeBookId: '1b7f6917-fedb-5d09-a71a-678cbfbb4a68', universalBoxes: universal })
 
     expect(res).toEqual({ ok: true })
     expect(upsertMock).toHaveBeenCalledTimes(1)
     const rows = upsertMock.mock.calls[0][0] as CwBookRow[]
-    expect(rows.map((r) => r.id).sort()).toEqual(['uuid-a', 'uuid-b'])
+    expect(rows.map((r) => r.id).sort()).toEqual(['1b7f6917-fedb-5d09-a71a-678cbfbb4a68', 'c3c5414c-2225-57af-8b70-1eed24103850'])
     expect(rows.every((r) => r.owner === 'owner-1')).toBe(true)
 
     expect(universalUpsertMock).toHaveBeenCalledTimes(1)
@@ -692,7 +692,7 @@ describe('flushToCloud（Cmd+S 手动强制保存：不看脏标记，直接把�
         return { select: vi.fn(), upsert: upsertMock, delete: () => ({ eq: vi.fn() }) }
       }),
     }
-    const res = await flushToCloud(client, 'owner-1', { books: [makeBook('uuid-a')], activeBookId: null, universalBoxes: [] })
+    const res = await flushToCloud(client, 'owner-1', { books: [makeBook('1b7f6917-fedb-5d09-a71a-678cbfbb4a68')], activeBookId: null, universalBoxes: [] })
     expect(res).toEqual({ ok: false, error: '写入失败' })
     expect(universalUpsertMock).not.toHaveBeenCalled()
   })
@@ -712,7 +712,7 @@ describe('flushToCloud（Cmd+S 手动强制保存：不看脏标记，直接把�
         delete: () => ({ eq: vi.fn() }),
       })),
     }
-    const res = await flushToCloud(client, 'owner-1', { books: [makeBook('uuid-a')], activeBookId: null, universalBoxes: [] })
+    const res = await flushToCloud(client, 'owner-1', { books: [makeBook('1b7f6917-fedb-5d09-a71a-678cbfbb4a68')], activeBookId: null, universalBoxes: [] })
     expect(res).toEqual({ ok: false, error: 'network down' })
   })
 })
@@ -780,4 +780,100 @@ describe('verified 也要往返', () => {
     const book: Book = { id: '55555555-5555-4555-8555-555555555555', title: '书', doc: {}, boxes: [] }
     expect('verified' in bookToRow(book, 'owner', 0).data).toBe(false)
   })
+})
+
+describe('saving safety regressions', () => {
+  it('retries a returned upsert error without losing the latest edit', async () => {
+    vi.useFakeTimers()
+    const { client, upsertMock } = makeMockClient()
+    const store = makeFakeStore({ books: [], activeBookId: null, universalBoxes: [] })
+    const stop = startSync(store, client, 'owner-1', { debounceMs: 10 })
+    try {
+      await vi.advanceTimersByTimeAsync(0)
+      upsertMock.mockResolvedValueOnce({ error: { message: 'offline' } })
+      const book = makeBook(crypto.randomUUID(), 'first')
+      store._setBooksDirectly([book])
+      await vi.advanceTimersByTimeAsync(10)
+      const latest = { ...book, title: 'latest' }
+      store._setBooksDirectly([latest])
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(upsertMock).toHaveBeenCalledTimes(2)
+      expect(upsertMock.mock.calls[1][0][0].title).toBe('latest')
+    } finally { stop(); vi.useRealTimers() }
+  })
+  it('failed initial download does not upload stale data as if the cloud were empty', async () => {
+    vi.useFakeTimers()
+    const { client, selectMock, upsertMock } = makeMockClient()
+    selectMock.mockResolvedValueOnce({ data: null, error: { message: 'network' } })
+    const book = makeBook(crypto.randomUUID())
+    const store = makeFakeStore({ books: [book], activeBookId: null, universalBoxes: [] })
+    const stop = startSync(store, client, 'owner-1')
+    try {
+      await vi.advanceTimersByTimeAsync(0)
+      expect(upsertMock).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(upsertMock).toHaveBeenCalledOnce()
+    } finally { stop(); vi.useRealTimers() }
+  })
+  it('tracks edits while initial download is still pending', async () => {
+    const { client, selectMock, upsertMock } = makeMockClient()
+    let resolve!: (v: any) => void
+    selectMock.mockImplementationOnce(() => new Promise(r => { resolve = r }))
+    const store = makeFakeStore({ books: [], activeBookId: null, universalBoxes: [] })
+    const stop = startSync(store, client, 'owner-1')
+    try {
+      const book = makeBook(crypto.randomUUID(), 'written during download')
+      store._setBooksDirectly([book])
+      resolve({ data: [], error: null })
+      await flushToCloud(client, 'owner-1', store.getState().library)
+      expect(upsertMock.mock.calls[upsertMock.mock.calls.length - 1][0][0].title).toBe(book.title)
+    } finally { stop() }
+  })
+  it('serializes manual and auto saves, retaining edits during an outstanding request', async () => {
+    vi.useFakeTimers()
+    const { client, upsertMock } = makeMockClient()
+    const store = makeFakeStore({ books: [], activeBookId: null, universalBoxes: [] })
+    const stop = startSync(store, client, 'owner-1', { debounceMs: 10 })
+    try {
+      await vi.advanceTimersByTimeAsync(0)
+      let resolve!: (v: any) => void
+      upsertMock.mockImplementationOnce(() => new Promise(r => { resolve = r }))
+      const book = makeBook(crypto.randomUUID(), 'first')
+      store._setBooksDirectly([book]); await vi.advanceTimersByTimeAsync(10)
+      store._setBooksDirectly([{ ...book, title: 'second' }]); await vi.advanceTimersByTimeAsync(10)
+      const manual = flushToCloud(client, 'owner-1', store.getState().library)
+      expect(upsertMock).toHaveBeenCalledTimes(1)
+      resolve({ error: null }); await manual
+      expect(upsertMock).toHaveBeenCalledTimes(2)
+      expect(upsertMock.mock.calls[1][0][0].title).toBe('second')
+    } finally { stop(); vi.useRealTimers() }
+  })
+  it('does not write after stopping during initialization', async () => {
+    const { client, selectMock, upsertMock } = makeMockClient()
+    let resolve!: (v: any) => void
+    selectMock.mockImplementationOnce(() => new Promise(r => { resolve = r }))
+    const store = makeFakeStore({ books: [makeBook(crypto.randomUUID())], activeBookId: null, universalBoxes: [] })
+    const stop = startSync(store, client, 'owner-1'); stop()
+    resolve({ data: [], error: null }); await flushAsync(20)
+    expect(upsertMock).not.toHaveBeenCalled()
+  })
+})
+
+it('retries rejected network promises and failed deletions, without unhandled rejections', async () => {
+  vi.useFakeTimers()
+  const book = makeBook(crypto.randomUUID())
+  const { client, upsertMock, deleteEqMock } = makeMockClient([bookToRow(book, 'owner-1', 0)])
+  const store = makeFakeStore({ books: [book], activeBookId: null, universalBoxes: [] })
+  const stop = startSync(store, client, 'owner-1', { debounceMs: 10 })
+  try {
+    await vi.advanceTimersByTimeAsync(0)
+    upsertMock.mockRejectedValueOnce(new Error('connection reset'))
+    store._setBooksDirectly([{ ...book, title: 'edited' }])
+    await vi.advanceTimersByTimeAsync(1010)
+    expect(upsertMock).toHaveBeenCalledTimes(2)
+    deleteEqMock.mockResolvedValueOnce({ error: { message: 'offline delete' } })
+    store._setBooksDirectly([])
+    await vi.advanceTimersByTimeAsync(1010)
+    expect(deleteEqMock).toHaveBeenCalledTimes(2)
+  } finally { stop(); vi.useRealTimers() }
 })

@@ -1,3 +1,4 @@
+import { SaveStatus } from './ui/SaveStatus'
 import { useEffect } from 'react'
 import { useBookStore } from './state/bookStore'
 import { useAuthStore } from './state/authStore'
@@ -53,6 +54,7 @@ export function App() {
   // 只剩 shelf/book 两种。
   return (
     <>
+      <SaveStatus />
       {shell === 'shelf' ? <Bookshelf /> : <Workspace />}
       <Toast />
     </>

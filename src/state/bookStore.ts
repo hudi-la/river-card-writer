@@ -1,3 +1,4 @@
+import { persistDrafts, recoverDrafts, reportLocalSave } from './localDrafts'
 import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import { mergeImported, mergeUniversalCards } from './backup'
@@ -162,7 +163,7 @@ type BookState = {
 }
 
 function freshBook(title?: string): Book {
-  return { id: nanoid(), title: title ?? '未命名', doc: structuredClone(EMPTY_DOC), boxes: [], updatedAt: new Date().toISOString() }
+  return { id: crypto.randomUUID(), title: title ?? '未命名', doc: structuredClone(EMPTY_DOC), boxes: [], updatedAt: new Date().toISOString() }
 }
 
 // 空库时的默认起始书：不是空白"未命名"，而是一本讲"怎么用"的教程（河流/卡片/盒子…）。
@@ -506,7 +507,7 @@ export const STARTER_DOC = {
 }
 
 function starterBook(): Book {
-  return { id: nanoid(), title: STARTER_TITLE, doc: structuredClone(STARTER_DOC), boxes: [], updatedAt: new Date().toISOString() }
+  return { id: crypto.randomUUID(), title: STARTER_TITLE, doc: structuredClone(STARTER_DOC), boxes: [], updatedAt: new Date().toISOString() }
 }
 // 是不是"一本从没被动过的默认教程书"——sync 用它来判断该不该把这本剔掉，
 // 避免每次在新设备/无痕里登录都把这本空教程又传进你的账号。用户一旦改了标题/
@@ -609,14 +610,14 @@ export function load(): Library {
     const raw = localStorage.getItem(LIBRARY_KEY)
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (parsed && Array.isArray(parsed.books)) return normalizeLibrary(parsed)
+      if (parsed && Array.isArray(parsed.books)) return recoverDrafts(normalizeLibrary(parsed))
     }
   } catch {}
 
   const migrated = loadOldSingleBookAsLibrary()
-  if (migrated) return migrated
+  if (migrated) return recoverDrafts(migrated)
 
-  return { books: [starterBook()], activeBookId: null, universalBoxes: defaultUniversalBoxes() }
+  return recoverDrafts({ books: [starterBook()], activeBookId: null, universalBoxes: defaultUniversalBoxes() })
 }
 
 // 自动本地快照的最后一道保险（snapshots.ts）挂在这里：每次真正落盘之后，顺手判断
@@ -628,8 +629,11 @@ let lastSnapshotTs: number | null = null
 
 function persist(library: Library) {
   try {
+    persistDrafts(library, prevPersistedLibrary)
     localStorage.setItem(LIBRARY_KEY, JSON.stringify(library))
+    reportLocalSave()
   } catch (e) {
+    reportLocalSave(e)
     console.warn('persist failed', e)
   }
 
@@ -690,6 +694,8 @@ export const useBookStore = create<BookState>((set, get) => {
     rawStoredBeforeMigration = null
   }
   const initialLibrary = load()
+  prevPersistedLibrary = initialLibrary
+  try { persistDrafts(initialLibrary, initialLibrary) } catch (e) { reportLocalSave(e) }
   try {
     if (rawStoredBeforeMigration !== JSON.stringify(initialLibrary)) {
       persist(initialLibrary)

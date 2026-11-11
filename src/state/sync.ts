@@ -1,3 +1,4 @@
+import { useSaveStatus } from './saveStatus'
 import type { Book, Box, Cover, Library } from './bookStore'
 import { UNIVERSAL_BOX_ID, isValidCover, isPristineStarter } from './bookStore'
 import { mergeUniversalCards } from './backup'
@@ -218,11 +219,8 @@ export function mergeBooksPlan(localBooks: Book[], cloudRows: CwBookRow[]): Book
         const cloudAsBook = rowToBook(cloudRow)
         const contentIdentical =
           local.title === cloudAsBook.title &&
-          JSON.stringify(local.doc) === JSON.stringify(cloudAsBook.doc) &&
-          JSON.stringify(local.boxes) === JSON.stringify(cloudAsBook.boxes) &&
-          JSON.stringify(local.cover ?? null) === JSON.stringify(cloudAsBook.cover ?? null) &&
-          (local.subtitle ?? '') === (cloudAsBook.subtitle ?? '') &&
-          (local.author ?? '') === (cloudAsBook.author ?? '')
+          JSON.stringify(bookToRow(local, '', 0).data) === JSON.stringify(cloudRow.data) &&
+          JSON.stringify(local.cover ?? null) === JSON.stringify(cloudAsBook.cover ?? null)
         if (!contentIdentical) toUpload.push(local)
       }
     } else if (isUuid(local.id)) {
@@ -255,6 +253,8 @@ export function mergeBooksPlan(localBooks: Book[], cloudRows: CwBookRow[]): Book
 // 存上"，不是"帮我把还没同步的部分补上"。
 // 全程 try/catch 兜底，绝不向调用方抛出——调用方（Cmd+S 处理器）需要在任何情况
 // 下都能给出确定的成功/失败反馈，而不是被一个意外抛出打断。
+const activeSyncs = new WeakMap<SyncSupabaseClient, { owner: string; flush: () => Promise<FlushResult> }>()
+
 export type FlushResult = { ok: true } | { ok: false; error: string }
 
 export async function flushToCloud(
@@ -263,6 +263,8 @@ export async function flushToCloud(
   library: Library
 ): Promise<FlushResult> {
   if (!client || !ownerId) return { ok: false, error: '未登录，无法保存到云端' }
+  const active = activeSyncs.get(client)
+  if (active?.owner === ownerId) return active.flush()
   try {
     const books = library.books
     if (books.length > 0) {
@@ -318,164 +320,146 @@ export function startSync(
   opts: StartSyncOptions = {}
 ): () => void {
   if (!client || !ownerId) return () => {}
-  // 收窄一次后固定成不为空的局部引用：下面这些嵌套函数是闭包，TS 不会记住
-  // 外层参数在 guard 之后就一直非空，所以显式存一份非空的局部变量。
-  const cl: SyncSupabaseClient = client
-  const owner: string = ownerId
-
-  let stopped = false
-  let applyingRemote = false
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null
+  const cl = client, owner = ownerId
+  let stopped = false, applyingRemote = false, ready = false
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let running: Promise<FlushResult> | null = null
   const pendingUpserts = new Map<string, Book>()
   const pendingDeletes = new Set<string>()
-  // 通用盒子是库级单行，跟按 id 增量追踪的 books 不一样——只需记"最新一份要传的
-  // universalBoxes 数组"，防抖窗口内多次改动自然合并成一次 upsert。
-  let pendingUniversalUpsert: Box[] | null = null
-  let unsubscribeStore: (() => void) | null = null
-
-  function setLibraryLocally(library: Library) {
+  let pendingUniversal: Box[] | null = null
+  let attempt = 0
+  const report = (cloud: 'saving' | 'saved' | 'error', cloudError = '') => {
+    if (!stopped) useSaveStatus.setState({ cloud, cloudError })
+  }
+  function setLocal(library: Library) {
     applyingRemote = true
-    try {
-      store.getState().setLibrary(library)
-    } finally {
-      applyingRemote = false
-    }
+    try { store.getState().setLibrary(library) } finally { applyingRemote = false }
   }
-
-  function scheduleFlush() {
-    if (debounceTimer) clearTimeout(debounceTimer)
-    debounceTimer = setTimeout(() => {
-      debounceTimer = null
-      void flush()
-    }, opts.debounceMs ?? 800)
+  function schedule(ms = opts.debounceMs ?? 800) {
+    if (stopped) return
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => { timer = null; void flush() }, ms)
   }
-
-  async function flush() {
-    const upserts = Array.from(pendingUpserts.values())
-    pendingUpserts.clear()
-    const deletes = Array.from(pendingDeletes.values())
-    pendingDeletes.clear()
-    const universalUpsert = pendingUniversalUpsert
-    pendingUniversalUpsert = null
-
-    if (upserts.length > 0) {
-      const books = store.getState().library.books
-      const rows = upserts.map((b) => {
-        const position = books.findIndex((x) => x.id === b.id)
-        return bookToRow(b, owner, position === -1 ? 0 : position)
-      })
-      await cl.from(TABLE).upsert(rows)
-    }
-    for (const id of deletes) {
-      await cl.from(TABLE).delete().eq('id', id)
-    }
-    if (universalUpsert) {
-      await cl.from(UNIVERSAL_TABLE).upsert(universalToRow(universalUpsert, owner))
-    }
+  const check = (result: { error: { message: string } | null }) => {
+    if (result.error) throw new Error(result.error.message)
   }
-
-  function subscribeToLocalChanges() {
-    unsubscribeStore = store.subscribe((state, prevState) => {
-      if (stopped || applyingRemote) return
-      let dirty = false
-
-      if (state.library.books !== prevState.library.books) {
-        const books = state.library.books
-        const prevBooks = prevState.library.books
-        const prevIds = new Set(prevBooks.map((b) => b.id))
-        const curIds = new Set(books.map((b) => b.id))
-
-        for (const id of prevIds) {
-          if (!curIds.has(id)) {
-            pendingDeletes.add(id)
-            pendingUpserts.delete(id)
-          }
-        }
-        for (const b of books) {
-          const prev = prevBooks.find((p) => p.id === b.id)
-          if (prev !== b) {
-            pendingUpserts.set(b.id, b)
-            pendingDeletes.delete(b.id)
-          }
-        }
-        dirty = true
-      }
-
-      if (state.library.universalBoxes !== prevState.library.universalBoxes) {
-        pendingUniversalUpsert = state.library.universalBoxes
-        dirty = true
-      }
-
-      if (dirty) scheduleFlush()
+  function normalizeIds(library: Library): Library {
+    const remap: Record<string, string> = {}
+    const books = library.books.map(book => {
+      if (isUuid(book.id)) return book
+      const id = genUuid(); remap[book.id] = id
+      return { ...book, id }
     })
+    if (!Object.keys(remap).length) return library
+    const next = { ...library, books, activeBookId: library.activeBookId ? remap[library.activeBookId] ?? library.activeBookId : null }
+    setLocal(next)
+    return store.getState().library
   }
-
-  // CRITICAL DATA-SAFETY：一本书都不能因为这次同步而消失。老实现在"云端非空"
-  // 时直接把本地 books 数组整个换成云端下载下来的那份，云端还不知道的本地独
-  // 有书（新建的、还没同步过的老书……）就这么被覆盖丢了——这是本次要修的那个
-  // 真实丢书事故的根因。现在改成调用 mergeBooksPlan 算出 local ∪ cloud 的并
-  // 集，本地独有的书永远保留（并顺带补传上云），不存在"云端替换本地"这条路径。
-  async function initBooks() {
-    const { data } = await cl.from(TABLE).select('*')
+  // Subscribe BEFORE awaiting the first download. Edits during login/network
+  // delay stay in the outbox and take priority over the downloaded snapshot.
+  const unsubscribe = store.subscribe((state, prev) => {
+    if (stopped || applyingRemote) return
+    const library = normalizeIds(state.library)
+    const prevById = new Map(prev.library.books.map(b => [b.id, b]))
+    const currentIds = new Set(library.books.map(b => b.id))
+    for (const book of library.books) {
+      if (book !== prevById.get(book.id)) { pendingUpserts.set(book.id, book); pendingDeletes.delete(book.id) }
+    }
+    for (const book of prev.library.books) if (isUuid(book.id) && !currentIds.has(book.id)) {
+      pendingDeletes.add(book.id); pendingUpserts.delete(book.id)
+    }
+    if (library.universalBoxes !== prev.library.universalBoxes) pendingUniversal = library.universalBoxes
+    if (pendingUpserts.size || pendingDeletes.size || pendingUniversal) { report('saving'); schedule() }
+  })
+  async function initialize() {
+    // A failed read is NOT an empty cloud library. No uploads until both reads
+    // succeed; never overwrite remote data using a guessed empty baseline.
+    const booksResult = await cl.from(TABLE).select('*'); check(booksResult)
     if (stopped) return
-    const cloudRows = (data ?? []) as CwBookRow[]
-    const cur = store.getState().library
-    const localBooks = cur.books
-    const plan = mergeBooksPlan(localBooks, cloudRows)
-
-    const remappedActiveId = cur.activeBookId ? plan.idRemap[cur.activeBookId] ?? cur.activeBookId : cur.activeBookId
-    // 若当前打开的正是被剔掉的教程书，活动书已不在合并结果里 → 退回书柜（null），
-    // 免得 activeBook() 指向一本不存在的书。
-    const finalActiveId = remappedActiveId && plan.merged.some((b) => b.id === remappedActiveId) ? remappedActiveId : null
-    const booksChanged = plan.merged.length !== localBooks.length || plan.merged.some((b, i) => b !== localBooks[i])
-    if (booksChanged || finalActiveId !== cur.activeBookId) {
-      setLibraryLocally({ ...cur, books: plan.merged, activeBookId: finalActiveId })
-    }
-
-    if (plan.toUpload.length > 0) {
-      const rows = plan.toUpload.map((b) => {
-        const position = plan.merged.findIndex((x) => x.id === b.id)
-        return bookToRow(b, owner, position === -1 ? 0 : position)
-      })
-      await cl.from(TABLE).upsert(rows)
-    }
-  }
-
-  // 通用盒子：至多一行/用户，一行里装 Box[]（多个具名通用盒子）。云有行 → 跟本地
-  // 按"每个 box 按 id、cards 按 cardId"做非破坏性 union 合并（mergeUniversalBoxes，
-  // 本地盒子/本地卡永远保留），合并结果写回本地 store；云没有行，或合并后跟云端原有
-  // 的不一致（本地有云端还不知道的盒子/卡）→ 把合并结果 upsert 回云端，让云端也追上
-  // 本地。全程不存在"用云覆盖本地"这条路径——即使云端行存在但本地更全，也只增不减。
-  async function initUniversal() {
-    const { data } = await cl.from(UNIVERSAL_TABLE).select('*')
+    const boxesResult = await cl.from(UNIVERSAL_TABLE).select('*'); check(boxesResult)
     if (stopped) return
-    const cloudRow = ((data ?? [])[0] ?? null) as CwUniversalRow | null
-    const localBoxes = store.getState().library.universalBoxes ?? defaultUniversalBoxes()
-    const cloudBoxes = cloudRow ? rowToUniversal(cloudRow) : []
-    const mergedBoxes = mergeUniversalBoxes(localBoxes, cloudBoxes)
-
-    const localSerialized = JSON.stringify(localBoxes)
-    const mergedSerialized = JSON.stringify(mergedBoxes)
-    if (mergedSerialized !== localSerialized) {
-      setLibraryLocally({ ...store.getState().library, universalBoxes: mergedBoxes })
-    }
-    if (!cloudRow || mergedSerialized !== JSON.stringify(cloudBoxes)) {
-      await cl.from(UNIVERSAL_TABLE).upsert(universalToRow(mergedBoxes, owner))
+    const cur = normalizeIds(store.getState().library)
+    const rows = (booksResult.data ?? []) as CwBookRow[]
+    const plan = mergeBooksPlan(cur.books, rows.filter(r => !pendingDeletes.has(r.id) && !pendingUpserts.has(r.id)))
+    const cloudBox = (boxesResult.data ?? [])[0] as CwUniversalRow | undefined
+    const boxes = mergeUniversalBoxes(cur.universalBoxes ?? defaultUniversalBoxes(), cloudBox ? rowToUniversal(cloudBox) : [])
+    setLocal({ ...cur, books: plan.merged, universalBoxes: boxes,
+      activeBookId: cur.activeBookId && plan.merged.some(b => b.id === cur.activeBookId) ? cur.activeBookId : null })
+    for (const book of plan.toUpload) if (!pendingDeletes.has(book.id)) pendingUpserts.set(book.id, book)
+    // setLibrary may recover another tab's independently persisted new books.
+    for (const book of store.getState().library.books) if (!rows.some(r => r.id === book.id)) pendingUpserts.set(book.id, book)
+    if (!cloudBox || JSON.stringify(boxes) !== JSON.stringify(rowToUniversal(cloudBox))) pendingUniversal = boxes
+    ready = true
+  }
+  async function drain(): Promise<FlushResult> {
+    try {
+      report('saving')
+      if (!ready) await initialize()
+      if (stopped) return { ok: false, error: '同步已停止' }
+      // One request at a time. A late acknowledgement may remove only the exact
+      // queued version it sent, never edits made while that request was in flight.
+      while (!stopped && (pendingUpserts.size || pendingDeletes.size || pendingUniversal)) {
+        const sent = [...pendingUpserts.values()]
+        if (sent.length) {
+          const books = store.getState().library.books
+          check(await cl.from(TABLE).upsert(sent.map(b => bookToRow(b, owner, Math.max(0, books.findIndex(x => x.id === b.id))))))
+          for (const b of sent) if (pendingUpserts.get(b.id) === b) pendingUpserts.delete(b.id)
+        }
+        if (stopped) break
+        for (const id of [...pendingDeletes]) {
+          check(await cl.from(TABLE).delete().eq('id', id))
+          pendingDeletes.delete(id)
+          if (stopped) break
+        }
+        if (stopped) break
+        const boxes = pendingUniversal
+        if (boxes) {
+          check(await cl.from(UNIVERSAL_TABLE).upsert(universalToRow(boxes, owner)))
+          if (pendingUniversal === boxes) pendingUniversal = null
+        }
+      }
+      attempt = 0
+      if (stopped) return { ok: false, error: '同步已停止' }
+      report('saved')
+      return { ok: true }
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e)
+      report('error', error)
+      // Keep the outbox intact for returned API errors AND rejected requests.
+      schedule(Math.min(30000, 1000 * 2 ** Math.min(attempt++, 5)))
+      return { ok: false, error }
     }
   }
-
-  async function init() {
-    await initBooks()
-    if (stopped) return
-    await initUniversal()
-    if (!stopped) subscribeToLocalChanges()
+  function flush(): Promise<FlushResult> {
+    if (stopped) return Promise.resolve({ ok: false, error: '同步已停止' })
+    if (running) return running
+    if (timer) { clearTimeout(timer); timer = null }
+    running = drain().finally(() => { running = null })
+    return running
   }
-
-  void init()
-
+  activeSyncs.set(cl, { owner, flush })
+  useSaveStatus.setState({ retry: flush })
+  const onOnline = () => { void flush() }
+  const onHidden = () => { if (document.visibilityState === 'hidden') void flush() }
+  const onUnload = (event: BeforeUnloadEvent) => {
+    if (pendingUpserts.size || pendingDeletes.size || pendingUniversal || useSaveStatus.getState().localError) {
+      event.preventDefault(); event.returnValue = ''
+    }
+  }
+  window.addEventListener('online', onOnline)
+  document.addEventListener('visibilitychange', onHidden)
+  window.addEventListener('beforeunload', onUnload)
+  void flush()
   return () => {
     stopped = true
-    if (debounceTimer) clearTimeout(debounceTimer)
-    unsubscribeStore?.()
+    if (timer) clearTimeout(timer)
+    unsubscribe()
+    window.removeEventListener('online', onOnline)
+    document.removeEventListener('visibilitychange', onHidden)
+    window.removeEventListener('beforeunload', onUnload)
+    if (activeSyncs.get(cl)?.flush === flush) {
+      activeSyncs.delete(cl)
+      useSaveStatus.setState({ cloud: 'idle', cloudError: '', retry: null })
+    }
   }
 }

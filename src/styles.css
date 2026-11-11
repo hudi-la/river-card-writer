@@ -1492,3 +1492,8 @@ button.shelf-add-book, button.box-tile-add { border: 0; padding: 0; background: 
 .version-diff > p { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
 .version-diff del { background: #f9e8e2; color: #803d2a; }
 .version-diff ins { background: #e8f0e3; color: #31512b; }
+
+.save-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 5px 16px; background: #f5f7f3; color: #46614a; font: 12px/1.5 system-ui; }
+.save-status-error { background: #fff1dc; color: #713d14; padding: 10px 16px; }
+.save-status button { border: 1px solid currentColor; border-radius: 4px; background: transparent; color: inherit; padding: 3px 8px; cursor: pointer; }
+.save-status-detail { max-width: 30em; overflow-wrap: anywhere; }

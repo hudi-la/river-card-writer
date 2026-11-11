@@ -1,4 +1,4 @@
-import { nanoid } from 'nanoid'
+
 import type { Book, Box, Library } from './bookStore'
 
 export const BACKUP_FORMAT = 'card-writer-backup'
@@ -122,7 +122,7 @@ export function mergeImported(current: Library, importedBooks: Book[]): Library 
   const appended: Book[] = []
   for (const b of importedBooks) {
     if (existingIds.has(b.id)) {
-      const freshId = nanoid()
+      const freshId = crypto.randomUUID()
       appended.push({ ...b, id: freshId })
       existingIds.add(freshId)
     } else {
