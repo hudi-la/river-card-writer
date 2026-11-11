@@ -628,9 +628,11 @@ let prevPersistedLibrary: Library | null = null
 let lastSnapshotTs: number | null = null
 
 function persist(library: Library) {
+  let saved = false
   try {
     persistDrafts(library, prevPersistedLibrary)
     localStorage.setItem(LIBRARY_KEY, JSON.stringify(library))
+    saved = true
     reportLocalSave()
   } catch (e) {
     reportLocalSave(e)
@@ -649,7 +651,7 @@ function persist(library: Library) {
   } catch (e) {
     console.warn('snapshot failed', e)
   } finally {
-    prevPersistedLibrary = library
+    if (saved) prevPersistedLibrary = library
   }
 }
 

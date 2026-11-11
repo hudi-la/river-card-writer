@@ -47,3 +47,14 @@ it('reports disk-write failure visibly and retains the manuscript in memory', as
     expect(useSaveStatus.getState().localError).toContain('导出备份')
   } finally { spy.mockRestore(); warning.mockRestore() }
 })
+it('a failed local write is retried on the next save instead of becoming the acknowledged baseline', async () => {
+  const { vi } = await import('vitest')
+  const book = useBookStore.getState().addBook('before quota')
+  const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('quota', 'QuotaExceededError') })
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  useBookStore.getState().renameBook(book.id, 'unsaved edit')
+  spy.mockRestore(); warning.mockRestore()
+  useBookStore.getState().addBook('next save')
+  const record = JSON.parse(localStorage.getItem('card-writer:draft:' + book.id)!)
+  expect(record.book.title).toBe('unsaved edit')
+})
