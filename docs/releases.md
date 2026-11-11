@@ -122,3 +122,33 @@ Rollback: previous Pages production deployment `de16b947-bd5c-4b60-865b-88a3bac5
 - Removed the separate move row. Six-dot buttons now support pointer dragging and click/Enter/Space to open a destination selector, in both sidebar and detailed outline. Escape closes and returns focus. Pointer capture starts only after the drag threshold; completed drags suppress accidental clicks.
 - Handles use a fixed 24px area, align vertically to their rows and share the same right edge. Reserved row padding keeps word counts clear and visible.
 - Verification: initial full suite 817/817 passed; final targeted suite 67/67 passed including two new click/keyboard/drag regression tests. Production build and Functions compilation passed. Isolated Chrome fixtures verified all five hierarchy rows with zero vertical-center error and identical right edges, actual keyboard reorder, pointer reorder and no accidental menu after dragging. Screenshot reviewed. Custom-domain HTML and all referenced assets match published files byte-for-byte.
+
+## 2026-11-11 — prevent new-manuscript and stale-tab loss
+
+- Production https://river.hudiworks.com/ ; published source
+  `2cbb7cef5e1192c7e9c771e2c57e6184198456f5`, successfully pushed before deployment
+  to `hudi-la/river-card-writer`, branch `codex/river-save-safety-20261111`.
+- Pages production deployment `d5b3c918-b91b-46d9-aae0-f9ce2520f1b9`
+  (https://d5b3c918.card-writer.pages.dev).
+- Baseline/rollback `6fa1870`, deployment `2ffa9804-e4dd-4204-ac6d-487b5a9cb4dc`;
+  latest production rechecked immediately before publishing. No database migrations.
+- New books use UUIDs immediately. Automatic/manual saves share an acknowledged,
+  serialized retry queue; failed downloads no longer imply an empty cloud.
+  Per-book local records recover manuscripts after stale whole-library overwrites;
+  detected same-book window conflicts retain both versions. Persistent sync/disk
+  error status provides retry and backup actions.
+- Baseline-failing reproductions and production read-only UUID rejection establish
+  the defects. Exact historical tab-write sequence is not available. Details and
+  remaining cross-device/storage limits: `docs/save-safety-20261111.md`.
+- Validation: full suite 833/833 before final local-write acknowledgement fix;
+  final affected store/snapshot/loss regressions 100/100 (one additional test).
+  Production build and Functions compilation pass; no new TypeScript diagnostics.
+  Synthetic browser fixture verified offline error/retry controls and recovery
+  after simulated stale-library overwrite/reload, without real user data.
+- Live custom-domain HTML and all referenced JS/CSS match build bytes. Entry
+  `main-C_U4NNtX.js`, shared `styles-D6oNj9S7.js`, CSS `styles-D9MeSbYU.css`.
+  Signed-in production browser displayed the recovered manuscript and transitioned
+  from syncing to cloud-saved. No user manuscript edited for verification.
+- Existing browser tabs keep the previous JavaScript until reopened/refreshed;
+  preserve any unsaved contents before refreshing. Rollback leaves local per-book
+  records and private cloud histories intact but reintroduces old save behavior.
