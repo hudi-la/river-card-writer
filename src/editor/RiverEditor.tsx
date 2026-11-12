@@ -1,5 +1,6 @@
+import { commitEditorDocument } from './documentSave'
 import { NOTE_EDITING_ENABLED } from '../noteEditing'
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { Plus } from 'lucide-react'
 import { useEditor, EditorContent } from '@tiptap/react'
@@ -175,10 +176,10 @@ function indicatorRectAt(dom: HTMLElement, dragCardId: string, clientY: number):
 export { findCardInDoc }
 
 export function RiverEditor() {
-  // 只在挂载时读一次当前书的 doc 当初始内容——之后的改动全走 onUpdate→updateDoc，
-  // 不需要响应 activeBook() 变化（Workspace 用 key={activeBookId} 换书时整体重挂载）。
+  // Bind this editor to its mounted book; external revisions are applied below.
   const book = useBookStore((s) => s.activeBook())
-  const updateDoc = useBookStore((s) => s.updateDoc)
+  const mountedBookId = useRef(book?.id)
+  const documentBase = useRef(book?.doc)
   const carried = useBookStore((s) => s.carried)
   const getBox = useBookStore((s) => s.getBox)
   const takeCardFromBox = useBookStore((s) => s.takeCardFromBox)
@@ -218,9 +219,28 @@ export function RiverEditor() {
     ],
     content: book?.doc ?? EMPTY_DOC,
     immediatelyRender: false,
-    onUpdate: ({ editor }) => updateDoc(editor.getJSON()),
+    onUpdate: ({ editor }) => {
+      const doc = editor.getJSON()
+      if (commitEditorDocument(mountedBookId.current, documentBase.current, doc)) {
+        documentBase.current = doc
+      } else {
+        const latest = useBookStore.getState().library.books.find(b => b.id === mountedBookId.current)
+        if (latest) {
+          documentBase.current = latest.doc
+          editor.commands.setContent(latest.doc, { emitUpdate: false })
+        }
+      }
+    },
     editorProps: { attributes: { class: 'river', role: 'textbox', 'aria-label': '正文编辑器', 'aria-multiline': 'true' } },
   })
+
+  // Cloud sync and recovery can replace a document without changing its book ID.
+  // Keep the visible editor in step, without emitting another save transaction.
+  useLayoutEffect(() => {
+    if (!editor || !book || book.id !== mountedBookId.current || book.doc === documentBase.current) return
+    documentBase.current = book.doc
+    editor.commands.setContent(book.doc, { emitUpdate: false })
+  }, [editor, book?.doc, book?.id])
 
   // 把挂载好的 editor 实例发布到 editorBridge，供左栏 sidebar 等编辑器树之外
   // 的组件调用命令（比如设置标题 note）；卸载/换书重挂载时要清空，避免陈旧引用。

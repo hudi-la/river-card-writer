@@ -1,3 +1,4 @@
+import { saveVersion } from './versions/client'
 import { SaveStatus } from './ui/SaveStatus'
 import { useEffect } from 'react'
 import { useBookStore } from './state/bookStore'
@@ -24,7 +25,9 @@ export function App() {
   // 登录后启动云同步（首登迁移 + 后续防抖 upsert）；signOut / 状态变化时停订阅。
   useEffect(() => {
     if (status !== 'signed-in' || !session?.user?.id) return
-    const stop = startSync(useBookStore, supabase, session.user.id)
+    const stop = startSync(useBookStore, supabase, session.user.id, {
+      safeguard: book => saveVersion(book, 'safety', '清空或删除前自动保留', session.user.id),
+    })
     return stop
   }, [status, session?.user?.id])
 

@@ -877,3 +877,22 @@ it('retries rejected network promises and failed deletions, without unhandled re
     expect(deleteEqMock).toHaveBeenCalledTimes(2)
   } finally { stop(); vi.useRealTimers() }
 })
+
+it('keeps cloud content until the pre-clear safeguard succeeds, then retries the clear', async () => {
+  vi.useFakeTimers()
+  const book = { ...makeBook(crypto.randomUUID()), doc: { type: 'doc', content: [cardWithId('c', 'original important text')] } }
+  const { client, upsertMock } = makeMockClient([bookToRow(book, 'owner-1', 0)])
+  const store = makeFakeStore({ books: [book], activeBookId: null, universalBoxes: [] })
+  const safeguard = vi.fn().mockRejectedValueOnce(new Error('history offline')).mockResolvedValue({ id: 'saved' })
+  const stop = startSync(store, client, 'owner-1', { debounceMs: 10, safeguard })
+  try {
+    await vi.advanceTimersByTimeAsync(0)
+    store._setBooksDirectly([{ ...book, doc: structuredClone(EMPTY_DOC) }])
+    await vi.advanceTimersByTimeAsync(10)
+    expect(upsertMock).not.toHaveBeenCalled()
+    expect(safeguard.mock.calls[0][0].doc).toEqual(book.doc)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(safeguard).toHaveBeenCalledTimes(2)
+    expect(upsertMock).toHaveBeenCalledOnce()
+  } finally { stop(); vi.useRealTimers() }
+})

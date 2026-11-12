@@ -294,3 +294,18 @@ describe('findCardInDoc（拖到盒子/拖拽重排共用的定位逻辑）', ()
     editor.destroy()
   })
 })
+
+it('applies an externally replaced document to the mounted editor without changing book ID', async () => {
+  const { act, cleanup, waitFor } = await import('@testing-library/react')
+  const { useEditorBridge } = await import('../state/editorBridge')
+  const view = render(<RiverEditor />)
+  await waitFor(() => expect(useEditorBridge.getState().editor).toBeTruthy())
+  const state = useBookStore.getState()
+  const id = state.activeBook()!.id
+  const remote = { type: 'doc', content: [{ type: 'card', attrs: { cardId: 'remote' }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '远端刚到的完整正文' }] }] }] }
+  act(() => state.setLibrary({ ...state.library, books: state.library.books.map(b => b.id === id ? { ...b, doc: remote } : b) }))
+  await waitFor(() => expect(useEditorBridge.getState().editor!.getText()).toContain('远端刚到的完整正文'))
+  act(() => { useEditorBridge.getState().editor!.commands.insertContent('追加') })
+  expect(JSON.stringify(useBookStore.getState().activeBook()!.doc)).toContain('远端刚到的完整正文')
+  view.unmount(); cleanup()
+})

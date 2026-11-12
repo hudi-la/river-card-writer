@@ -166,3 +166,28 @@ Full TypeScript diagnostics are identical to production baseline after path
 normalization (existing test typing failures, none added by this feature).
 This verification was completed before remote schema changes or deployment;
 see docs/releases.md for the subsequent production release record.
+
+## Recovery and stale-editor protection (2026-11-11)
+
+Based on production `2cbb7ce` / deployment `d5b3c918-b91b-46d9-aae0-f9ce2520f1b9`.
+No schema migration: the recovery listing reads the existing private D1 version
+table and authenticates exactly like the per-article history endpoints. It returns
+50 latest non-empty article versions per page, scoped to the authenticated owner,
+including articles no longer in the main shelf. Preview validates the book and
+restores only as a new UUID copy; account changes invalidate preview/restore.
+
+The mounted editor now follows external same-ID document changes without emitting
+a save. Transactions bind to the mounted book and their document baseline;
+conflicting content is retained as a separate copy instead of replacing the newly
+loaded revision. The stale-editor regression fails against the previous live source.
+Before emptying/deleting a non-empty book, sync saves its full previous version as
+a permanent safety version and refuses the destructive cloud write if that fails.
+This also applies to an empty local version uploaded after reconnection. Existing
+size/count limits on permanent history remain: failure is visible and retryable.
+
+Verification: 843 tests / 68 files, production build and Functions compilation.
+No new TypeScript diagnostics relative to baseline. Browser synthetic fixture
+`qa/recovery.html` verifies external document loading, history preview and additive
+recovery without reading or writing production manuscripts. Audit/restore user
+backups are private local artifacts, never committed. Code rollback is the baseline
+Pages deployment above; leave recovered articles and existing history intact.

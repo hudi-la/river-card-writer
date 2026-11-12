@@ -304,6 +304,7 @@ export type SyncableBookStore = {
 
 export type StartSyncOptions = {
   debounceMs?: number
+  safeguard?: (book: Book) => Promise<unknown>
 }
 
 const TABLE = 'cw_books'
@@ -326,6 +327,8 @@ export function startSync(
   let running: Promise<FlushResult> | null = null
   const pendingUpserts = new Map<string, Book>()
   const pendingDeletes = new Set<string>()
+  const safeguards = new Map<string, Book>()
+  const hasText = (node: any): boolean => !!(node?.type === 'text' && node.text?.trim()) || (node?.content ?? []).some(hasText)
   let pendingUniversal: Box[] | null = null
   let attempt = 0
   const report = (cloud: 'saving' | 'saved' | 'error', cloudError = '') => {
@@ -362,6 +365,12 @@ export function startSync(
     const library = normalizeIds(state.library)
     const prevById = new Map(prev.library.books.map(b => [b.id, b]))
     const currentIds = new Set(library.books.map(b => b.id))
+    if (opts.safeguard) for (const old of prev.library.books) {
+      const next = library.books.find(b => b.id === old.id)
+      if (hasText(old.doc) && (!next || !hasText(next.doc))) {
+        safeguards.set(`${old.id}:${old.updatedAt ?? ''}:${JSON.stringify(old.doc)}`, old)
+      }
+    }
     for (const book of library.books) {
       if (book !== prevById.get(book.id)) { pendingUpserts.set(book.id, book); pendingDeletes.delete(book.id) }
     }
@@ -381,6 +390,13 @@ export function startSync(
     const cur = normalizeIds(store.getState().library)
     const rows = (booksResult.data ?? []) as CwBookRow[]
     const plan = mergeBooksPlan(cur.books, rows.filter(r => !pendingDeletes.has(r.id) && !pendingUpserts.has(r.id)))
+    if (opts.safeguard) for (const book of plan.toUpload) {
+      const oldRow = rows.find(row => row.id === book.id)
+      if (oldRow && hasText(oldRow.data.doc) && !hasText(book.doc)) {
+        const old = rowToBook(oldRow)
+        safeguards.set(`${old.id}:${old.updatedAt ?? ''}:${JSON.stringify(old.doc)}`, old)
+      }
+    }
     const cloudBox = (boxesResult.data ?? [])[0] as CwUniversalRow | undefined
     const boxes = mergeUniversalBoxes(cur.universalBoxes ?? defaultUniversalBoxes(), cloudBox ? rowToUniversal(cloudBox) : [])
     setLocal({ ...cur, books: plan.merged, universalBoxes: boxes,
@@ -398,7 +414,15 @@ export function startSync(
       if (stopped) return { ok: false, error: '同步已停止' }
       // One request at a time. A late acknowledgement may remove only the exact
       // queued version it sent, never edits made while that request was in flight.
-      while (!stopped && (pendingUpserts.size || pendingDeletes.size || pendingUniversal)) {
+      while (!stopped && (pendingUpserts.size || pendingDeletes.size || pendingUniversal || safeguards.size)) {
+        // A destructive write cannot reach the cloud until its prior full book
+        // is durably recoverable, independently of the ordinary five-minute history.
+        for (const [key, book] of [...safeguards]) {
+          await opts.safeguard!(book)
+          if (stopped) return { ok: false, error: '同步已停止' }
+          safeguards.delete(key)
+        }
+        if (safeguards.size) continue
         const sent = [...pendingUpserts.values()]
         if (sent.length) {
           const books = store.getState().library.books

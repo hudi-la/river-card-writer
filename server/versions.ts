@@ -38,6 +38,23 @@ export async function handleVersions(req: Request, env: Env): Promise<Response |
       const { snapshot, ...meta } = row
       return json({ ...meta, book: JSON.parse(snapshot) })
     }
+    if (req.method === 'GET' && !route[1] && url.searchParams.get('recovery') === '1') {
+      const offset = Number(url.searchParams.get('offset') || 0)
+      if (!Number.isSafeInteger(offset) || offset < 0) return json({ error: '分页无效' }, 400)
+      // Include the latest non-empty version even when the newest saved version
+      // is blank. Never join across owners or require the live book to exist.
+      const { results } = await db.prepare(`WITH candidates AS (
+        SELECT id, book_id, created_at, json_extract(snapshot, '$.title') AS title,
+          ROW_NUMBER() OVER (PARTITION BY book_id ORDER BY created_at DESC, id DESC) AS rank
+        FROM article_versions
+        WHERE owner = ? AND EXISTS (
+          SELECT 1 FROM json_tree(snapshot, '$.doc')
+          WHERE key = 'text' AND type = 'text' AND length(trim(value)) > 0
+        )
+      ) SELECT id, book_id, created_at, title FROM candidates WHERE rank = 1
+        ORDER BY created_at DESC, id DESC LIMIT 51 OFFSET ?`).bind(user.id, offset).all()
+      return json({ articles: results.slice(0, 50), nextOffset: results.length > 50 ? offset + 50 : null })
+    }
     const bookId = url.searchParams.get('bookId')
     if (req.method === 'GET' && !route[1]) {
       if (!bookId || bookId.length > 200) return json({ error: '缺少文章编号' }, 400)

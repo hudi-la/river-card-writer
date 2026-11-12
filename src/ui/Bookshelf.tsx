@@ -1,3 +1,4 @@
+import { RecoverManuscripts } from './RecoverManuscripts'
 import { ArticleShare } from './ArticleShare'
 import { ArticleExport } from './ArticleExport'
 import { useState, useEffect, useRef } from 'react'
@@ -449,7 +450,7 @@ export function Bookshelf() {
             <p className="shelf-subtitle">卡片河流写作</p>
           </div>
         </div>
-        <UserCenter />
+        <div><UserCenter /><RecoverManuscripts /></div>
       </div>
 
       {/* 栏目一：正在写的书 */}
