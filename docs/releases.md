@@ -152,3 +152,30 @@ Rollback: previous Pages production deployment `de16b947-bd5c-4b60-865b-88a3bac5
 - Existing browser tabs keep the previous JavaScript until reopened/refreshed;
   preserve any unsaved contents before refreshing. Rollback leaves local per-book
   records and private cloud histories intact but reintroduces old save behavior.
+
+## 2026-11-11 — manuscript recovery and destructive-save safeguards
+
+- Production https://river.hudiworks.com/ ; published source
+  `979498b9283ff9f540ed654db02ba14dc0b7218c`, pushed to GitHub branch
+  `codex/river-recovery-audit-20261111` before publishing.
+- Pages deployment `a52aed00-daba-4a33-bf3d-734b1f5d011c`
+  (https://a52aed00.card-writer.pages.dev).
+- Baseline/rollback: source `2cbb7ce`, deployment
+  `d5b3c918-b91b-46d9-aae0-f9ce2520f1b9`; rechecked before publishing.
+  No database migration; rollback retains cloud history and restored copies.
+- Add owner-scoped manuscript recovery with latest non-empty history, full preview,
+  pagination and restoration as a separate copy. Account changes invalidate pending previews.
+- Update mounted editor when the same document changes externally; reject delayed
+  writes to another book and preserve conflicting edits as independent copies.
+- Require a historical snapshot before syncing a clear/delete; failed snapshots
+  preserve the pending operation for retry without destructive cloud writes.
+- Audited available private histories and backups; recovered missing content with
+  verified, additive inserts. User data and private audit files are excluded from Git.
+- Validation: 843 tests across 68 files pass; production and Functions builds pass;
+  no new TypeScript diagnostics versus baseline. Old-source reproduction fails as
+  expected. Local browser verifies remote document replacement and copy recovery.
+  Signed-in production verifies restored books, cloud-saved status, recovery listing
+  and full preview without editing manuscripts. Main/share HTML and all referenced
+  JS/CSS match local build bytes (following the standard share.html redirect).
+- Existing tabs load the fixes when reopened/refreshed; preserve unsaved work first.
+  Full cross-device compare-and-swap conflict resolution remains outside this release.
